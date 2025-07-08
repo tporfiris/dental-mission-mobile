@@ -1,0 +1,1 @@
+// Bridging Header for Firebase Swift compatibility
