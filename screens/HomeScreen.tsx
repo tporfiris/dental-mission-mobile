@@ -11,15 +11,26 @@ import { useAuth } from '../contexts/AuthContext';
 const HomeScreen = () => {
   const { user, role, logout } = useAuth();
 
+  const renderRoleSection = () => {
+    switch (role) {
+      case 'clinician':
+        return <Text style={styles.roleSection}>🦷 Clinician Tools</Text>;
+      case 'admin':
+        return <Text style={styles.roleSection}>📊 Admin Dashboard Access</Text>;
+      case 'triage':
+        return <Text style={styles.roleSection}>📋 Triage Intake Tools</Text>;
+      default:
+        return <Text style={styles.roleSection}>❓ Unknown Role</Text>;
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome to the Dental Mission App</Text>
       <Text style={styles.text}>Logged in as: {user?.email}</Text>
       <Text style={styles.text}>Role: {role}</Text>
 
-      {role === 'clinician' && <Text style={styles.roleSection}>🦷 Clinician Tools</Text>}
-      {role === 'admin' && <Text style={styles.roleSection}>📊 Admin Dashboard</Text>}
-      {role === 'triage' && <Text style={styles.roleSection}>📋 Triage Intake</Text>}
+      {renderRoleSection()}
 
       <Button title="Logout" onPress={logout} />
     </View>
