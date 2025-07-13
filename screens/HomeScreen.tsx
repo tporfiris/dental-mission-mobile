@@ -7,18 +7,33 @@
 import React from 'react';
 import { View, Text, StyleSheet, Button } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 const HomeScreen = () => {
   const { user, role, logout } = useAuth();
+  const navigation = useNavigation();
 
   const renderRoleSection = () => {
     switch (role) {
       case 'clinician':
-        return <Text style={styles.roleSection}>🦷 Clinician Tools</Text>;
+        return (
+          <>
+            <Text style={styles.roleSection}>🦷 Clinician Tools</Text>
+            <Button title="Add New Patient" onPress={() => navigation.navigate('NewPatient')} />
+          </>
+        );
       case 'admin':
         return <Text style={styles.roleSection}>📊 Admin Dashboard Access</Text>;
       case 'triage':
-        return <Text style={styles.roleSection}>📋 Triage Intake Tools</Text>;
+        return (
+          <>
+            <Text style={styles.roleSection}>📋 Triage Intake Tools</Text>
+            <Button
+              title="Register New Patient"
+              onPress={() => navigation.navigate('PatientIntake')}
+            />
+          </>
+        );
       default:
         return <Text style={styles.roleSection}>❓ Unknown Role</Text>;
     }
