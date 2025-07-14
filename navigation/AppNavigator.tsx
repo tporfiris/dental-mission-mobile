@@ -3,7 +3,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
-import NewPatientScreen from '../screens/NewPatientScreen'; 
+import NewPatientScreen from '../screens/NewPatientScreen';
+import PatientQRCodeScreen from '../screens/PatientQRCodeScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -18,6 +19,7 @@ export default function AppNavigator() {
         <>
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="NewPatient" component={NewPatientScreen} />
+          <Stack.Screen name="PatientQRCode" component={PatientQRCodeScreen} />
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

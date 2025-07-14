@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tporfiris.dentalmissionmobile"
+      "bundleIdentifier": "com.tporfiris.dentalmissionmobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to take patient photos."
+      }
     },
     "android": {
       "adaptiveIcon": {
