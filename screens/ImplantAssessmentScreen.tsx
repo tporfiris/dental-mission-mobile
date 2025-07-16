@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
   },
   subtext: {
     fontSize: 12,
-    color: '#666',
+    color: '#665',
     marginBottom: 16,
   },
   warningCard: {
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: '#666',
+    color: '#665',
   },
   summaryValue: {
     fontSize: 14,

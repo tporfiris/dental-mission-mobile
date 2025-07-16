@@ -83,7 +83,6 @@ const NewPatientScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>New Patient</Text>
       <TextInput placeholder="First Name" value={firstName} onChangeText={setFirstName} style={styles.input} />
       <TextInput placeholder="Last Name" value={lastName} onChangeText={setLastName} style={styles.input} />
       <TextInput placeholder="Age" value={age} onChangeText={setAge} keyboardType="numeric" style={styles.input} />

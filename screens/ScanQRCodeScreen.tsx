@@ -1,25 +1,33 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
-import Camera from 'expo-camera'
-import { BarCodeScannerResult } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused } from '@react-navigation/native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
+import type { BarCodeScannerResult } from 'expo-camera';
 import Patient from '../db/models/Patient';
 
 const ScanQRCodeScreen = ({ navigation }: any) => {
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
   const isFocused = useIsFocused();
   const db = useDatabase();
+  const [permission, requestPermission] = useCameraPermissions();
 
   useEffect(() => {
-    (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-    })();
-  }, []);
+    if (isFocused) setScanned(false);
+  }, [isFocused]);
 
-  const handleBarCodeScanned = async ({ data }: BarCodeScannerResult) => {
+  if (!permission) return <Text>Requesting permission...</Text>;
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.container}>
+        <Text>No access to camera</Text>
+        <Text onPress={requestPermission}>Tap to grant permission</Text>
+      </View>
+    );
+  }
+
+  const handleBarcodeScanned = async ({ data }: BarCodeScannerResult) => {
     if (scanned) return;
 
     setScanned(true);
@@ -28,10 +36,7 @@ const ScanQRCodeScreen = ({ navigation }: any) => {
     try {
       const patient = await db.get<Patient>('patients').find(data);
       console.log('✅ Patient Found:', patient.firstName, patient.lastName);
-
       Alert.alert('Patient Found', `${patient.firstName} ${patient.lastName}`);
-      // Later: navigate to a Visit screen here
-
       navigation.goBack();
     } catch (err) {
       console.error('❌ Patient not found:', err);
@@ -40,16 +45,13 @@ const ScanQRCodeScreen = ({ navigation }: any) => {
     }
   };
 
-  if (hasPermission === null) return <Text>Requesting camera permission...</Text>;
-  if (hasPermission === false) return <Text>No access to camera</Text>;
-
   return (
     <View style={styles.container}>
       {isFocused && (
-        <Camera
+        <CameraView
           style={StyleSheet.absoluteFillObject}
-          onBarCodeScanned={handleBarCodeScanned}
-          barCodeScannerSettings={{ barCodeTypes: ['qr'] }}
+          onBarcodeScanned={handleBarcodeScanned}
+          barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         />
       )}
       <Text style={styles.overlayText}>Scan Patient QR Code</Text>

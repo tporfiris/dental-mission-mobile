@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   },
   subtext: {
     fontSize: 12,
-    color: '#666',
+    color: '#665',
     marginBottom: 20,
   },
   dentalChart: {

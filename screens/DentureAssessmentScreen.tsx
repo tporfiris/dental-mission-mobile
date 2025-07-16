@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
   },
   subtext: {
     fontSize: 12,
-    color: '#666',
+    color: '#665',
     marginBottom: 16,
   },
   assessmentTypeCard: {
@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
   },
   typeDescription: {
     fontSize: 11,
-    color: '#666',
+    color: '#665',
     textAlign: 'center',
   },
   dentureTypeCard: {

@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
   },
   subtext: {
     fontSize: 12,
-    color: '#666',
+    color: '#665',
     marginBottom: 16,
   },
   summaryCard: {
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: '#666',
+    color: '#665',
   },
   summaryValue: {
     fontSize: 14,
@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
   },
   surfaceNote: {
     fontSize: 12,
-    color: '#666',
+    color: '#665',
     fontStyle: 'italic',
     textAlign: 'center',
     marginBottom: 20,

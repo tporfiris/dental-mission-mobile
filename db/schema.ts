@@ -46,6 +46,60 @@ export const schema = appSchema({
       ],
     }),
     tableSchema({
+      name: 'dentition_assessments',
+      columns: [
+        { name: 'patient_id', type: 'string', isIndexed: true },
+        { name: 'data', type: 'string' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'hygiene_assessments',
+      columns: [
+        { name: 'patient_id', type: 'string', isIndexed: true },
+        { name: 'data', type: 'string' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'fillings_assessments',
+      columns: [
+        { name: 'patient_id', type: 'string', isIndexed: true },
+        { name: 'data', type: 'string' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'extractions_assessments',
+      columns: [
+        { name: 'patient_id', type: 'string', isIndexed: true },
+        { name: 'data', type: 'string' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'denture_assessments',
+      columns: [
+        { name: 'patient_id', type: 'string', isIndexed: true },
+        { name: 'data', type: 'string' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'implant_assessments',
+      columns: [
+        { name: 'patient_id', type: 'string', isIndexed: true },
+        { name: 'data', type: 'string' },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
       name: 'audio_notes',
       columns: [
         { name: 'visit_id', type: 'string', isIndexed: true },
