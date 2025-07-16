@@ -1,9 +1,3 @@
-// This screen:
-// - Welcomes the user
-// - Shows their email and role
-// - Changes the content based on their role
-// - Adds a working logout button
-
 import React from 'react';
 import { View, Text, StyleSheet, Button } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,7 +5,7 @@ import { useNavigation } from '@react-navigation/native';
 
 const HomeScreen = () => {
   const { user, role, logout } = useAuth();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
 
   const renderRoleSection = () => {
     switch (role) {
@@ -20,20 +14,21 @@ const HomeScreen = () => {
           <>
             <Text style={styles.roleSection}>🦷 Clinician Tools</Text>
             <Button title="Add New Patient" onPress={() => navigation.navigate('NewPatient')} />
+            <View style={styles.spacer} />
+            <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
           </>
         );
-      case 'admin':
-        return <Text style={styles.roleSection}>📊 Admin Dashboard Access</Text>;
       case 'triage':
         return (
           <>
             <Text style={styles.roleSection}>📋 Triage Intake Tools</Text>
-            <Button
-              title="Register New Patient"
-              onPress={() => navigation.navigate('PatientIntake')}
-            />
+            <Button title="Register New Patient" onPress={() => navigation.navigate('NewPatient')} />
+            <View style={styles.spacer} />
+            <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
           </>
         );
+      case 'admin':
+        return <Text style={styles.roleSection}>📊 Admin Dashboard Access</Text>;
       default:
         return <Text style={styles.roleSection}>❓ Unknown Role</Text>;
     }
@@ -47,6 +42,7 @@ const HomeScreen = () => {
 
       {renderRoleSection()}
 
+      <View style={styles.spacer} />
       <Button title="Logout" onPress={logout} />
     </View>
   );
@@ -64,5 +60,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#3366CC',
     textAlign: 'center',
+  },
+  spacer: {
+    height: 10,
   },
 });

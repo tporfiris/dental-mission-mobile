@@ -72,7 +72,7 @@ const NewPatientScreen = ({ navigation }: any) => {
       console.log('✅ Patient saved with ID:', id);
   
       // Instead of going back, navigate to QR code screen
-      navigation.navigate('PatientQRCode', { patientId: id });
+      navigation.navigate('Assessments', { patientId: id });
   
     } catch (err) {
       console.error('❌ Failed to save patient:', err);
