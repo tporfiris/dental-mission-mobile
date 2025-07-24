@@ -4,6 +4,7 @@ import { field, date, relation } from '@nozbe/watermelondb/decorators';
 export default class DentitionAssessment extends Model {
   static table = 'dentition_assessments';
 
+  @field('patient_id') patientId!: string; // <-- ✅ ADD THIS LINE
   @field('data') data!: string; // JSON string of tooth states
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;

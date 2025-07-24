@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   },
   subtext: {
     fontSize: 12,
-    color: '#665',
+    color: '#666',
     marginBottom: 16,
   },
   summaryCard: {
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     fontSize: 14,
-    color: '#665',
+    color: '#666',
   },
   summaryValue: {
     fontSize: 14,

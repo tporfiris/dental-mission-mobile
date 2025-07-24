@@ -6,6 +6,11 @@ import {
   Pressable,
   ScrollView,
 } from 'react-native';
+import { database } from '../db'; // adjust path if needed
+import DentitionAssessment from '../models/DentitionAssessment';
+import { Q } from '@nozbe/watermelondb';
+import uuid from 'react-native-uuid';
+import { useDentitionAssessment } from '../contexts/DentitionAssessmentContext';
 
 const TOOTH_STATES = ['present', 'crown-missing', 'fully-missing'] as const;
 type ToothState = typeof TOOTH_STATES[number];
@@ -25,7 +30,8 @@ const initialToothStates: Record<string, ToothState> = {};
 
 const DentitionAssessmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  const [toothStates, setToothStates] = useState(initialToothStates);
+  // const [toothStates, setToothStates] = useState(initialToothStates);
+  const { toothStates, setToothStates } = useDentitionAssessment();
 
   const cycleToothState = (toothId: string) => {
     setToothStates(prev => {
@@ -34,6 +40,58 @@ const DentitionAssessmentScreen = ({ route }: any) => {
       return { ...prev, [toothId]: nextState };
     });
   };
+
+  const saveAssessment = async () => {
+    try {
+      const collection = database.get<DentitionAssessment>('dentition_assessments');
+      console.log('🔎 Looking for existing assessment for patient:', patientId);
+      const existing = await collection
+      .query(Q.where('patient_id', Q.eq(patientId)))
+      .fetch();
+
+      console.log('🔍 Matched existing assessment:', existing);
+  
+      const jsonData = JSON.stringify(toothStates);
+  
+      await database.write(async () => {
+        console.log("existing:")
+        console.log(existing)
+        console.log("existing length:")
+        console.log(existing.length)
+        if (existing.length > 0) {
+          console.log('🔍 Existing assessments for patient', patientId, ':', existing);
+          // Update existing record
+          await existing[0].update(record => {
+            record.data = jsonData;
+            record.updatedAt = new Date();
+          });
+          console.log('✅ Dentition assessment updated');
+          alert('✅ Dentition assessment updated');
+        } else {
+          // Create new record
+          await collection.create(record => {
+            const id = uuid.v4();
+            record._raw.id = id;
+            record.patientId = patientId;// must match schema!
+            record.data = jsonData;
+            record.createdAt = new Date();
+            record.updatedAt = new Date();
+            // record.patient.set(patientId);
+            alert('✅ Dentition assessment created')
+            console.log('🔧 Created assessment record:', {
+              id,
+              patient_id: patientId,
+              data: jsonData,
+            });
+          });
+        }
+      });
+    } catch (err) {
+      console.error('❌ Failed to save dentition assessment:', err);
+    }
+  };
+  
+  
 
   const getToothStyle = (state: ToothState) => {
     switch (state) {
@@ -101,7 +159,7 @@ const DentitionAssessmentScreen = ({ route }: any) => {
     );
   };
 
-  return (
+  return (    
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.header}>🦷 Dentition Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
@@ -139,6 +197,9 @@ const DentitionAssessmentScreen = ({ route }: any) => {
           <Text style={styles.legendLabel}>Fully Missing</Text>
         </View>
       </View>
+      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+        <Text style={styles.saveButtonText}>Save Assessment</Text>
+      </Pressable>
     </ScrollView>
   );
 };
@@ -232,4 +293,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
   },
+  saveButton: {
+    backgroundColor: '#007bff',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    textAlign: 'center',
+  },  
 });
