@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Button } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 
+
 const HomeScreen = () => {
   const { user, role, logout } = useAuth();
   const navigation = useNavigation<any>();
