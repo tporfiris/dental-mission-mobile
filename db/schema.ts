@@ -1,11 +1,12 @@
 // This defines a normalized schema:
 // - Each patient can have many visits
 // - Each visit can have many treatments
+// - Treatments can also be directly linked to patients for mission scenarios
 
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 4,
+  version: 6, // Increment version for schema changes
   tables: [
     tableSchema({
       name: 'patients',
@@ -29,12 +30,17 @@ export const schema = appSchema({
     tableSchema({
       name: 'treatments',
       columns: [
-        { name: 'visit_id', type: 'string', isIndexed: true },
-        { name: 'type', type: 'string' }, // e.g., extraction, filling, hygiene
-        { name: 'tooth', type: 'string' }, // e.g., "11", "24"
-        { name: 'surface', type: 'string' }, // MODBL
-        { name: 'units', type: 'number' }, // hygiene only
+        { name: 'patient_id', type: 'string', isIndexed: true }, // Direct patient reference
+        { name: 'visit_id', type: 'string', isIndexed: true }, // Optional visit reference
+        { name: 'type', type: 'string' }, // hygiene, extraction, filling, denture, implant
+        { name: 'tooth', type: 'string' }, // tooth number or "N/A"
+        { name: 'surface', type: 'string' }, // MODBL surfaces or "N/A"
+        { name: 'units', type: 'number' }, // scaling/root planing units or quantity
         { name: 'value', type: 'number' }, // fee guide value
+        { name: 'billing_codes', type: 'string' }, // JSON string of billing codes
+        { name: 'notes', type: 'string' }, // treatment notes
+        { name: 'clinician_name', type: 'string' }, // who performed treatment
+        { name: 'completed_at', type: 'number' }, // when treatment was completed
       ],
     }),
     tableSchema({
@@ -102,11 +108,14 @@ export const schema = appSchema({
     tableSchema({
       name: 'audio_notes',
       columns: [
-        { name: 'visit_id', type: 'string', isIndexed: true },
+        { name: 'patient_id', type: 'string', isIndexed: true }, // Direct patient link
+        { name: 'visit_id', type: 'string', isIndexed: true, isOptional: true }, // Optional visit link
         { name: 'uri', type: 'string' }, // local or cloud storage path
         { name: 'transcription', type: 'string' },
         { name: 'timestamp', type: 'number' },
         { name: 'clinician_id', type: 'string', isIndexed: true },
+        { name: 'category', type: 'string' }, // Assessment or Treatment
+        { name: 'subcategory', type: 'string' }, // Hygiene, Extractions, etc.
       ],
     }),
   ],

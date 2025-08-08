@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,13 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { database } from '../db'; // adjust path if needed
+import HygieneAssessment from '../db/models/HygieneAssessment';
+import { Q } from '@nozbe/watermelondb';
+import uuid from 'react-native-uuid';
+import { useHygieneAssessment } from '../contexts/HygieneAssessmentContext';
+import AudioRecordingButton from '../components/AudioRecordingButton';
+
 
 const HYGIENE_STATES = ['normal', 'light-plaque', 'moderate-plaque', 'heavy-plaque', 'calculus'] as const;
 type HygieneState = typeof HYGIENE_STATES[number];
@@ -15,14 +22,6 @@ const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
 const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
 const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
-
-const initialHygieneStates: Record<string, HygieneState> = {};
-[
-  ...UPPER_RIGHT, ...UPPER_LEFT,
-  ...LOWER_RIGHT, ...LOWER_LEFT,
-].forEach(id => {
-  initialHygieneStates[id] = 'normal';
-});
 
 // Scaling unit values per tooth based on severity
 const SCALING_UNITS = {
@@ -35,7 +34,7 @@ const SCALING_UNITS = {
 
 const HygieneAssessmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  const [hygieneStates, setHygieneStates] = useState(initialHygieneStates);
+  const { hygieneStates, setHygieneStates } = useHygieneAssessment();
 
   const cycleHygieneState = (toothId: string) => {
     setHygieneStates(prev => {
@@ -43,6 +42,56 @@ const HygieneAssessmentScreen = ({ route }: any) => {
       const nextState = HYGIENE_STATES[(currentIndex + 1) % HYGIENE_STATES.length];
       return { ...prev, [toothId]: nextState };
     });
+  };
+
+  const saveAssessment = async () => {
+    try {
+      const collection = database.get<HygieneAssessment>('hygiene_assessments');
+      console.log('🔎 Looking for existing hygiene assessment for patient:', patientId);
+      const existing = await collection
+        .query(Q.where('patient_id', Q.eq(patientId)))
+        .fetch();
+
+      console.log('🔍 Matched existing hygiene assessment:', existing);
+  
+      const jsonData = JSON.stringify(hygieneStates);
+  
+      await database.write(async () => {
+        console.log("existing hygiene assessments:")
+        console.log(existing)
+        console.log("existing length:")
+        console.log(existing.length)
+        if (existing.length > 0) {
+          console.log('🔍 Existing hygiene assessments for patient', patientId, ':', existing);
+          // Update existing record
+          await existing[0].update(record => {
+            record.data = jsonData;
+            record.updatedAt = new Date();
+          });
+          console.log('✅ Hygiene assessment updated');
+          Alert.alert('✅ Hygiene assessment updated');
+        } else {
+          // Create new record
+          await collection.create(record => {
+            const id = uuid.v4();
+            record._raw.id = id;
+            record.patientId = patientId; // must match schema!
+            record.data = jsonData;
+            record.createdAt = new Date();
+            record.updatedAt = new Date();
+            Alert.alert('✅ Hygiene assessment created')
+            console.log('🔧 Created hygiene assessment record:', {
+              id,
+              patient_id: patientId,
+              data: jsonData,
+            });
+          });
+        }
+      });
+    } catch (err) {
+      console.error('❌ Failed to save hygiene assessment:', err);
+      Alert.alert('❌ Failed to save hygiene assessment');
+    }
   };
 
   const getToothStyle = (state: HygieneState) => {
@@ -231,6 +280,18 @@ ${calculatedData.additionalCodes.length > 0 ?
           <Text style={styles.legendLabel}>Calculus (2.0)</Text>
         </View>
       </View>
+
+      {/* Save Button */}
+      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+        <Text style={styles.saveButtonText}>Save Assessment</Text>
+      </Pressable>
+
+      {/* Audio Recording Button */}
+      <AudioRecordingButton 
+        patientId={patientId} 
+        category="Assessment" 
+        subcategory="Hygiene" 
+      />
     </ScrollView>
   );
 };
@@ -359,6 +420,7 @@ const styles = StyleSheet.create({
   legend: {
     width: '100%',
     alignItems: 'flex-start',
+    marginBottom: 20,
   },
   legendItem: {
     flexDirection: 'row',
@@ -375,5 +437,18 @@ const styles = StyleSheet.create({
   legendLabel: {
     fontSize: 13,
     color: '#333',
+  },
+  saveButton: {
+    backgroundColor: '#007bff',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    textAlign: 'center',
   },
 });

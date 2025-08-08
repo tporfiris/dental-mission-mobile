@@ -7,6 +7,11 @@ import Treatment from './models/Treatment';
 import Clinician from './models/Clinician';
 import AudioNote from './models/AudioNote';
 import DentitionAssessment from './models/DentitionAssessment'; 
+import HygieneAssessment from './models/HygieneAssessment';
+import ExtractionsAssessment from './models/ExtractionsAssessment';
+import FillingsAssessment from './models/FillingsAssessment';
+import ImplantAssessment from './models/ImplantAssessment';
+import DentureAssessment from './models/DentureAssessment';
 
 const adapter = new SQLiteAdapter({
   schema,
@@ -20,6 +25,11 @@ export const database = new Database({
     Treatment,
     Clinician,
     AudioNote,
-    DentitionAssessment
+    DentitionAssessment,
+    HygieneAssessment,
+    ExtractionsAssessment,
+    FillingsAssessment,
+    DentureAssessment,
+    ImplantAssessment
   ],
 });

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,11 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { database } from '../db'; // adjust path if needed
+import DentureAssessment from '../db/models/DentureAssessment';
+import { Q } from '@nozbe/watermelondb';
+import uuid from 'react-native-uuid';
+import { useDentureAssessment } from '../contexts/DentureAssessmentContext';
 
 const ASSESSMENT_TYPES = ['initial-visit', 'post-extraction'] as const;
 type AssessmentType = typeof ASSESSMENT_TYPES[number];
@@ -23,15 +28,6 @@ const DENTURE_TYPES = [
   'upper-partial-lower-full'
 ] as const;
 type DentureType = typeof DENTURE_TYPES[number];
-
-const DENTURE_OPTIONS = {
-  immediate: false,
-  temporary: false,
-  conventional: false,
-  reline: false,
-  repair: false,
-  adjustment: false,
-};
 
 const DENTURE_LABELS = {
   'none': 'No Denture Needed',
@@ -52,16 +48,81 @@ const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
 
 const DentureAssessmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  const [assessmentType, setAssessmentType] = useState<AssessmentType>('initial-visit');
-  const [selectedDentureType, setSelectedDentureType] = useState<DentureType>('none');
-  const [dentureOptions, setDentureOptions] = useState(DENTURE_OPTIONS);
-  const [notes, setNotes] = useState('');
+  const { 
+    dentureState, 
+    updateAssessmentType, 
+    updateDentureType, 
+    updateDentureOptions, 
+    updateNotes 
+  } = useDentureAssessment();
 
-  const toggleDentureOption = (option: keyof typeof DENTURE_OPTIONS) => {
-    setDentureOptions(prev => ({
-      ...prev,
-      [option]: !prev[option]
-    }));
+  const { assessmentType, selectedDentureType, dentureOptions, notes } = dentureState;
+
+  const saveAssessment = async () => {
+    try {
+      const collection = database.get<DentureAssessment>('denture_assessments');
+      console.log('🔎 Looking for existing denture assessment for patient:', patientId);
+      const existing = await collection
+        .query(Q.where('patient_id', Q.eq(patientId)))
+        .fetch();
+
+      console.log('🔍 Matched existing denture assessment:', existing);
+  
+      // Create comprehensive assessment data object
+      const assessmentData = {
+        assessmentType,
+        selectedDentureType,
+        dentureOptions,
+        notes,
+        timestamp: new Date().toISOString()
+      };
+      
+      const jsonData = JSON.stringify(assessmentData);
+  
+      await database.write(async () => {
+        console.log("existing denture assessments:")
+        console.log(existing)
+        console.log("existing length:")
+        console.log(existing.length)
+        if (existing.length > 0) {
+          console.log('🔍 Existing denture assessments for patient', patientId, ':', existing);
+          // Update existing record
+          await existing[0].update(record => {
+            record.data = jsonData;
+            record.updatedAt = new Date();
+          });
+          console.log('✅ Denture assessment updated');
+          Alert.alert('✅ Denture assessment updated');
+        } else {
+          // Create new record
+          await collection.create(record => {
+            const id = uuid.v4();
+            record._raw.id = id;
+            record.patientId = patientId; // must match schema!
+            record.data = jsonData;
+            record.createdAt = new Date();
+            record.updatedAt = new Date();
+            Alert.alert('✅ Denture assessment created')
+            console.log('🔧 Created denture assessment record:', {
+              id,
+              patient_id: patientId,
+              data: jsonData,
+            });
+          });
+        }
+      });
+    } catch (err) {
+      console.error('❌ Failed to save denture assessment:', err);
+      Alert.alert('❌ Failed to save denture assessment');
+    }
+  };
+
+  const toggleDentureOption = (option: keyof typeof dentureOptions) => {
+    const updatedOptions = {
+      ...dentureOptions,
+      [option]: !dentureOptions[option]
+    };
+    updateDentureOptions(updatedOptions);
   };
 
   const getToothPosition = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
@@ -215,9 +276,16 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
   };
 
   const resetAssessment = () => {
-    setSelectedDentureType('none');
-    setDentureOptions(DENTURE_OPTIONS);
-    setNotes('');
+    updateDentureType('none');
+    updateDentureOptions({
+      immediate: false,
+      temporary: false,
+      conventional: false,
+      reline: false,
+      repair: false,
+      adjustment: false,
+    });
+    updateNotes('');
   };
 
   return (
@@ -234,7 +302,7 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
               styles.typeButton,
               assessmentType === 'initial-visit' && styles.typeButtonSelected
             ]}
-            onPress={() => setAssessmentType('initial-visit')}
+            onPress={() => updateAssessmentType('initial-visit')}
           >
             <Text style={[
               styles.typeButtonText,
@@ -252,7 +320,7 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
               styles.typeButton,
               assessmentType === 'post-extraction' && styles.typeButtonSelected
             ]}
-            onPress={() => setAssessmentType('post-extraction')}
+            onPress={() => updateAssessmentType('post-extraction')}
           >
             <Text style={[
               styles.typeButtonText,
@@ -279,7 +347,7 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
                 selectedDentureType === type && styles.dentureOptionSelected,
                 type === 'none' && styles.dentureOptionNone
               ]}
-              onPress={() => setSelectedDentureType(type)}
+              onPress={() => updateDentureType(type)}
             >
               <Text style={[
                 styles.dentureOptionText,
@@ -327,7 +395,7 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
                   styles.optionToggle,
                   selected && styles.optionToggleSelected
                 ]}
-                onPress={() => toggleDentureOption(option as keyof typeof DENTURE_OPTIONS)}
+                onPress={() => toggleDentureOption(option as keyof typeof dentureOptions)}
               >
                 <Text style={[
                   styles.optionToggleText,
@@ -384,6 +452,11 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
           <Text style={styles.legendLabel}>Partial Denture Area</Text>
         </View>
       </View>
+
+      {/* Save Button */}
+      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+        <Text style={styles.saveButtonText}>Save Assessment</Text>
+      </Pressable>
     </ScrollView>
   );
 };
@@ -649,6 +722,7 @@ const styles = StyleSheet.create({
   legend: {
     width: '100%',
     alignItems: 'flex-start',
+    marginBottom: 20,
   },
   legendItem: {
     flexDirection: 'row',
@@ -665,5 +739,18 @@ const styles = StyleSheet.create({
   legendLabel: {
     fontSize: 13,
     color: '#333',
+  },
+  saveButton: {
+    backgroundColor: '#007bff',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    textAlign: 'center',
   },
 });

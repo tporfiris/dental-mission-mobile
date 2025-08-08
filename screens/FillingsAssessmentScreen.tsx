@@ -8,6 +8,11 @@ import {
   Alert,
   Modal,
 } from 'react-native';
+import { database } from '../db'; // adjust path if needed
+import FillingsAssessment from '../db/models/FillingsAssessment';
+import { Q } from '@nozbe/watermelondb';
+import uuid from 'react-native-uuid';
+import { useFillingsAssessment } from '../contexts/FillingsAssessmentContext';
 
 const SURFACES = ['M', 'D', 'L', 'B', 'O'] as const;
 type Surface = typeof SURFACES[number];
@@ -22,19 +27,61 @@ interface ToothRestoration {
   tentative: boolean;
 }
 
-const initialRestorations: Record<string, ToothRestoration> = {};
-[
-  ...UPPER_RIGHT, ...UPPER_LEFT,
-  ...LOWER_RIGHT, ...LOWER_LEFT,
-].forEach(id => {
-  initialRestorations[id] = { surfaces: [], tentative: false };
-});
-
 const TreatmentPlanningFillingsScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  const [restorations, setRestorations] = useState(initialRestorations);
+  const { restorationStates, setRestorationStates } = useFillingsAssessment();
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+
+  const saveAssessment = async () => {
+    try {
+      const collection = database.get<FillingsAssessment>('fillings_assessments');
+      console.log('🔎 Looking for existing fillings assessment for patient:', patientId);
+      const existing = await collection
+        .query(Q.where('patient_id', Q.eq(patientId)))
+        .fetch();
+
+      console.log('🔍 Matched existing fillings assessment:', existing);
+  
+      const jsonData = JSON.stringify(restorationStates);
+  
+      await database.write(async () => {
+        console.log("existing fillings assessments:")
+        console.log(existing)
+        console.log("existing length:")
+        console.log(existing.length)
+        if (existing.length > 0) {
+          console.log('🔍 Existing fillings assessments for patient', patientId, ':', existing);
+          // Update existing record
+          await existing[0].update(record => {
+            record.data = jsonData;
+            record.updatedAt = new Date();
+          });
+          console.log('✅ Fillings assessment updated');
+          Alert.alert('✅ Fillings assessment updated');
+        } else {
+          // Create new record
+          await collection.create(record => {
+            const id = uuid.v4();
+            record._raw.id = id;
+            record.patientId = patientId; // must match schema!
+            record.data = jsonData;
+            record.createdAt = new Date();
+            record.updatedAt = new Date();
+            Alert.alert('✅ Fillings assessment created')
+            console.log('🔧 Created fillings assessment record:', {
+              id,
+              patient_id: patientId,
+              data: jsonData,
+            });
+          });
+        }
+      });
+    } catch (err) {
+      console.error('❌ Failed to save fillings assessment:', err);
+      Alert.alert('❌ Failed to save fillings assessment');
+    }
+  };
 
   const openToothEditor = (toothId: string) => {
     setSelectedTooth(toothId);
@@ -49,7 +96,7 @@ const TreatmentPlanningFillingsScreen = ({ route }: any) => {
   const toggleSurface = (surface: Surface) => {
     if (!selectedTooth) return;
     
-    setRestorations(prev => ({
+    setRestorationStates(prev => ({
       ...prev,
       [selectedTooth]: {
         ...prev[selectedTooth],
@@ -63,7 +110,7 @@ const TreatmentPlanningFillingsScreen = ({ route }: any) => {
   const toggleTentative = () => {
     if (!selectedTooth) return;
     
-    setRestorations(prev => ({
+    setRestorationStates(prev => ({
       ...prev,
       [selectedTooth]: {
         ...prev[selectedTooth],
@@ -75,14 +122,14 @@ const TreatmentPlanningFillingsScreen = ({ route }: any) => {
   const clearTooth = () => {
     if (!selectedTooth) return;
     
-    setRestorations(prev => ({
+    setRestorationStates(prev => ({
       ...prev,
       [selectedTooth]: { surfaces: [], tentative: false }
     }));
   };
 
   const getToothStyle = (toothId: string) => {
-    const restoration = restorations[toothId];
+    const restoration = restorationStates[toothId];
     if (restoration.surfaces.length === 0) {
       return styles.toothNormal;
     }
@@ -123,7 +170,7 @@ const TreatmentPlanningFillingsScreen = ({ route }: any) => {
 
   const renderTooth = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
     const position = getToothPosition(toothId, index, section);
-    const restoration = restorations[toothId];
+    const restoration = restorationStates[toothId];
     
     return (
       <Pressable
@@ -158,7 +205,7 @@ const TreatmentPlanningFillingsScreen = ({ route }: any) => {
 
   // Calculate treatment summary
   const treatmentSummary = useMemo(() => {
-    const teethNeedingFillings = Object.entries(restorations).filter(([_, restoration]) => 
+    const teethNeedingFillings = Object.entries(restorationStates).filter(([_, restoration]) => 
       restoration.surfaces.length > 0
     );
     
@@ -180,7 +227,7 @@ const TreatmentPlanningFillingsScreen = ({ route }: any) => {
         tentative: restoration.tentative
       }))
     };
-  }, [restorations]);
+  }, [restorationStates]);
 
   const showDetailedReport = () => {
     const report = `
@@ -276,6 +323,11 @@ ${treatmentSummary.tentativeCount > 0 ?
         Surfaces: M=Mesial, D=Distal, L=Lingual, B=Buccal, O=Occlusal
       </Text>
 
+      {/* Save Button */}
+      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+        <Text style={styles.saveButtonText}>Save Assessment</Text>
+      </Pressable>
+
       {/* Tooth Editor Modal */}
       <Modal
         animationType="slide"
@@ -296,13 +348,13 @@ ${treatmentSummary.tentativeCount > 0 ?
                   key={surface}
                   style={[
                     styles.surfaceButton,
-                    selectedTooth && restorations[selectedTooth]?.surfaces.includes(surface) && styles.surfaceButtonSelected
+                    selectedTooth && restorationStates[selectedTooth]?.surfaces.includes(surface) && styles.surfaceButtonSelected
                   ]}
                   onPress={() => toggleSurface(surface)}
                 >
                   <Text style={[
                     styles.surfaceButtonText,
-                    selectedTooth && restorations[selectedTooth]?.surfaces.includes(surface) && styles.surfaceButtonTextSelected
+                    selectedTooth && restorationStates[selectedTooth]?.surfaces.includes(surface) && styles.surfaceButtonTextSelected
                   ]}>
                     {surface}
                   </Text>
@@ -313,13 +365,13 @@ ${treatmentSummary.tentativeCount > 0 ?
             <Pressable
               style={[
                 styles.tentativeButton,
-                selectedTooth && restorations[selectedTooth]?.tentative && styles.tentativeButtonSelected
+                selectedTooth && restorationStates[selectedTooth]?.tentative && styles.tentativeButtonSelected
               ]}
               onPress={toggleTentative}
             >
               <Text style={[
                 styles.tentativeButtonText,
-                selectedTooth && restorations[selectedTooth]?.tentative && styles.tentativeButtonTextSelected
+                selectedTooth && restorationStates[selectedTooth]?.tentative && styles.tentativeButtonTextSelected
               ]}>
                 🔍 Tentative (Pending X-rays)
               </Text>
@@ -506,6 +558,19 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     marginBottom: 20,
+  },
+  saveButton: {
+    backgroundColor: '#007bff',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,

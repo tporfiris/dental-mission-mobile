@@ -15,6 +15,15 @@ import ExtractionsAssessmentScreen from '../screens/ExtractionsAssessmentScreen'
 import DentureAssessmentScreen from '../screens/DentureAssessmentScreen';
 import ImplantAssessmentScreen from '../screens/ImplantAssessmentScreen';
 
+// New Treatment Screens
+import TreatmentScreen from '../screens/TreatmentScreen';
+import ViewAssessmentScreen from '../screens/ViewAssessmentScreen';
+import HygieneTreatmentScreen from '../screens/HygieneTreatmentScreen';
+import ExtractionsTreatmentScreen from '../screens/ExtractionsTreatmentScreen';
+import FillingsTreatmentScreen from '../screens/FillingsTreatmentScreen';
+import DentureTreatmentScreen from '../screens/DentureTreatmentScreen';
+import ImplantTreatmentScreen from '../screens/ImplantTreatmentScreen';
+
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
@@ -37,6 +46,15 @@ export default function AppNavigator() {
           <Stack.Screen name="ExtractionsAssessment" component={ExtractionsAssessmentScreen} />
           <Stack.Screen name="DentureAssessment" component={DentureAssessmentScreen} />
           <Stack.Screen name="ImplantAssessment" component={ImplantAssessmentScreen} />
+          
+          {/* Treatment Screens */}
+          <Stack.Screen name="Treatment" component={TreatmentScreen} />
+          <Stack.Screen name="ViewAssessment" component={ViewAssessmentScreen} />
+          <Stack.Screen name="HygieneTreatment" component={HygieneTreatmentScreen} />
+          <Stack.Screen name="ExtractionsTreatment" component={ExtractionsTreatmentScreen} />
+          <Stack.Screen name="FillingsTreatment" component={FillingsTreatmentScreen} />
+          <Stack.Screen name="DentureTreatment" component={DentureTreatmentScreen} />
+          <Stack.Screen name="ImplantTreatment" component={ImplantTreatmentScreen} />
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

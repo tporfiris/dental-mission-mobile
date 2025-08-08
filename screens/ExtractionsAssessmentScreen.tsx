@@ -8,6 +8,11 @@ import {
   Alert,
   Modal,
 } from 'react-native';
+import { database } from '../db'; // adjust path if needed
+import ExtractionsAssessment from '../db/models/ExtractionsAssessment';
+import { Q } from '@nozbe/watermelondb';
+import uuid from 'react-native-uuid';
+import { useExtractionsAssessment } from '../contexts/ExtractionsAssessmentContext';
 
 const EXTRACTION_REASONS = ['none', 'loose', 'root-tip', 'non-restorable'] as const;
 type ExtractionReason = typeof EXTRACTION_REASONS[number];
@@ -16,14 +21,6 @@ const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
 const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
 const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
-
-const initialExtractions: Record<string, ExtractionReason> = {};
-[
-  ...UPPER_RIGHT, ...UPPER_LEFT,
-  ...LOWER_RIGHT, ...LOWER_LEFT,
-].forEach(id => {
-  initialExtractions[id] = 'none';
-});
 
 const REASON_LABELS = {
   'none': 'No Extraction',
@@ -41,9 +38,59 @@ const REASON_ABBREVIATIONS = {
 
 const ExtractionTreatmentPlanningScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  const [extractions, setExtractions] = useState(initialExtractions);
+  const { extractionStates, setExtractionStates } = useExtractionsAssessment();
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+
+  const saveAssessment = async () => {
+    try {
+      const collection = database.get<ExtractionsAssessment>('extractions_assessments');
+      console.log('🔎 Looking for existing extractions assessment for patient:', patientId);
+      const existing = await collection
+        .query(Q.where('patient_id', Q.eq(patientId)))
+        .fetch();
+
+      console.log('🔍 Matched existing extractions assessment:', existing);
+  
+      const jsonData = JSON.stringify(extractionStates);
+  
+      await database.write(async () => {
+        console.log("existing extractions assessments:")
+        console.log(existing)
+        console.log("existing length:")
+        console.log(existing.length)
+        if (existing.length > 0) {
+          console.log('🔍 Existing extractions assessments for patient', patientId, ':', existing);
+          // Update existing record
+          await existing[0].update(record => {
+            record.data = jsonData;
+            record.updatedAt = new Date();
+          });
+          console.log('✅ Extractions assessment updated');
+          Alert.alert('✅ Extractions assessment updated');
+        } else {
+          // Create new record
+          await collection.create(record => {
+            const id = uuid.v4();
+            record._raw.id = id;
+            record.patientId = patientId; // must match schema!
+            record.data = jsonData;
+            record.createdAt = new Date();
+            record.updatedAt = new Date();
+            Alert.alert('✅ Extractions assessment created')
+            console.log('🔧 Created extractions assessment record:', {
+              id,
+              patient_id: patientId,
+              data: jsonData,
+            });
+          });
+        }
+      });
+    } catch (err) {
+      console.error('❌ Failed to save extractions assessment:', err);
+      Alert.alert('❌ Failed to save extractions assessment');
+    }
+  };
 
   const openToothEditor = (toothId: string) => {
     setSelectedTooth(toothId);
@@ -58,7 +105,7 @@ const ExtractionTreatmentPlanningScreen = ({ route }: any) => {
   const setExtractionReason = (reason: ExtractionReason) => {
     if (!selectedTooth) return;
     
-    setExtractions(prev => ({
+    setExtractionStates(prev => ({
       ...prev,
       [selectedTooth]: reason
     }));
@@ -66,7 +113,7 @@ const ExtractionTreatmentPlanningScreen = ({ route }: any) => {
   };
 
   const quickToggleExtraction = (toothId: string) => {
-    setExtractions(prev => ({
+    setExtractionStates(prev => ({
       ...prev,
       [toothId]: prev[toothId] === 'none' ? 'non-restorable' : 'none'
     }));
@@ -116,7 +163,7 @@ const ExtractionTreatmentPlanningScreen = ({ route }: any) => {
 
   const renderTooth = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
     const position = getToothPosition(toothId, index, section);
-    const reason = extractions[toothId];
+    const reason = extractionStates[toothId];
     
     return (
       <Pressable
@@ -152,7 +199,7 @@ const ExtractionTreatmentPlanningScreen = ({ route }: any) => {
 
   // Calculate extraction summary
   const extractionSummary = useMemo(() => {
-    const extractionList = Object.entries(extractions).filter(([_, reason]) => reason !== 'none');
+    const extractionList = Object.entries(extractionStates).filter(([_, reason]) => reason !== 'none');
     
     const byReason = {
       loose: extractionList.filter(([_, reason]) => reason === 'loose'),
@@ -168,7 +215,7 @@ const ExtractionTreatmentPlanningScreen = ({ route }: any) => {
         reason: REASON_LABELS[reason]
       })).sort((a, b) => parseInt(a.toothId) - parseInt(b.toothId))
     };
-  }, [extractions]);
+  }, [extractionStates]);
 
   const showExtractionList = () => {
     if (extractionSummary.totalExtractions === 0) {
@@ -208,7 +255,13 @@ ${extractionSummary.byReason['root-tip'].length > 0 ? '⚠️ Root tips should b
         { 
           text: 'Clear All', 
           style: 'destructive',
-          onPress: () => setExtractions(initialExtractions)
+          onPress: () => {
+            const clearedStates: Record<string, ExtractionReason> = {};
+            [...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].forEach(id => {
+              clearedStates[id] = 'none';
+            });
+            setExtractionStates(clearedStates);
+          }
         }
       ]
     );
@@ -294,6 +347,11 @@ ${extractionSummary.byReason['root-tip'].length > 0 ? '⚠️ Root tips should b
       <Text style={styles.instructionNote}>
         Tap: Select extraction reason • Long press: Quick toggle non-restorable
       </Text>
+
+      {/* Save Button */}
+      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+        <Text style={styles.saveButtonText}>Save Assessment</Text>
+      </Pressable>
 
       {/* Extraction Reason Modal */}
       <Modal
@@ -534,6 +592,19 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     marginBottom: 20,
+  },
+  saveButton: {
+    backgroundColor: '#007bff',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,

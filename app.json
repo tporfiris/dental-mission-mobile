@@ -16,7 +16,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.tporfiris.dentalmissionmobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera to take patient photos."
+        "NSCameraUsageDescription": "This app uses the camera to take patient photos.",
+        "NSMicrophoneUsageDescription": "This app uses the microphone to record audio notes."
       }
     },
     "android": {
@@ -25,11 +26,20 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.tporfiris.dentalmissionmobile"
+      "package": "com.tporfiris.dentalmissionmobile",
+      "permissions": ["RECORD_AUDIO"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for audio recordings."
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "0a8cac7c-971b-4246-a3ae-98ba21a7c2fc"

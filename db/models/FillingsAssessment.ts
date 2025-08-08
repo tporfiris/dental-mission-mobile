@@ -4,6 +4,7 @@ import { field, date, relation } from '@nozbe/watermelondb/decorators';
 export default class FillingsAssessment extends Model {
   static table = 'fillings_assessments';
 
+  @field('patient_id') patientId!: string;
   @field('data') data!: string;
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;

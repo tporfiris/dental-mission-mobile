@@ -8,6 +8,11 @@ import {
   Alert,
   Modal,
 } from 'react-native';
+import { database } from '../db'; // adjust path if needed
+import ImplantAssessment from '../db/models/ImplantAssessment';
+import { Q } from '@nozbe/watermelondb';
+import uuid from 'react-native-uuid';
+import { useImplantAssessment } from '../contexts/ImplantAssessmentContext';
 
 const IMPLANT_TYPES = [
   'none',
@@ -45,19 +50,6 @@ interface ToothImplant {
   prosthodontistNotes: string;
 }
 
-const initialImplants: Record<string, ToothImplant> = {};
-[
-  ...UPPER_RIGHT, ...UPPER_LEFT,
-  ...LOWER_RIGHT, ...LOWER_LEFT,
-].forEach(id => {
-  initialImplants[id] = {
-    planned: false,
-    implantType: 'none',
-    techniques: [],
-    prosthodontistNotes: ''
-  };
-});
-
 const IMPLANT_LABELS = {
   'none': 'No Implant',
   'single-implant': 'Single Implant',
@@ -82,11 +74,75 @@ const TECHNIQUE_LABELS = {
 
 const ImplantAssessmentScreen = ({ route }: any) => {
   const { patientId, hasXrays = false } = route.params || { patientId: 'DEMO', hasXrays: false };
-  const [implants, setImplants] = useState(initialImplants);
+  const { 
+    implantState, 
+    updateToothImplant, 
+    updateProsthodontistConsult, 
+    updateGeneralNotes 
+  } = useImplantAssessment();
+  
+  const { implants, prosthodontistConsult, generalNotes } = implantState;
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [prosthodontistConsult, setProsthodontistConsult] = useState(false);
-  const [generalNotes, setGeneralNotes] = useState('');
+
+  const saveAssessment = async () => {
+    try {
+      const collection = database.get<ImplantAssessment>('implant_assessments');
+      console.log('🔎 Looking for existing implant assessment for patient:', patientId);
+      const existing = await collection
+        .query(Q.where('patient_id', Q.eq(patientId)))
+        .fetch();
+
+      console.log('🔍 Matched existing implant assessment:', existing);
+  
+      // Create comprehensive assessment data object
+      const assessmentData = {
+        implants,
+        prosthodontistConsult,
+        generalNotes,
+        hasXrays,
+        timestamp: new Date().toISOString()
+      };
+      
+      const jsonData = JSON.stringify(assessmentData);
+  
+      await database.write(async () => {
+        console.log("existing implant assessments:")
+        console.log(existing)
+        console.log("existing length:")
+        console.log(existing.length)
+        if (existing.length > 0) {
+          console.log('🔍 Existing implant assessments for patient', patientId, ':', existing);
+          // Update existing record
+          await existing[0].update(record => {
+            record.data = jsonData;
+            record.updatedAt = new Date();
+          });
+          console.log('✅ Implant assessment updated');
+          Alert.alert('✅ Implant assessment updated');
+        } else {
+          // Create new record
+          await collection.create(record => {
+            const id = uuid.v4();
+            record._raw.id = id;
+            record.patientId = patientId; // must match schema!
+            record.data = jsonData;
+            record.createdAt = new Date();
+            record.updatedAt = new Date();
+            Alert.alert('✅ Implant assessment created')
+            console.log('🔧 Created implant assessment record:', {
+              id,
+              patient_id: patientId,
+              data: jsonData,
+            });
+          });
+        }
+      });
+    } catch (err) {
+      console.error('❌ Failed to save implant assessment:', err);
+      Alert.alert('❌ Failed to save implant assessment');
+    }
+  };
 
   const openToothEditor = (toothId: string) => {
     if (!hasXrays) {
@@ -108,41 +164,38 @@ const ImplantAssessmentScreen = ({ route }: any) => {
   const toggleImplantPlanning = () => {
     if (!selectedTooth) return;
     
-    setImplants(prev => ({
-      ...prev,
-      [selectedTooth]: {
-        ...prev[selectedTooth],
-        planned: !prev[selectedTooth].planned,
-        implantType: prev[selectedTooth].planned ? 'none' : 'single-implant'
-      }
-    }));
+    const currentImplant = implants[selectedTooth];
+    const updatedImplant = {
+      ...currentImplant,
+      planned: !currentImplant.planned,
+      implantType: currentImplant.planned ? 'none' : 'single-implant'
+    };
+    updateToothImplant(selectedTooth, updatedImplant);
   };
 
   const setImplantType = (type: ImplantType) => {
     if (!selectedTooth) return;
     
-    setImplants(prev => ({
-      ...prev,
-      [selectedTooth]: {
-        ...prev[selectedTooth],
-        implantType: type,
-        planned: type !== 'none'
-      }
-    }));
+    const currentImplant = implants[selectedTooth];
+    const updatedImplant = {
+      ...currentImplant,
+      implantType: type,
+      planned: type !== 'none'
+    };
+    updateToothImplant(selectedTooth, updatedImplant);
   };
 
   const toggleTechnique = (technique: ImplantTechnique) => {
     if (!selectedTooth) return;
     
-    setImplants(prev => ({
-      ...prev,
-      [selectedTooth]: {
-        ...prev[selectedTooth],
-        techniques: prev[selectedTooth].techniques.includes(technique)
-          ? prev[selectedTooth].techniques.filter(t => t !== technique)
-          : [...prev[selectedTooth].techniques, technique]
-      }
-    }));
+    const currentImplant = implants[selectedTooth];
+    const updatedImplant = {
+      ...currentImplant,
+      techniques: currentImplant.techniques.includes(technique)
+        ? currentImplant.techniques.filter(t => t !== technique)
+        : [...currentImplant.techniques, technique]
+    };
+    updateToothImplant(selectedTooth, updatedImplant);
   };
 
   const getToothPosition = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
@@ -315,6 +368,11 @@ Note: Final implant plan requires prosthodontist approval and may change based o
             that can only be determined through radiographic examination.
           </Text>
         </View>
+
+        {/* Save Button - even when X-rays not available, we can save the "no X-rays" state */}
+        <Pressable style={styles.saveButton} onPress={saveAssessment}>
+          <Text style={styles.saveButtonText}>Save Assessment</Text>
+        </Pressable>
       </ScrollView>
     );
   }
@@ -332,7 +390,7 @@ Note: Final implant plan requires prosthodontist approval and may change based o
             styles.consultButton,
             prosthodontistConsult && styles.consultButtonCompleted
           ]}
-          onPress={() => setProsthodontistConsult(!prosthodontistConsult)}
+          onPress={() => updateProsthodontistConsult(!prosthodontistConsult)}
         >
           <Text style={[
             styles.consultButtonText,
@@ -409,6 +467,11 @@ Note: Final implant plan requires prosthodontist approval and may change based o
           <Text style={styles.legendLabel}>All-on-4/6</Text>
         </View>
       </View>
+
+      {/* Save Button */}
+      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+        <Text style={styles.saveButtonText}>Save Assessment</Text>
+      </Pressable>
 
       {/* Implant Planning Modal */}
       <Modal
@@ -508,6 +571,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#ffc107',
     alignItems: 'center',
+    marginBottom: 20,
   },
   warningTitle: {
     fontSize: 18,
@@ -718,6 +782,19 @@ const styles = StyleSheet.create({
   legendLabel: {
     fontSize: 13,
     color: '#333',
+  },
+  saveButton: {
+    backgroundColor: '#007bff',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  saveButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,

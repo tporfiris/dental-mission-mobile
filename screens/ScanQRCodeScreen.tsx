@@ -36,12 +36,25 @@ const ScanQRCodeScreen = ({ navigation }: any) => {
     try {
       const patient = await db.get<Patient>('patients').find(data);
       console.log('✅ Patient Found:', patient.firstName, patient.lastName);
-      Alert.alert('Patient Found', `${patient.firstName} ${patient.lastName}`);
-      navigation.goBack();
+      
+      // Navigate to Treatment screen with patient ID
+      navigation.navigate('Treatment', { patientId: data });
+      
     } catch (err) {
       console.error('❌ Patient not found:', err);
-      Alert.alert('Error', 'Patient not found in local database.');
-      navigation.goBack();
+      Alert.alert(
+        'Patient Not Found', 
+        'No patient found for this QR code. Please check the code or register the patient first.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigate back to Home screen
+              navigation.navigate('Home');
+            }
+          }
+        ]
+      );
     }
   };
 
@@ -55,6 +68,11 @@ const ScanQRCodeScreen = ({ navigation }: any) => {
         />
       )}
       <Text style={styles.overlayText}>Scan Patient QR Code</Text>
+      <View style={styles.instructionBox}>
+        <Text style={styles.instructionText}>
+          Point the camera at a patient's QR code to access their treatment options
+        </Text>
+      </View>
     </View>
   );
 };
@@ -77,5 +95,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     padding: 10,
     borderRadius: 8,
+  },
+  instructionBox: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    padding: 16,
+    borderRadius: 12,
+  },
+  instructionText: {
+    color: '#fff',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

@@ -269,7 +269,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFC107',
   },
   toothFullyMissing: {
-    backgroundColor: '#F44336',
+    backgroundColor: 'rgba(108, 117, 125, 0.3)', // Transparent gray
+    borderWidth: 2,
+    borderColor: '#6c757d', // Gray border for definition
   },
   legend: {
     width: '90%',

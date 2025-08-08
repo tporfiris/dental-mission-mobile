@@ -16,6 +16,8 @@ const HomeScreen = () => {
             <Button title="Add New Patient" onPress={() => navigation.navigate('NewPatient')} />
             <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
+            <View style={styles.spacer} />
+            {/* <Button title="🎤 Audio Recordings" onPress={() => navigation.navigate('AudioRecordings')} /> */}
           </>
         );
       case 'triage':
@@ -25,10 +27,18 @@ const HomeScreen = () => {
             <Button title="Register New Patient" onPress={() => navigation.navigate('NewPatient')} />
             <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
+            <View style={styles.spacer} />
+            {/* <Button title="🎤 Audio Recordings" onPress={() => navigation.navigate('AudioRecordings')} /> */}
           </>
         );
       case 'admin':
-        return <Text style={styles.roleSection}>📊 Admin Dashboard Access</Text>;
+        return (
+          <>
+            <Text style={styles.roleSection}>📊 Admin Dashboard Access</Text>
+            <View style={styles.spacer} />
+            {/* <Button title="🎤 Audio Recordings" onPress={() => navigation.navigate('AudioRecordings')} /> */}
+          </>
+        );
       default:
         return <Text style={styles.roleSection}>❓ Unknown Role</Text>;
     }
