@@ -1,8 +1,9 @@
-// This keeps track of whether a user is logged in or not, and shares that info across your app.
+// contexts/AuthContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth, db } from '../firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
+import { simpleFirestoreSyncService } from '../services/SimpleFirestoreSync';
 
 interface AuthContextProps {
   user: User | null;
@@ -32,8 +33,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const docRef = doc(db, 'users', user.uid);
         const docSnap = await getDoc(docRef);
         setRole(docSnap.exists() ? docSnap.data().role : null);
+        
+        // Notify sync service that user is authenticated
+        simpleFirestoreSyncService.updateAuthStatus();
       } else {
         setRole(null);
+        
+        // Notify sync service that user is not authenticated
+        simpleFirestoreSyncService.updateAuthStatus();
       }
       setLoading(false);
     });

@@ -1,6 +1,5 @@
 // App.tsx
-
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { AuthProvider } from './contexts/AuthContext';
 import AppNavigator from './navigation/AppNavigator';
@@ -19,8 +18,14 @@ import { ImplantTreatmentProvider } from './contexts/ImplantTreatmentContext';
 // import { AudioRecordingProvider } from './contexts/AudioRecordingContext'; // Add this import
 
 import { database } from './db'; // your WatermelonDB instance
+import { initializeSync } from './utils/initializeSync';
 
 export default function App() {
+  useEffect(() => {
+    // Initialize sync service when app starts
+    initializeSync();
+  }, []);
+
   return (
     <DatabaseProvider database={database}>
       <AuthProvider>

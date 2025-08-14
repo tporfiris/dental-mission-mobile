@@ -1,3 +1,4 @@
+// screens/NewPatientScreen.tsx
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Button, StyleSheet, Alert, Platform,
@@ -45,8 +46,6 @@ const NewPatientScreen = ({ navigation }: any) => {
       console.log('❌ Camera was cancelled or no result');
     }
   };
-  
-  
 
   const handleSave = async () => {
     if (!firstName || !lastName || !age || !location) {
@@ -70,6 +69,7 @@ const NewPatientScreen = ({ navigation }: any) => {
       });
   
       console.log('✅ Patient saved with ID:', id);
+
   
       // Instead of going back, navigate to QR code screen
       navigation.navigate('Assessments', { patientId: id });
@@ -79,7 +79,6 @@ const NewPatientScreen = ({ navigation }: any) => {
       Alert.alert('Error', 'Something went wrong while saving.');
     }
   };
-  
 
   return (
     <View style={styles.container}>

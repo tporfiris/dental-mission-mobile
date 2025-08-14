@@ -12,7 +12,7 @@ import HygieneAssessment from '../db/models/HygieneAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useHygieneAssessment } from '../contexts/HygieneAssessmentContext';
-import AudioRecordingButton from '../components/AudioRecordingButton';
+// import AudioRecordingButton from '../components/AudioRecordingButton';
 
 
 const HYGIENE_STATES = ['normal', 'light-plaque', 'moderate-plaque', 'heavy-plaque', 'calculus'] as const;
@@ -286,12 +286,6 @@ ${calculatedData.additionalCodes.length > 0 ?
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
 
-      {/* Audio Recording Button */}
-      <AudioRecordingButton 
-        patientId={patientId} 
-        category="Assessment" 
-        subcategory="Hygiene" 
-      />
     </ScrollView>
   );
 };

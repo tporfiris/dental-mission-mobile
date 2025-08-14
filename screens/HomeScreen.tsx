@@ -1,8 +1,30 @@
+// screens/HomeScreen.tsx
 import React from 'react';
 import { View, Text, StyleSheet, Button } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
+import SyncStatusIndicator from '../components/SyncStatusIndicator';
 
+const HomeScreen = () => {
+  const { user, role, logout } = useAuth();
+  const navigation = useNavigation<any>();
+
+  const renderRoleSection = () => {
+    switch (role) {
+      case 'clinician':
+        return (
+          <>
+            <Text style={styles.roleSection}>🦷 Clinician Tools</Text>
+            <Button title="Add New Patient" onPress={() => navigation.navigate('NewPatient')} />
+            <View style={styles.spacer} />
+            <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
+            <View style={styles.spacer} />
+            {/* <Button title="🎤 Audio Recordings" onPress={()// screens/HomeScreen.tsx
+import React from 'react';
+import { View, Text, StyleSheet, Button } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigation } from '@react-navigation/native';
+import SyncStatusIndicator from '../components/SyncStatusIndicator';
 
 const HomeScreen = () => {
   const { user, role, logout } = useAuth();
@@ -51,6 +73,9 @@ const HomeScreen = () => {
       <Text style={styles.text}>Logged in as: {user?.email}</Text>
       <Text style={styles.text}>Role: {role}</Text>
 
+      {/* Sync Status Indicator - Compact version for home screen */}
+      <SyncStatusIndicator showDetails={false} />
+
       {renderRoleSection()}
 
       <View style={styles.spacer} />
@@ -62,9 +87,22 @@ const HomeScreen = () => {
 export default HomeScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 20 },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
-  text: { fontSize: 16, marginBottom: 10, textAlign: 'center' },
+  container: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    padding: 20 
+  },
+  title: { 
+    fontSize: 24, 
+    fontWeight: 'bold', 
+    marginBottom: 20, 
+    textAlign: 'center' 
+  },
+  text: { 
+    fontSize: 16, 
+    marginBottom: 10, 
+    textAlign: 'center' 
+  },
   roleSection: {
     fontSize: 18,
     marginVertical: 20,
