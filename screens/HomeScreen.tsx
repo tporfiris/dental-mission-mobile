@@ -19,28 +19,6 @@ const HomeScreen = () => {
             <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
             <View style={styles.spacer} />
-            {/* <Button title="🎤 Audio Recordings" onPress={()// screens/HomeScreen.tsx
-import React from 'react';
-import { View, Text, StyleSheet, Button } from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
-import { useNavigation } from '@react-navigation/native';
-import SyncStatusIndicator from '../components/SyncStatusIndicator';
-
-const HomeScreen = () => {
-  const { user, role, logout } = useAuth();
-  const navigation = useNavigation<any>();
-
-  const renderRoleSection = () => {
-    switch (role) {
-      case 'clinician':
-        return (
-          <>
-            <Text style={styles.roleSection}>🦷 Clinician Tools</Text>
-            <Button title="Add New Patient" onPress={() => navigation.navigate('NewPatient')} />
-            <View style={styles.spacer} />
-            <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
-            <View style={styles.spacer} />
-            {/* <Button title="🎤 Audio Recordings" onPress={() => navigation.navigate('AudioRecordings')} /> */}
           </>
         );
       case 'triage':
@@ -51,15 +29,22 @@ const HomeScreen = () => {
             <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
             <View style={styles.spacer} />
-            {/* <Button title="🎤 Audio Recordings" onPress={() => navigation.navigate('AudioRecordings')} /> */}
           </>
         );
       case 'admin':
         return (
           <>
             <Text style={styles.roleSection}>📊 Admin Dashboard Access</Text>
+            <Button 
+              title="📊 View Mission Dashboard" 
+              onPress={() => navigation.navigate('AdminDashboard')}
+              color="#007bff"
+            />
             <View style={styles.spacer} />
-            {/* <Button title="🎤 Audio Recordings" onPress={() => navigation.navigate('AudioRecordings')} /> */}
+            <Button title="Register New Patient" onPress={() => navigation.navigate('NewPatient')} />
+            <View style={styles.spacer} />
+            <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
+            <View style={styles.spacer} />
           </>
         );
       default:

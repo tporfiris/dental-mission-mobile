@@ -15,7 +15,7 @@ import ExtractionsAssessmentScreen from '../screens/ExtractionsAssessmentScreen'
 import DentureAssessmentScreen from '../screens/DentureAssessmentScreen';
 import ImplantAssessmentScreen from '../screens/ImplantAssessmentScreen';
 
-// New Treatment Screens
+// Treatment Screens
 import TreatmentScreen from '../screens/TreatmentScreen';
 import ViewAssessmentScreen from '../screens/ViewAssessmentScreen';
 import HygieneTreatmentScreen from '../screens/HygieneTreatmentScreen';
@@ -23,6 +23,11 @@ import ExtractionsTreatmentScreen from '../screens/ExtractionsTreatmentScreen';
 import FillingsTreatmentScreen from '../screens/FillingsTreatmentScreen';
 import DentureTreatmentScreen from '../screens/DentureTreatmentScreen';
 import ImplantTreatmentScreen from '../screens/ImplantTreatmentScreen';
+
+// Admin Dashboard Screen
+import AdminDashboardScreen from '../screens/AdminDashboardScreen';
+import PatientListScreen from '../screens/PatientListScreen';
+import PatientDetailScreen from '../screens/PatientDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -35,7 +40,35 @@ export default function AppNavigator() {
     <Stack.Navigator>
       {user ? (
         <>
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen 
+            name="Home" 
+            component={HomeScreen}
+            options={{ title: 'Dental Mission Home' }}
+          />
+          <Stack.Screen 
+            name="AdminDashboard" 
+            component={AdminDashboardScreen}
+            options={{ 
+              title: 'Mission Dashboard',
+              headerBackTitleVisible: false
+            }}
+          />
+          <Stack.Screen 
+            name="PatientList" 
+            component={PatientListScreen}
+            options={{ 
+              title: 'Patient Directory',
+              headerBackTitleVisible: false
+            }}
+          />
+          <Stack.Screen 
+            name="PatientDetail" 
+            component={PatientDetailScreen}
+            options={{ 
+              title: 'Patient Details',
+              headerBackTitleVisible: false
+            }}
+          />
           <Stack.Screen name="NewPatient" component={NewPatientScreen} />
           <Stack.Screen name="PatientQRCode" component={PatientQRCodeScreen} />
           <Stack.Screen name="ScanQRCode" component={ScanQRCodeScreen} />
