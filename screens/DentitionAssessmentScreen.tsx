@@ -30,8 +30,46 @@ const initialToothStates: Record<string, ToothState> = {};
 
 const DentitionAssessmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  // const [toothStates, setToothStates] = useState(initialToothStates);
   const { toothStates, setToothStates } = useDentitionAssessment();
+
+  // Updated tooth positions - centered around origin with offset applied
+  const toothOffsets: Record<string, { x: number; y: number }> = {
+    // Upper arch - symmetric pairs
+    '21': { x: 20, y: -120 },   // Upper right central
+    '11': { x: -20, y: -120 },  // Upper left central (mirrored)
+    '22': { x: 55, y: -110 },   // Upper right lateral  
+    '12': { x: -55, y: -110 },  // Upper left lateral (mirrored)
+    '23': { x: 90, y: -90 },    // Upper right canine
+    '13': { x: -90, y: -90 },   // Upper left canine (mirrored)
+    '24': { x: 110, y: -60 },   // Upper right first premolar
+    '14': { x: -110, y: -60 },  // Upper left first premolar (mirrored)
+    '25': { x: 120, y: -25 },   // Upper right second premolar
+    '15': { x: -120, y: -25 },  // Upper left second premolar (mirrored)
+    '26': { x: 125, y: 10 },    // Upper right first molar
+    '16': { x: -125, y: 10 },   // Upper left first molar (mirrored)
+    '27': { x: 125, y: 45 },    // Upper right second molar
+    '17': { x: -125, y: 45 },   // Upper left second molar (mirrored)
+    '28': { x: 125, y: 80 },    // Upper right third molar (wisdom)
+    '18': { x: -125, y: 80 },   // Upper left third molar (mirrored)
+    
+    // Lower arch - symmetric pairs
+    '31': { x: 20, y: 330 },    // Lower right central
+    '41': { x: -20, y: 330 },   // Lower left central (mirrored)
+    '32': { x: 55, y: 320 },    // Lower right lateral
+    '42': { x: -55, y: 320 },   // Lower left lateral (mirrored)
+    '33': { x: 90, y: 300 },    // Lower right canine
+    '43': { x: -90, y: 300 },   // Lower left canine (mirrored)
+    '34': { x: 110, y: 270 },   // Lower right first premolar
+    '44': { x: -110, y: 270 },  // Lower left first premolar (mirrored)
+    '35': { x: 120, y: 235 },   // Lower right second premolar
+    '45': { x: -120, y: 235 },  // Lower left second premolar (mirrored)
+    '36': { x: 125, y: 200 },   // Lower right first molar
+    '46': { x: -125, y: 200 },  // Lower left first molar (mirrored)
+    '37': { x: 125, y: 165 },   // Lower right second molar
+    '47': { x: -125, y: 165 },  // Lower left second molar (mirrored)
+    '38': { x: 125, y: 130 },   // Lower right third molar (wisdom)
+    '48': { x: -125, y: 130 },  // Lower left third molar (mirrored)
+  };
 
   const cycleToothState = (toothId: string) => {
     setToothStates(prev => {
@@ -90,8 +128,6 @@ const DentitionAssessmentScreen = ({ route }: any) => {
       console.error('❌ Failed to save dentition assessment:', err);
     }
   };
-  
-  
 
   const getToothStyle = (state: ToothState) => {
     switch (state) {
@@ -104,41 +140,18 @@ const DentitionAssessmentScreen = ({ route }: any) => {
     }
   };
 
-  const getToothPosition = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
-    const centerX = 160; // Center of the oval
-    const centerY = 210; // Center of the oval
-    const radiusX = 140; // Horizontal radius
-    const radiusY = 200; // Vertical radius
+  const getToothPosition = (toothId: string) => {
+    const chartCenter = { x: 180, y: 135 }; // Center of the chart container
+    const offset = toothOffsets[toothId];
     
-    let angle = 0;
-    
-    switch (section) {
-      case 'upper-right':
-        // Upper right quadrant: from center to right (teeth 11-18)
-        angle = (index * Math.PI / 14); // Spacing for 8 teeth
-        break;
-      case 'upper-left':
-        // Upper left quadrant: from center to left (teeth 21-28)
-        angle = Math.PI - (index * Math.PI / 14); // Spacing for 8 teeth
-        break;
-      case 'lower-right':
-        // Lower right quadrant: from center to right (teeth 41-48)
-        angle = (Math.PI * 2) - (index * Math.PI / 14); // Spacing for 8 teeth
-        break;
-      case 'lower-left':
-        // Lower left quadrant: from center to left (teeth 31-38)
-        angle = Math.PI + (index * Math.PI / 14); // Spacing for 8 teeth
-        break;
-    }
-    
-    const x = centerX + radiusX * Math.cos(angle);
-    const y = centerY + radiusY * Math.sin(angle);
-    
-    return { left: x - 15, top: y - 15 }; // Subtract half of tooth circle size
+    return {
+      left: chartCenter.x + offset.x - 15, // -15 to center the 30px circle
+      top: chartCenter.y + offset.y - 15
+    };
   };
 
-  const renderTooth = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
-    const position = getToothPosition(toothId, index, section);
+  const renderTooth = (toothId: string) => {
+    const position = getToothPosition(toothId);
     
     return (
       <Pressable
@@ -167,19 +180,18 @@ const DentitionAssessmentScreen = ({ route }: any) => {
       {/* Dental Chart Container */}
       <View style={styles.dentalChart}>
         {/* Upper Arch Label */}
-        <Text style={[styles.archLabel, styles.upperArchLabel]}>Upper{'\n'}Arch</Text>
+        <Text style={styles.upperArchLabel}>Upper Arch</Text>
         
         {/* Lower Arch Label */}
-        <Text style={[styles.archLabel, styles.lowerArchLabel]}>Lower{'\n'}Arch</Text>
+        <Text style={styles.lowerArchLabel}>Lower Arch</Text>
         
         {/* Center Instructions */}
-        <Text style={styles.centerInstructions}>Tap to{'\n'}change tooth{'\n'}status</Text>
+        <Text style={styles.centerInstructions}>Tap to change{'\n'}tooth status</Text>
         
         {/* Render all teeth */}
-        {UPPER_RIGHT.map((toothId, index) => renderTooth(toothId, index, 'upper-right'))}
-        {UPPER_LEFT.map((toothId, index) => renderTooth(toothId, index, 'upper-left'))}
-        {LOWER_RIGHT.map((toothId, index) => renderTooth(toothId, index, 'lower-right'))}
-        {LOWER_LEFT.map((toothId, index) => renderTooth(toothId, index, 'lower-left'))}
+        {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
+          renderTooth(toothId)
+        )}
       </View>
 
       {/* Legend */}
@@ -197,6 +209,7 @@ const DentitionAssessmentScreen = ({ route }: any) => {
           <Text style={styles.legendLabel}>Fully Missing</Text>
         </View>
       </View>
+      
       <Pressable style={styles.saveButton} onPress={saveAssessment}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
@@ -223,32 +236,38 @@ const styles = StyleSheet.create({
   },
   dentalChart: {
     width: 360,
-    height: 460,
+    height: 480,
     position: 'relative',
     marginBottom: 30,
   },
-  archLabel: {
+  upperArchLabel: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-  },
-  upperArchLabel: {
-    top: 90,
-    left: 140,
+    top: 50,
+    left: 150,
+    width: 60,
   },
   lowerArchLabel: {
-    top: 300,
-    left: 140,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    position: 'absolute',
+    top: 390,
+    left: 150,
+    width: 60,
   },
   centerInstructions: {
     fontSize: 12,
     color: '#999',
     textAlign: 'center',
     position: 'absolute',
-    top: 195,
-    left: 120,
+    top: 200,
+    left: 130,
+    width: 100,
   },
   toothCircle: {
     width: 30,
@@ -279,6 +298,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     alignItems: 'center',
     flexWrap: 'wrap',
+    marginBottom: 20,
   },
   legendItem: {
     flexDirection: 'row',

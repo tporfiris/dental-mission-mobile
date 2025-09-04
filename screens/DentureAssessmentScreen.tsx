@@ -58,6 +58,45 @@ const DentureAssessmentScreen = ({ route }: any) => {
 
   const { assessmentType, selectedDentureType, dentureOptions, notes } = dentureState;
 
+  // Updated tooth positions - same as other assessment screens
+  const toothOffsets: Record<string, { x: number; y: number }> = {
+    // Upper arch - symmetric pairs
+    '21': { x: 20, y: -120 },   // Upper right central
+    '11': { x: -20, y: -120 },  // Upper left central (mirrored)
+    '22': { x: 55, y: -110 },   // Upper right lateral  
+    '12': { x: -55, y: -110 },  // Upper left lateral (mirrored)
+    '23': { x: 90, y: -90 },    // Upper right canine
+    '13': { x: -90, y: -90 },   // Upper left canine (mirrored)
+    '24': { x: 110, y: -60 },   // Upper right first premolar
+    '14': { x: -110, y: -60 },  // Upper left first premolar (mirrored)
+    '25': { x: 120, y: -25 },   // Upper right second premolar
+    '15': { x: -120, y: -25 },  // Upper left second premolar (mirrored)
+    '26': { x: 125, y: 10 },    // Upper right first molar
+    '16': { x: -125, y: 10 },   // Upper left first molar (mirrored)
+    '27': { x: 125, y: 45 },    // Upper right second molar
+    '17': { x: -125, y: 45 },   // Upper left second molar (mirrored)
+    '28': { x: 125, y: 80 },    // Upper right third molar (wisdom)
+    '18': { x: -125, y: 80 },   // Upper left third molar (mirrored)
+    
+    // Lower arch - symmetric pairs
+    '31': { x: 20, y: 330 },    // Lower right central
+    '41': { x: -20, y: 330 },   // Lower left central (mirrored)
+    '32': { x: 55, y: 320 },    // Lower right lateral
+    '42': { x: -55, y: 320 },   // Lower left lateral (mirrored)
+    '33': { x: 90, y: 300 },    // Lower right canine
+    '43': { x: -90, y: 300 },   // Lower left canine (mirrored)
+    '34': { x: 110, y: 270 },   // Lower right first premolar
+    '44': { x: -110, y: 270 },  // Lower left first premolar (mirrored)
+    '35': { x: 120, y: 235 },   // Lower right second premolar
+    '45': { x: -120, y: 235 },  // Lower left second premolar (mirrored)
+    '36': { x: 125, y: 200 },   // Lower right first molar
+    '46': { x: -125, y: 200 },  // Lower left first molar (mirrored)
+    '37': { x: 125, y: 165 },   // Lower right second molar
+    '47': { x: -125, y: 165 },  // Lower left second molar (mirrored)
+    '38': { x: 125, y: 130 },   // Lower right third molar (wisdom)
+    '48': { x: -125, y: 130 },  // Lower left third molar (mirrored)
+  };
+
   const saveAssessment = async () => {
     try {
       const collection = database.get<DentureAssessment>('denture_assessments');
@@ -125,33 +164,14 @@ const DentureAssessmentScreen = ({ route }: any) => {
     updateDentureOptions(updatedOptions);
   };
 
-  const getToothPosition = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
-    const centerX = 160;
-    const centerY = 210;
-    const radiusX = 140;
-    const radiusY = 200;
+  const getToothPosition = (toothId: string) => {
+    const chartCenter = { x: 180, y: 135 }; // Center of the chart container
+    const offset = toothOffsets[toothId];
     
-    let angle = 0;
-    
-    switch (section) {
-      case 'upper-right':
-        angle = (index * Math.PI / 14);
-        break;
-      case 'upper-left':
-        angle = Math.PI - (index * Math.PI / 14);
-        break;
-      case 'lower-right':
-        angle = (Math.PI * 2) - (index * Math.PI / 14);
-        break;
-      case 'lower-left':
-        angle = Math.PI + (index * Math.PI / 14);
-        break;
-    }
-    
-    const x = centerX + radiusX * Math.cos(angle);
-    const y = centerY + radiusY * Math.sin(angle);
-    
-    return { left: x - 12, top: y - 12 };
+    return {
+      left: chartCenter.x + offset.x - 12, // -12 to center the 24px circle
+      top: chartCenter.y + offset.y - 12
+    };
   };
 
   const getToothStyle = (toothId: string) => {
@@ -186,8 +206,8 @@ const DentureAssessmentScreen = ({ route }: any) => {
     return styles.toothPresent;
   };
 
-  const renderTooth = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
-    const position = getToothPosition(toothId, index, section);
+  const renderTooth = (toothId: string) => {
+    const position = getToothPosition(toothId);
     
     return (
       <View
@@ -365,10 +385,10 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
         <Text style={styles.cardTitle}>Denture Visualization</Text>
         <View style={styles.dentalChart}>
           {/* Upper Arch Label */}
-          <Text style={[styles.archLabel, styles.upperArchLabel]}>Upper{'\n'}Arch</Text>
+          <Text style={styles.upperArchLabel}>Upper Arch</Text>
           
           {/* Lower Arch Label */}
-          <Text style={[styles.archLabel, styles.lowerArchLabel]}>Lower{'\n'}Arch</Text>
+          <Text style={styles.lowerArchLabel}>Lower Arch</Text>
           
           {/* Center Label */}
           <Text style={styles.centerLabel}>
@@ -376,10 +396,9 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
           </Text>
           
           {/* Render all teeth */}
-          {UPPER_RIGHT.map((toothId, index) => renderTooth(toothId, index, 'upper-right'))}
-          {UPPER_LEFT.map((toothId, index) => renderTooth(toothId, index, 'upper-left'))}
-          {LOWER_RIGHT.map((toothId, index) => renderTooth(toothId, index, 'lower-right'))}
-          {LOWER_LEFT.map((toothId, index) => renderTooth(toothId, index, 'lower-left'))}
+          {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
+            renderTooth(toothId)
+          )}
         </View>
       </View>
 
@@ -576,34 +595,39 @@ const styles = StyleSheet.create({
     borderColor: '#e9ecef',
   },
   dentalChart: {
-    width: 320,
-    height: 400,
+    width: 360,
+    height: 480,
     position: 'relative',
     alignSelf: 'center',
   },
-  archLabel: {
+  upperArchLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-  },
-  upperArchLabel: {
-    top: 80,
-    left: 130,
+    top: 50,
+    left: 150,
+    width: 60,
   },
   lowerArchLabel: {
-    top: 280,
-    left: 130,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    position: 'absolute',
+    top: 390,
+    left: 150,
+    width: 60,
   },
   centerLabel: {
     fontSize: 12,
     color: '#007bff',
     textAlign: 'center',
     position: 'absolute',
-    top: 180,
+    top: 210,
     left: 80,
-    width: 160,
+    width: 200,
     fontWeight: '600',
   },
   toothCircle: {
