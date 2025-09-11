@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -13,89 +13,46 @@ import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useDentureAssessment } from '../contexts/DentureAssessmentContext';
 
-const ASSESSMENT_TYPES = ['initial-visit', 'post-extraction'] as const;
-type AssessmentType = typeof ASSESSMENT_TYPES[number];
-
 const DENTURE_TYPES = [
   'none',
-  'upper-full',
-  'lower-full',
-  'upper-lower-full',
-  'upper-partial',
-  'lower-partial',
-  'upper-lower-partial',
-  'upper-full-lower-partial',
-  'upper-partial-lower-full'
+  'upper-partial-acrylic',
+  'upper-partial-cast',
+  'lower-partial-acrylic',
+  'lower-partial-cast',
+  'upper-immediate-complete',
+  'upper-complete',
+  'lower-immediate-complete',
+  'lower-complete'
 ] as const;
 type DentureType = typeof DENTURE_TYPES[number];
 
 const DENTURE_LABELS = {
   'none': 'No Denture Needed',
-  'upper-full': 'Upper Full Denture',
-  'lower-full': 'Lower Full Denture',
-  'upper-lower-full': 'Upper & Lower Full Dentures',
-  'upper-partial': 'Upper Partial Denture',
-  'lower-partial': 'Lower Partial Denture',
-  'upper-lower-partial': 'Upper & Lower Partial Dentures',
-  'upper-full-lower-partial': 'Upper Full + Lower Partial',
-  'upper-partial-lower-full': 'Upper Partial + Lower Full',
+  'upper-partial-acrylic': 'Upper Partial Acrylic Denture',
+  'upper-partial-cast': 'Upper Partial Cast Denture',
+  'lower-partial-acrylic': 'Lower Partial Acrylic Denture',
+  'lower-partial-cast': 'Lower Partial Cast Denture',
+  'upper-immediate-complete': 'Upper Immediate Complete Denture',
+  'upper-complete': 'Upper Complete Denture',
+  'lower-immediate-complete': 'Lower Immediate Complete Denture',
+  'lower-complete': 'Lower Complete Denture',
 };
 
-const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
-const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
-const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
-const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
+const RELINE_OPTIONS = {
+  'upper-soft-reline': 'Upper Soft Reline',
+  'lower-soft-reline': 'Lower Soft Reline',
+};
 
 const DentureAssessmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { 
     dentureState, 
-    updateAssessmentType, 
     updateDentureType, 
     updateDentureOptions, 
     updateNotes 
   } = useDentureAssessment();
 
-  const { assessmentType, selectedDentureType, dentureOptions, notes } = dentureState;
-
-  // Updated tooth positions - same as other assessment screens
-  const toothOffsets: Record<string, { x: number; y: number }> = {
-    // Upper arch - symmetric pairs
-    '21': { x: 20, y: -120 },   // Upper right central
-    '11': { x: -20, y: -120 },  // Upper left central (mirrored)
-    '22': { x: 55, y: -110 },   // Upper right lateral  
-    '12': { x: -55, y: -110 },  // Upper left lateral (mirrored)
-    '23': { x: 90, y: -90 },    // Upper right canine
-    '13': { x: -90, y: -90 },   // Upper left canine (mirrored)
-    '24': { x: 110, y: -60 },   // Upper right first premolar
-    '14': { x: -110, y: -60 },  // Upper left first premolar (mirrored)
-    '25': { x: 120, y: -25 },   // Upper right second premolar
-    '15': { x: -120, y: -25 },  // Upper left second premolar (mirrored)
-    '26': { x: 125, y: 10 },    // Upper right first molar
-    '16': { x: -125, y: 10 },   // Upper left first molar (mirrored)
-    '27': { x: 125, y: 45 },    // Upper right second molar
-    '17': { x: -125, y: 45 },   // Upper left second molar (mirrored)
-    '28': { x: 125, y: 80 },    // Upper right third molar (wisdom)
-    '18': { x: -125, y: 80 },   // Upper left third molar (mirrored)
-    
-    // Lower arch - symmetric pairs
-    '31': { x: 20, y: 330 },    // Lower right central
-    '41': { x: -20, y: 330 },   // Lower left central (mirrored)
-    '32': { x: 55, y: 320 },    // Lower right lateral
-    '42': { x: -55, y: 320 },   // Lower left lateral (mirrored)
-    '33': { x: 90, y: 300 },    // Lower right canine
-    '43': { x: -90, y: 300 },   // Lower left canine (mirrored)
-    '34': { x: 110, y: 270 },   // Lower right first premolar
-    '44': { x: -110, y: 270 },  // Lower left first premolar (mirrored)
-    '35': { x: 120, y: 235 },   // Lower right second premolar
-    '45': { x: -120, y: 235 },  // Lower left second premolar (mirrored)
-    '36': { x: 125, y: 200 },   // Lower right first molar
-    '46': { x: -125, y: 200 },  // Lower left first molar (mirrored)
-    '37': { x: 125, y: 165 },   // Lower right second molar
-    '47': { x: -125, y: 165 },  // Lower left second molar (mirrored)
-    '38': { x: 125, y: 130 },   // Lower right third molar (wisdom)
-    '48': { x: -125, y: 130 },  // Lower left third molar (mirrored)
-  };
+  const { selectedDentureType, dentureOptions, notes } = dentureState;
 
   const saveAssessment = async () => {
     try {
@@ -109,7 +66,6 @@ const DentureAssessmentScreen = ({ route }: any) => {
   
       // Create comprehensive assessment data object
       const assessmentData = {
-        assessmentType,
         selectedDentureType,
         dentureOptions,
         notes,
@@ -156,7 +112,7 @@ const DentureAssessmentScreen = ({ route }: any) => {
     }
   };
 
-  const toggleDentureOption = (option: keyof typeof dentureOptions) => {
+  const toggleRelineOption = (option: string) => {
     const updatedOptions = {
       ...dentureOptions,
       [option]: !dentureOptions[option]
@@ -164,196 +120,10 @@ const DentureAssessmentScreen = ({ route }: any) => {
     updateDentureOptions(updatedOptions);
   };
 
-  const getToothPosition = (toothId: string) => {
-    const chartCenter = { x: 180, y: 135 }; // Center of the chart container
-    const offset = toothOffsets[toothId];
-    
-    return {
-      left: chartCenter.x + offset.x - 12, // -12 to center the 24px circle
-      top: chartCenter.y + offset.y - 12
-    };
-  };
-
-  const getToothStyle = (toothId: string) => {
-    // Show different colors based on denture type selection
-    const isUpper = toothId.startsWith('1') || toothId.startsWith('2');
-    const isLower = toothId.startsWith('3') || toothId.startsWith('4');
-    
-    if (selectedDentureType === 'none') {
-      return styles.toothPresent;
-    }
-    
-    if ((selectedDentureType.includes('upper-full') && isUpper) ||
-        (selectedDentureType.includes('lower-full') && isLower) ||
-        (selectedDentureType === 'upper-lower-full')) {
-      return styles.toothFullDenture;
-    }
-    
-    if ((selectedDentureType.includes('upper-partial') && isUpper) ||
-        (selectedDentureType.includes('lower-partial') && isLower) ||
-        (selectedDentureType === 'upper-lower-partial')) {
-      return styles.toothPartialDenture;
-    }
-    
-    if (selectedDentureType === 'upper-full-lower-partial') {
-      return isUpper ? styles.toothFullDenture : styles.toothPartialDenture;
-    }
-    
-    if (selectedDentureType === 'upper-partial-lower-full') {
-      return isUpper ? styles.toothPartialDenture : styles.toothFullDenture;
-    }
-    
-    return styles.toothPresent;
-  };
-
-  const renderTooth = (toothId: string) => {
-    const position = getToothPosition(toothId);
-    
-    return (
-      <View
-        key={toothId}
-        style={[
-          styles.toothCircle,
-          getToothStyle(toothId),
-          {
-            position: 'absolute',
-            left: position.left,
-            top: position.top,
-          }
-        ]}
-      >
-        <Text style={styles.toothLabel}>{toothId}</Text>
-      </View>
-    );
-  };
-
-  const assessmentSummary = useMemo(() => {
-    const hasAnyDenture = selectedDentureType !== 'none';
-    const selectedOptions = Object.entries(dentureOptions)
-      .filter(([_, selected]) => selected)
-      .map(([option, _]) => option);
-
-    let treatmentCode = '';
-    let estimatedCost = '';
-    
-    if (hasAnyDenture) {
-      if (selectedDentureType.includes('full')) {
-        treatmentCode = 'D5110-D5140 - Complete Dentures';
-        estimatedCost = '$800-1200';
-      } else if (selectedDentureType.includes('partial')) {
-        treatmentCode = 'D5213-D5214 - Partial Dentures';
-        estimatedCost = '$600-900';
-      }
-      
-      if (dentureOptions.immediate) {
-        treatmentCode += ' (Immediate)';
-        estimatedCost = '$1000-1500';
-      }
-    }
-
-    return {
-      hasAnyDenture,
-      selectedOptions,
-      treatmentCode,
-      estimatedCost,
-      dentureLabel: DENTURE_LABELS[selectedDentureType]
-    };
-  }, [selectedDentureType, dentureOptions]);
-
-  const generateDentureReport = () => {
-    if (!assessmentSummary.hasAnyDenture) {
-      Alert.alert('Denture Assessment', 'No denture treatment planned for this patient.');
-      return;
-    }
-
-    const selectedOptions = assessmentSummary.selectedOptions
-      .map(option => option.replace('-', ' '))
-      .map(option => option.charAt(0).toUpperCase() + option.slice(1))
-      .join(', ');
-
-    const report = `
-Denture Assessment Report
-Patient ID: ${patientId}
-Assessment Type: ${assessmentType === 'initial-visit' ? 'Initial Visit' : 'Post-Extraction'}
-
-Recommended Treatment:
-${assessmentSummary.dentureLabel}
-
-Treatment Options:
-${selectedOptions || 'Standard denture'}
-
-Treatment Code: ${assessmentSummary.treatmentCode}
-Estimated Cost: ${assessmentSummary.estimatedCost}
-
-${assessmentType === 'initial-visit' ? 
-  'Note: This is a preliminary assessment. Final denture plan may change after extractions and healing period.' :
-  'Note: This assessment is based on post-extraction oral condition. Patient is ready for denture fabrication.'}
-
-${notes ? `Additional Notes:\n${notes}` : ''}
-    `;
-    
-    Alert.alert('Denture Treatment Plan', report.trim());
-  };
-
-  const resetAssessment = () => {
-    updateDentureType('none');
-    updateDentureOptions({
-      immediate: false,
-      temporary: false,
-      conventional: false,
-      reline: false,
-      repair: false,
-      adjustment: false,
-    });
-    updateNotes('');
-  };
-
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.header}>🦷 Denture Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
-
-      {/* Assessment Type Selection */}
-      <View style={styles.assessmentTypeCard}>
-        <Text style={styles.cardTitle}>Assessment Type</Text>
-        <View style={styles.typeButtons}>
-          <Pressable
-            style={[
-              styles.typeButton,
-              assessmentType === 'initial-visit' && styles.typeButtonSelected
-            ]}
-            onPress={() => updateAssessmentType('initial-visit')}
-          >
-            <Text style={[
-              styles.typeButtonText,
-              assessmentType === 'initial-visit' && styles.typeButtonTextSelected
-            ]}>
-              📋 Initial Visit
-            </Text>
-            <Text style={styles.typeDescription}>
-              First assessment for denture needs
-            </Text>
-          </Pressable>
-          
-          <Pressable
-            style={[
-              styles.typeButton,
-              assessmentType === 'post-extraction' && styles.typeButtonSelected
-            ]}
-            onPress={() => updateAssessmentType('post-extraction')}
-          >
-            <Text style={[
-              styles.typeButtonText,
-              assessmentType === 'post-extraction' && styles.typeButtonTextSelected
-            ]}>
-              🦷 Post-Extraction
-            </Text>
-            <Text style={styles.typeDescription}>
-              Assessment after tooth removal
-            </Text>
-          </Pressable>
-        </View>
-      </View>
 
       {/* Denture Type Selection */}
       <View style={styles.dentureTypeCard}>
@@ -371,7 +141,8 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
             >
               <Text style={[
                 styles.dentureOptionText,
-                selectedDentureType === type && styles.dentureOptionTextSelected
+                selectedDentureType === type && styles.dentureOptionTextSelected,
+                type === 'none' && selectedDentureType === type && styles.dentureOptionNoneTextSelected
               ]}>
                 {DENTURE_LABELS[type]}
               </Text>
@@ -380,95 +151,28 @@ ${notes ? `Additional Notes:\n${notes}` : ''}
         </View>
       </View>
 
-      {/* Visual Chart */}
-      <View style={styles.chartCard}>
-        <Text style={styles.cardTitle}>Denture Visualization</Text>
-        <View style={styles.dentalChart}>
-          {/* Upper Arch Label */}
-          <Text style={styles.upperArchLabel}>Upper Arch</Text>
-          
-          {/* Lower Arch Label */}
-          <Text style={styles.lowerArchLabel}>Lower Arch</Text>
-          
-          {/* Center Label */}
-          <Text style={styles.centerLabel}>
-            {assessmentSummary.dentureLabel}
-          </Text>
-          
-          {/* Render all teeth */}
-          {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
-            renderTooth(toothId)
-          )}
-        </View>
-      </View>
-
-      {/* Denture Options */}
-      {selectedDentureType !== 'none' && (
-        <View style={styles.optionsCard}>
-          <Text style={styles.cardTitle}>Denture Options</Text>
-          <View style={styles.optionsGrid}>
-            {Object.entries(dentureOptions).map(([option, selected]) => (
-              <Pressable
-                key={option}
-                style={[
-                  styles.optionToggle,
-                  selected && styles.optionToggleSelected
-                ]}
-                onPress={() => toggleDentureOption(option as keyof typeof dentureOptions)}
-              >
-                <Text style={[
-                  styles.optionToggleText,
-                  selected && styles.optionToggleTextSelected
-                ]}>
-                  {option.charAt(0).toUpperCase() + option.slice(1).replace('-', ' ')}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {/* Treatment Summary */}
-      {assessmentSummary.hasAnyDenture && (
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>Treatment Summary</Text>
-          <Text style={styles.summaryText}>
-            <Text style={styles.summaryLabel}>Recommended: </Text>
-            {assessmentSummary.dentureLabel}
-          </Text>
-          <Text style={styles.summaryText}>
-            <Text style={styles.summaryLabel}>Treatment Code: </Text>
-            {assessmentSummary.treatmentCode}
-          </Text>
-          <Text style={styles.summaryText}>
-            <Text style={styles.summaryLabel}>Estimated Cost: </Text>
-            {assessmentSummary.estimatedCost}
-          </Text>
-          
-          <View style={styles.actionButtons}>
-            <Pressable style={styles.reportButton} onPress={generateDentureReport}>
-              <Text style={styles.reportButtonText}>Generate Report</Text>
+      {/* Reline Options for Existing Dentures */}
+      <View style={styles.relineCard}>
+        <Text style={styles.cardTitle}>Existing Denture Services</Text>
+        <Text style={styles.relineSubtext}>Select if patient already has dentures that need relining</Text>
+        <View style={styles.relineGrid}>
+          {Object.entries(RELINE_OPTIONS).map(([key, label]) => (
+            <Pressable
+              key={key}
+              style={[
+                styles.relineOption,
+                dentureOptions[key] && styles.relineOptionSelected
+              ]}
+              onPress={() => toggleRelineOption(key)}
+            >
+              <Text style={[
+                styles.relineOptionText,
+                dentureOptions[key] && styles.relineOptionTextSelected
+              ]}>
+                {label}
+              </Text>
             </Pressable>
-            <Pressable style={styles.resetButton} onPress={resetAssessment}>
-              <Text style={styles.resetButtonText}>Reset</Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      {/* Legend */}
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendCircle, styles.toothPresent]} />
-          <Text style={styles.legendLabel}>Natural Teeth</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendCircle, styles.toothFullDenture]} />
-          <Text style={styles.legendLabel}>Full Denture Area</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendCircle, styles.toothPartialDenture]} />
-          <Text style={styles.legendLabel}>Partial Denture Area</Text>
+          ))}
         </View>
       </View>
 
@@ -497,52 +201,11 @@ const styles = StyleSheet.create({
     color: '#665',
     marginBottom: 16,
   },
-  assessmentTypeCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
-    width: '100%',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-  },
   cardTitle: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
     color: '#333',
-  },
-  typeButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  typeButton: {
-    backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 12,
-    flex: 1,
-    marginHorizontal: 4,
-    borderWidth: 2,
-    borderColor: '#e9ecef',
-    alignItems: 'center',
-  },
-  typeButtonSelected: {
-    backgroundColor: '#007bff',
-    borderColor: '#007bff',
-  },
-  typeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  typeButtonTextSelected: {
-    color: 'white',
-  },
-  typeDescription: {
-    fontSize: 11,
-    color: '#665',
-    textAlign: 'center',
   },
   dentureTypeCard: {
     backgroundColor: '#f8f9fa',
@@ -573,8 +236,7 @@ const styles = StyleSheet.create({
     borderColor: '#007bff',
   },
   dentureOptionNone: {
-    backgroundColor: '#28a745',
-    borderColor: '#28a745',
+    width: '100%',
   },
   dentureOptionText: {
     fontSize: 12,
@@ -585,184 +247,49 @@ const styles = StyleSheet.create({
   dentureOptionTextSelected: {
     color: 'white',
   },
-  chartCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
-    width: '100%',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-  },
-  dentalChart: {
-    width: 360,
-    height: 480,
-    position: 'relative',
-    alignSelf: 'center',
-  },
-  upperArchLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    textAlign: 'center',
-    position: 'absolute',
-    top: 50,
-    left: 150,
-    width: 60,
-  },
-  lowerArchLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    textAlign: 'center',
-    position: 'absolute',
-    top: 390,
-    left: 150,
-    width: 60,
-  },
-  centerLabel: {
-    fontSize: 12,
-    color: '#007bff',
-    textAlign: 'center',
-    position: 'absolute',
-    top: 210,
-    left: 80,
-    width: 200,
-    fontWeight: '600',
-  },
-  toothCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  toothLabel: {
+  dentureOptionNoneTextSelected: {
     color: 'white',
-    fontWeight: '600',
-    fontSize: 9,
   },
-  toothPresent: {
-    backgroundColor: '#28a745',
-  },
-  toothFullDenture: {
-    backgroundColor: '#dc3545',
-  },
-  toothPartialDenture: {
-    backgroundColor: '#ffc107',
-  },
-  optionsCard: {
-    backgroundColor: '#f8f9fa',
+  relineCard: {
+    backgroundColor: '#fff3cd',
     borderRadius: 12,
     padding: 16,
     width: '100%',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#e9ecef',
+    borderColor: '#ffeaa7',
   },
-  optionsGrid: {
+  relineSubtext: {
+    fontSize: 12,
+    color: '#856404',
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  relineGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
-  optionToggle: {
+  relineOption: {
     backgroundColor: 'white',
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
     width: '48%',
-    marginBottom: 8,
     borderWidth: 2,
-    borderColor: '#e9ecef',
+    borderColor: '#ffeaa7',
     alignItems: 'center',
   },
-  optionToggleSelected: {
-    backgroundColor: '#28a745',
-    borderColor: '#28a745',
+  relineOptionSelected: {
+    backgroundColor: '#ffc107',
+    borderColor: '#ffc107',
   },
-  optionToggleText: {
+  relineOptionText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#333',
-  },
-  optionToggleTextSelected: {
-    color: 'white',
-  },
-  summaryCard: {
-    backgroundColor: '#e7f3ff',
-    borderRadius: 12,
-    padding: 16,
-    width: '100%',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#b3d9ff',
-  },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#333',
-  },
-  summaryText: {
-    fontSize: 14,
-    marginBottom: 6,
-    color: '#333',
-  },
-  summaryLabel: {
-    fontWeight: '600',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-  },
-  reportButton: {
-    backgroundColor: '#007bff',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    flex: 1,
-    marginRight: 8,
-  },
-  reportButtonText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
+    color: '#856404',
     textAlign: 'center',
   },
-  resetButton: {
-    backgroundColor: '#6c757d',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    flex: 1,
-    marginLeft: 8,
-  },
-  resetButtonText: {
+  relineOptionTextSelected: {
     color: 'white',
-    fontSize: 12,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  legend: {
-    width: '100%',
-    alignItems: 'flex-start',
-    marginBottom: 20,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 3,
-    width: '100%',
-  },
-  legendCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    marginRight: 12,
-  },
-  legendLabel: {
-    fontSize: 13,
-    color: '#333',
   },
   saveButton: {
     backgroundColor: '#007bff',

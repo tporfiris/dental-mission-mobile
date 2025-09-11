@@ -6,172 +6,163 @@ import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
 
-const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
-const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
-const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
-const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
+type ExtractionComplexity = 'simple' | 'complicated';
 
-type ExtractionType = 'none' | 'tooth' | 'root-tip';
+interface ExtractionRecord {
+  toothNumber: string;
+  complexity: ExtractionComplexity;
+  notes: string;
+  id: string;
+}
 
 const ExtractionsTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
-  const { 
-    treatmentState, 
-    toggleExtraction, 
-    updateNotes,
-    markCompleted,
-    resetTreatment 
-  } = useExtractionsTreatment();
-
-  const { extractionsPerformed, notes, completedAt } = treatmentState;
-  const [selectedTooth, setSelectedTooth] = React.useState<string | null>(null);
+  
+  // State for managing extractions
+  const [extractions, setExtractions] = React.useState<ExtractionRecord[]>([]);
+  const [completedAt, setCompletedAt] = React.useState<Date | null>(null);
+  
+  // Form state for adding new extractions
+  const [toothNumber, setToothNumber] = React.useState('');
+  const [selectedComplexity, setSelectedComplexity] = React.useState<ExtractionComplexity>('simple');
+  const [extractionNotes, setExtractionNotes] = React.useState('');
+  
+  // Modal for editing extractions
+  const [editingExtraction, setEditingExtraction] = React.useState<ExtractionRecord | null>(null);
   const [modalVisible, setModalVisible] = React.useState(false);
 
   // Calculate billing codes based on extractions performed
   const billingCodes = useMemo(() => {
-    const codes = [];
-    const extractedTeeth = Object.entries(extractionsPerformed).filter(([_, type]) => type !== 'none');
-
-    extractedTeeth.forEach(([toothId, type]) => {
-      if (type === 'tooth') {
-        // Determine if it's a simple or surgical extraction based on tooth type
-        const toothNumber = parseInt(toothId);
-        const isWisdomTooth = [18, 28, 38, 48].includes(toothNumber);
-        const isMolar = toothNumber % 10 >= 6; // 6, 7, 8 are molars
-        
+    return extractions.map(extraction => {
+      const toothNum = parseInt(extraction.toothNumber);
+      const isWisdomTooth = [18, 28, 38, 48].includes(toothNum);
+      const isMolar = toothNum % 10 >= 6; // 6, 7, 8 are molars
+      
+      let code, description;
+      
+      if (extraction.complexity === 'complicated') {
         if (isWisdomTooth) {
-          codes.push({
-            code: 'D7240',
-            description: `Removal of impacted tooth - completely bony (Tooth ${toothId})`,
-            tooth: toothId,
-            category: 'Oral Surgery'
-          });
-        } else if (isMolar) {
-          codes.push({
-            code: 'D7210',
-            description: `Extraction, erupted tooth requiring removal of bone/sectioning (Tooth ${toothId})`,
-            tooth: toothId,
-            category: 'Oral Surgery'
-          });
+          code = 'D7240';
+          description = `Removal of impacted tooth - completely bony (Tooth ${extraction.toothNumber})`;
         } else {
-          codes.push({
-            code: 'D7140',
-            description: `Extraction, erupted tooth or exposed root (Tooth ${toothId})`,
-            tooth: toothId,
-            category: 'Oral Surgery'
-          });
+          code = 'D7210';
+          description = `Extraction, erupted tooth requiring removal of bone/sectioning (Tooth ${extraction.toothNumber})`;
         }
-      } else if (type === 'root-tip') {
-        codes.push({
-          code: 'D7250',
-          description: `Removal of residual tooth roots (Root tip ${toothId})`,
-          tooth: toothId,
-          category: 'Oral Surgery'
-        });
+      } else {
+        code = 'D7140';
+        description = `Extraction, erupted tooth or exposed root (Tooth ${extraction.toothNumber})`;
       }
+      
+      return {
+        code,
+        description,
+        tooth: extraction.toothNumber,
+        category: 'Oral Surgery',
+        complexity: extraction.complexity,
+        extractionId: extraction.id
+      };
     });
+  }, [extractions]);
 
-    return codes;
-  }, [extractionsPerformed]);
+  const validateToothNumber = (tooth: string): boolean => {
+    const num = parseInt(tooth);
+    if (isNaN(num)) return false;
+    
+    // Valid tooth numbers: 11-18, 21-28, 31-38, 41-48
+    const validRanges = [
+      [11, 18], [21, 28], [31, 38], [41, 48]
+    ];
+    
+    return validRanges.some(([min, max]) => num >= min && num <= max);
+  };
 
-  const openToothSelector = (toothId: string) => {
-    setSelectedTooth(toothId);
+  const addExtraction = () => {
+    if (!toothNumber.trim()) {
+      Alert.alert('Error', 'Please enter a tooth number');
+      return;
+    }
+    
+    if (!validateToothNumber(toothNumber)) {
+      Alert.alert(
+        'Invalid Tooth Number', 
+        'Please enter a valid tooth number (11-18, 21-28, 31-38, 41-48)'
+      );
+      return;
+    }
+    
+    // Check if tooth already extracted
+    const existingExtraction = extractions.find(e => e.toothNumber === toothNumber);
+    if (existingExtraction) {
+      Alert.alert(
+        'Tooth Already Recorded', 
+        `Tooth ${toothNumber} has already been recorded for extraction. Would you like to edit it?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Edit', onPress: () => editExtraction(existingExtraction) }
+        ]
+      );
+      return;
+    }
+    
+    const newExtraction: ExtractionRecord = {
+      id: uuid.v4() as string,
+      toothNumber,
+      complexity: selectedComplexity,
+      notes: extractionNotes.trim()
+    };
+    
+    setExtractions(prev => [...prev, newExtraction]);
+    
+    // Clear form
+    setToothNumber('');
+    setSelectedComplexity('simple');
+    setExtractionNotes('');
+    
+    Alert.alert('Success', `Tooth ${toothNumber} extraction recorded successfully`);
+  };
+
+  const editExtraction = (extraction: ExtractionRecord) => {
+    setEditingExtraction(extraction);
     setModalVisible(true);
   };
 
-  const closeToothSelector = () => {
-    setSelectedTooth(null);
+  const updateExtraction = (updatedExtraction: ExtractionRecord) => {
+    setExtractions(prev => 
+      prev.map(e => e.id === updatedExtraction.id ? updatedExtraction : e)
+    );
     setModalVisible(false);
+    setEditingExtraction(null);
   };
 
-  const selectExtractionType = (type: ExtractionType) => {
-    if (selectedTooth) {
-      toggleExtraction(selectedTooth, type);
-    }
-    closeToothSelector();
-  };
-
-  const getToothStyle = (toothId: string) => {
-    const extractionType = extractionsPerformed[toothId];
-    switch (extractionType) {
-      case 'tooth':
-        return styles.toothExtracted;
-      case 'root-tip':
-        return styles.rootTipExtracted;
-      default:
-        return styles.toothPresent;
-    }
-  };
-
-  const getToothPosition = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
-    const centerX = 160;
-    const centerY = 210;
-    const radiusX = 140;
-    const radiusY = 200;
+  const removeExtraction = (extractionId: string) => {
+    const extraction = extractions.find(e => e.id === extractionId);
+    if (!extraction) return;
     
-    let angle = 0;
-    
-    switch (section) {
-      case 'upper-right':
-        angle = (index * Math.PI / 14);
-        break;
-      case 'upper-left':
-        angle = Math.PI - (index * Math.PI / 14);
-        break;
-      case 'lower-right':
-        angle = (Math.PI * 2) - (index * Math.PI / 14);
-        break;
-      case 'lower-left':
-        angle = Math.PI + (index * Math.PI / 14);
-        break;
-    }
-    
-    const x = centerX + radiusX * Math.cos(angle);
-    const y = centerY + radiusY * Math.sin(angle);
-    
-    return { left: x - 15, top: y - 15 };
-  };
-
-  const renderTooth = (toothId: string, index: number, section: 'upper-right' | 'upper-left' | 'lower-right' | 'lower-left') => {
-    const position = getToothPosition(toothId, index, section);
-    const extractionType = extractionsPerformed[toothId];
-    
-    return (
-      <Pressable
-        key={toothId}
-        onPress={() => openToothSelector(toothId)}
-        style={[
-          styles.toothCircle,
-          getToothStyle(toothId),
-          {
-            position: 'absolute',
-            left: position.left,
-            top: position.top,
+    Alert.alert(
+      'Remove Extraction',
+      `Remove extraction record for tooth ${extraction.toothNumber}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Remove', 
+          style: 'destructive',
+          onPress: () => {
+            setExtractions(prev => prev.filter(e => e.id !== extractionId));
           }
-        ]}
-      >
-        <Text style={styles.toothLabel}>{toothId}</Text>
-        {extractionType !== 'none' && (
-          <View style={styles.extractionIndicator}>
-            <Text style={styles.extractionText}>
-              {extractionType === 'tooth' ? '🦷' : 'RT'}
-            </Text>
-          </View>
-        )}
-      </Pressable>
+        }
+      ]
     );
   };
 
   const saveTreatmentToDatabase = async () => {
     try {
-      const extractedTeeth = Object.entries(extractionsPerformed).filter(([_, type]) => type !== 'none');
       const clinicianName = user?.email || 'Unknown Clinician';
       const completedDate = new Date();
 
       // Save each extraction as a separate treatment record
       await database.write(async () => {
-        for (const [toothId, extractionType] of extractedTeeth) {
+        for (const extraction of extractions) {
           const treatmentId = uuid.v4();
           
           await database.get<Treatment>('treatments').create(treatment => {
@@ -179,16 +170,16 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             treatment.patientId = patientId;
             treatment.visitId = '';
             treatment.type = 'extraction';
-            treatment.tooth = toothId;
+            treatment.tooth = extraction.toothNumber;
             treatment.surface = 'N/A';
-            treatment.units = 1; // One extraction per tooth
-            treatment.value = 0; // Can be calculated later
+            treatment.units = 1;
+            treatment.value = 0;
             
-            // Find the billing code for this specific tooth
-            const code = billingCodes.find(c => c.tooth === toothId);
+            // Find the billing code for this specific extraction
+            const code = billingCodes.find(c => c.extractionId === extraction.id);
             treatment.billingCodes = JSON.stringify(code ? [code] : []);
             
-            treatment.notes = `${extractionType === 'tooth' ? 'Full tooth extraction' : 'Root tip removal'}: ${toothId}. ${notes}`.trim();
+            treatment.notes = `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction of tooth ${extraction.toothNumber}. ${extraction.notes}`.trim();
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
@@ -197,8 +188,8 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
 
       console.log('✅ Extractions treatment saved to database:', {
         patientId,
-        extractionsCount: extractedTeeth.length,
-        teeth: extractedTeeth.map(([tooth, type]) => `${tooth}(${type})`),
+        extractionsCount: extractions.length,
+        teeth: extractions.map(e => `${e.toothNumber}(${e.complexity})`),
         billingCodes: billingCodes.length,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
@@ -217,20 +208,21 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
   };
 
   const handleCompleteTreatment = async () => {
-    const extractedCount = Object.values(extractionsPerformed).filter(type => type !== 'none').length;
-    
-    if (extractedCount === 0) {
+    if (extractions.length === 0) {
       Alert.alert(
         'No Extractions Recorded',
-        'Please select teeth/root tips that were extracted before completing the treatment.',
+        'Please record at least one extraction before completing the treatment.',
         [{ text: 'OK' }]
       );
       return;
     }
 
+    const simpleExtractions = extractions.filter(e => e.complexity === 'simple').length;
+    const complicatedExtractions = extractions.filter(e => e.complexity === 'complicated').length;
+
     Alert.alert(
       'Complete Treatment',
-      `Complete extractions treatment for this patient?\n\nTreatment Summary:\n• Extractions Performed: ${extractedCount}\n• Billing Codes Generated: ${billingCodes.length}\n\nThis will save each extraction to the database.`,
+      `Complete extractions treatment for this patient?\n\nTreatment Summary:\n• Total Extractions: ${extractions.length}\n• Simple: ${simpleExtractions}\n• Complicated: ${complicatedExtractions}\n• Billing Codes Generated: ${billingCodes.length}\n\nThis will save all extractions to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -239,13 +231,13 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             const saved = await saveTreatmentToDatabase();
             
             if (saved) {
-              markCompleted();
+              setCompletedAt(new Date());
               Alert.alert(
                 'Success', 
                 `✅ Extractions treatment completed and saved!\n\n` +
                 `Treatment Details:\n` +
                 `• Patient ID: ${patientId}\n` +
-                `• Extractions: ${extractedCount}\n` +
+                `• Total Extractions: ${extractions.length}\n` +
                 `• Billing Codes: ${billingCodes.length}\n` +
                 `• Completed: ${new Date().toLocaleString()}`
               );
@@ -262,23 +254,20 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
       'Are you sure you want to reset all extraction data? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: resetTreatment }
+        { 
+          text: 'Reset', 
+          style: 'destructive', 
+          onPress: () => {
+            setExtractions([]);
+            setCompletedAt(null);
+            setToothNumber('');
+            setSelectedComplexity('simple');
+            setExtractionNotes('');
+          }
+        }
       ]
     );
   };
-
-  const extractionSummary = useMemo(() => {
-    const extractedTeeth = Object.entries(extractionsPerformed).filter(([_, type]) => type !== 'none');
-    const toothExtractions = extractedTeeth.filter(([_, type]) => type === 'tooth').length;
-    const rootTipExtractions = extractedTeeth.filter(([_, type]) => type === 'root-tip').length;
-
-    return {
-      total: extractedTeeth.length,
-      teeth: toothExtractions,
-      rootTips: rootTipExtractions,
-      extractedList: extractedTeeth
-    };
-  }, [extractionsPerformed]);
 
   return (
     <ScrollView style={styles.container}>
@@ -289,64 +278,129 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         <View style={styles.completedBanner}>
           <Text style={styles.completedText}>✅ Treatment Completed</Text>
           <Text style={styles.completedDate}>
-            {new Date(completedAt).toLocaleDateString()} at{' '}
-            {new Date(completedAt).toLocaleTimeString()}
+            {completedAt.toLocaleDateString()} at {completedAt.toLocaleTimeString()}
           </Text>
         </View>
       )}
 
-      {/* Treatment Summary */}
-      <View style={styles.summarySection}>
-        <Text style={styles.sectionTitle}>Treatment Summary</Text>
-        <View style={styles.summaryGrid}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Extractions:</Text>
-            <Text style={styles.summaryValue}>{extractionSummary.total}</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Full Tooth Extractions:</Text>
-            <Text style={styles.summaryValue}>{extractionSummary.teeth}</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Root Tip Removals:</Text>
-            <Text style={styles.summaryValue}>{extractionSummary.rootTips}</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Billing Codes:</Text>
-            <Text style={styles.summaryValue}>{billingCodes.length}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Dental Chart */}
-      <View style={styles.chartSection}>
-        <Text style={styles.sectionTitle}>Dental Chart - Tap to Extract</Text>
-        <View style={styles.dentalChart}>
-          <Text style={[styles.archLabel, styles.upperArchLabel]}>Upper{'\n'}Arch</Text>
-          <Text style={[styles.archLabel, styles.lowerArchLabel]}>Lower{'\n'}Arch</Text>
-          <Text style={styles.centerInstructions}>Tap teeth to{'\n'}mark extractions</Text>
+      {/* Add New Extraction Form */}
+      {!completedAt && (
+        <View style={styles.addExtractionSection}>
+          <Text style={styles.sectionTitle}>Add New Extraction</Text>
           
-          {UPPER_RIGHT.map((toothId, index) => renderTooth(toothId, index, 'upper-right'))}
-          {UPPER_LEFT.map((toothId, index) => renderTooth(toothId, index, 'upper-left'))}
-          {LOWER_RIGHT.map((toothId, index) => renderTooth(toothId, index, 'lower-right'))}
-          {LOWER_LEFT.map((toothId, index) => renderTooth(toothId, index, 'lower-left'))}
-        </View>
-      </View>
+          <View style={styles.formRow}>
+            <Text style={styles.formLabel}>Tooth Number:</Text>
+            <TextInput
+              style={styles.toothNumberInput}
+              value={toothNumber}
+              onChangeText={setToothNumber}
+              placeholder="e.g., 11, 26, 48"
+              keyboardType="numeric"
+              maxLength={2}
+            />
+          </View>
 
-      {/* Legend */}
-      <View style={styles.legend}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendCircle, styles.toothPresent]} />
-          <Text style={styles.legendLabel}>Present (Not Extracted)</Text>
+          <View style={styles.formRow}>
+            <Text style={styles.formLabel}>Extraction Type:</Text>
+            <View style={styles.complexitySelector}>
+              <Pressable
+                style={[
+                  styles.complexityButton,
+                  selectedComplexity === 'simple' && styles.complexityButtonSelected
+                ]}
+                onPress={() => setSelectedComplexity('simple')}
+              >
+                <Text style={[
+                  styles.complexityButtonText,
+                  selectedComplexity === 'simple' && styles.complexityButtonTextSelected
+                ]}>
+                  Simple
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.complexityButton,
+                  selectedComplexity === 'complicated' && styles.complexityButtonSelected
+                ]}
+                onPress={() => setSelectedComplexity('complicated')}
+              >
+                <Text style={[
+                  styles.complexityButtonText,
+                  selectedComplexity === 'complicated' && styles.complexityButtonTextSelected
+                ]}>
+                  Complicated
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.formColumn}>
+            <Text style={styles.formLabel}>Notes (stitches, antibiotics, etc.):</Text>
+            <TextInput
+              style={styles.notesInput}
+              value={extractionNotes}
+              onChangeText={setExtractionNotes}
+              placeholder="Details about the extraction procedure..."
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+          </View>
+
+          <Pressable style={styles.addButton} onPress={addExtraction}>
+            <Text style={styles.addButtonText}>➕ Add Extraction</Text>
+          </Pressable>
         </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendCircle, styles.toothExtracted]} />
-          <Text style={styles.legendLabel}>🦷 Full Tooth Extracted</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendCircle, styles.rootTipExtracted]} />
-          <Text style={styles.legendLabel}>RT Root Tip Removed</Text>
-        </View>
+      )}
+
+      {/* Recorded Extractions */}
+      <View style={styles.extractionsListSection}>
+        <Text style={styles.sectionTitle}>
+          Recorded Extractions ({extractions.length})
+        </Text>
+        
+        {extractions.length === 0 ? (
+          <Text style={styles.noExtractionsText}>
+            No extractions recorded yet
+          </Text>
+        ) : (
+          extractions.map((extraction) => (
+            <View key={extraction.id} style={styles.extractionCard}>
+              <View style={styles.extractionHeader}>
+                <Text style={styles.toothNumberText}>Tooth {extraction.toothNumber}</Text>
+                <View style={styles.extractionActions}>
+                  <Text style={[
+                    styles.complexityBadge,
+                    extraction.complexity === 'simple' ? styles.simpleBadge : styles.complicatedBadge
+                  ]}>
+                    {extraction.complexity === 'simple' ? 'Simple' : 'Complicated'}
+                  </Text>
+                  {!completedAt && (
+                    <View style={styles.actionButtons}>
+                      <Pressable
+                        style={styles.editButton}
+                        onPress={() => editExtraction(extraction)}
+                      >
+                        <Text style={styles.editButtonText}>✏️</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.deleteButton}
+                        onPress={() => removeExtraction(extraction.id)}
+                      >
+                        <Text style={styles.deleteButtonText}>🗑️</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              </View>
+              {extraction.notes && (
+                <Text style={styles.extractionNotes}>
+                  Notes: {extraction.notes}
+                </Text>
+              )}
+            </View>
+          ))
+        )}
       </View>
 
       {/* Generated Billing Codes */}
@@ -355,7 +409,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         
         {billingCodes.length === 0 ? (
           <Text style={styles.noCodesText}>
-            Select extracted teeth to generate billing codes
+            Record extractions to generate billing codes
           </Text>
         ) : (
           billingCodes.map((code, index) => (
@@ -365,24 +419,12 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
                 <Text style={styles.codeCategory}>{code.category}</Text>
               </View>
               <Text style={styles.codeDescription}>{code.description}</Text>
-              <Text style={styles.codeUnits}>Tooth: {code.tooth}</Text>
+              <Text style={styles.codeDetails}>
+                Tooth: {code.tooth} • Type: {code.complexity}
+              </Text>
             </View>
           ))
         )}
-      </View>
-
-      {/* Notes */}
-      <View style={styles.notesSection}>
-        <Text style={styles.sectionTitle}>Treatment Notes (Optional)</Text>
-        <TextInput
-          style={styles.notesInput}
-          value={notes}
-          onChangeText={updateNotes}
-          placeholder="Additional notes about the extractions performed..."
-          multiline
-          numberOfLines={3}
-          textAlignVertical="top"
-        />
       </View>
 
       {/* Action Buttons */}
@@ -390,6 +432,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         <Pressable 
           style={[styles.actionButton, styles.completeButton]} 
           onPress={handleCompleteTreatment}
+          disabled={completedAt !== null}
         >
           <Text style={styles.actionButtonText}>
             {completedAt ? '✅ Treatment Completed' : '🏁 Complete Treatment'}
@@ -406,52 +449,26 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         </Pressable>
       </View>
 
-      {/* Extraction Type Selection Modal */}
+      {/* Edit Extraction Modal */}
       <Modal
         animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={closeToothSelector}
+        onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              Tooth {selectedTooth} - Select Extraction Type
+              Edit Extraction - Tooth {editingExtraction?.toothNumber}
             </Text>
             
-            <Pressable
-              style={[styles.extractionOptionButton, styles.toothExtractionOption]}
-              onPress={() => selectExtractionType('tooth')}
-            >
-              <Text style={styles.optionText}>🦷 Full Tooth Extraction</Text>
-              <Text style={styles.optionDescription}>
-                Complete removal of tooth
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.extractionOptionButton, styles.rootTipOption]}
-              onPress={() => selectExtractionType('root-tip')}
-            >
-              <Text style={styles.optionText}>🔧 Root Tip Removal</Text>
-              <Text style={styles.optionDescription}>
-                Removal of remaining root fragment
-              </Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.extractionOptionButton, styles.noneOption]}
-              onPress={() => selectExtractionType('none')}
-            >
-              <Text style={styles.optionText}>❌ No Extraction</Text>
-              <Text style={styles.optionDescription}>
-                Remove extraction marking
-              </Text>
-            </Pressable>
-
-            <Pressable style={styles.cancelButton} onPress={closeToothSelector}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </Pressable>
+            {editingExtraction && (
+              <EditExtractionForm
+                extraction={editingExtraction}
+                onUpdate={updateExtraction}
+                onCancel={() => setModalVisible(false)}
+              />
+            )}
           </View>
         </View>
       </Modal>
@@ -459,7 +476,87 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
   );
 };
 
+// Edit Extraction Form Component
+const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
+  extraction: ExtractionRecord;
+  onUpdate: (extraction: ExtractionRecord) => void;
+  onCancel: () => void;
+}) => {
+  const [complexity, setComplexity] = React.useState<ExtractionComplexity>(extraction.complexity);
+  const [notes, setNotes] = React.useState(extraction.notes);
+
+  const handleUpdate = () => {
+    const updatedExtraction: ExtractionRecord = {
+      ...extraction,
+      complexity,
+      notes: notes.trim()
+    };
+    onUpdate(updatedExtraction);
+  };
+
+  return (
+    <View>
+      <View style={styles.formRow}>
+        <Text style={styles.formLabel}>Extraction Type:</Text>
+        <View style={styles.complexitySelector}>
+          <Pressable
+            style={[
+              styles.complexityButton,
+              complexity === 'simple' && styles.complexityButtonSelected
+            ]}
+            onPress={() => setComplexity('simple')}
+          >
+            <Text style={[
+              styles.complexityButtonText,
+              complexity === 'simple' && styles.complexityButtonTextSelected
+            ]}>
+              Simple
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.complexityButton,
+              complexity === 'complicated' && styles.complexityButtonSelected
+            ]}
+            onPress={() => setComplexity('complicated')}
+          >
+            <Text style={[
+              styles.complexityButtonText,
+              complexity === 'complicated' && styles.complexityButtonTextSelected
+            ]}>
+              Complicated
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.formColumn}>
+        <Text style={styles.formLabel}>Notes:</Text>
+        <TextInput
+          style={styles.notesInput}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Details about the extraction procedure..."
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+      </View>
+
+      <View style={styles.modalActions}>
+        <Pressable style={styles.cancelButton} onPress={onCancel}>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
+        </Pressable>
+        <Pressable style={styles.updateButton} onPress={handleUpdate}>
+          <Text style={styles.updateButtonText}>Update</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+};
+
 export default ExtractionsTreatmentScreen;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -497,7 +594,7 @@ const styles = StyleSheet.create({
     color: '#155724',
     marginTop: 4,
   },
-  summarySection: {
+  addExtractionSection: {
     backgroundColor: '#e7f3ff',
     borderRadius: 12,
     padding: 20,
@@ -511,25 +608,83 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     color: '#333',
   },
-  summaryGrid: {
-    gap: 12,
-  },
-  summaryItem: {
+  formRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  formColumn: {
+    marginBottom: 16,
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#495057',
+    minWidth: 100,
+    marginRight: 12,
+  },
+  toothNumberInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    minWidth: 80,
+    textAlign: 'center',
+  },
+  complexitySelector: {
+    flexDirection: 'row',
+    flex: 1,
+    gap: 8,
+  },
+  complexityButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     alignItems: 'center',
   },
-  summaryLabel: {
+  complexityButtonSelected: {
+    backgroundColor: '#007bff',
+    borderColor: '#007bff',
+  },
+  complexityButtonText: {
     fontSize: 14,
-    color: '#495057',
     fontWeight: '500',
+    color: '#495057',
   },
-  summaryValue: {
+  complexityButtonTextSelected: {
+    color: '#fff',
+  },
+  notesInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    minHeight: 80,
+  },
+  addButton: {
+    backgroundColor: '#28a745',
+    borderRadius: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  addButtonText: {
     fontSize: 16,
-    color: '#007bff',
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#fff',
   },
-  chartSection: {
+  extractionsListSection: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 20,
@@ -540,101 +695,82 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  dentalChart: {
-    width: 360,
-    height: 460,
-    position: 'relative',
-    alignSelf: 'center',
-  },
-  archLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
+  noExtractionsText: {
+    fontSize: 14,
+    color: '#6c757d',
     textAlign: 'center',
-    position: 'absolute',
+    fontStyle: 'italic',
+    padding: 20,
   },
-  upperArchLabel: {
-    top: 90,
-    left: 140,
-  },
-  lowerArchLabel: {
-    top: 300,
-    left: 140,
-  },
-  centerInstructions: {
-    fontSize: 11,
-    color: '#999',
-    textAlign: 'center',
-    position: 'absolute',
-    top: 190,
-    left: 115,
-  },
-  toothCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  toothLabel: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 10,
-  },
-  toothPresent: {
-    backgroundColor: '#28a745', // Green - not extracted
-  },
-  toothExtracted: {
-    backgroundColor: '#dc3545', // Red - tooth extracted
-  },
-  rootTipExtracted: {
-    backgroundColor: '#6f42c1', // Purple - root tip extracted
-  },
-  extractionIndicator: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    backgroundColor: '#fff',
+  extractionCard: {
+    backgroundColor: '#f8f9fa',
     borderRadius: 8,
-    width: 16,
-    height: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#333',
+    padding: 16,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#dc3545',
   },
-  extractionText: {
-    fontSize: 8,
+  extractionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  toothNumberText: {
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#333',
   },
-  legend: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  legendItem: {
+  extractionActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 6,
+    gap: 8,
   },
-  legendCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    marginRight: 12,
+  complexityBadge: {
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
   },
-  legendLabel: {
+  simpleBadge: {
+    backgroundColor: '#d1ecf1',
+    color: '#0c5460',
+  },
+  complicatedBadge: {
+    backgroundColor: '#f8d7da',
+    color: '#721c24',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  editButton: {
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#007bff',
+  },
+  editButtonText: {
     fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
+  },
+  deleteButton: {
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+  },
+  deleteButtonText: {
+    fontSize: 14,
+  },
+  extractionNotes: {
+    fontSize: 14,
+    color: '#495057',
+    fontStyle: 'italic',
   },
   billingSection: {
     backgroundColor: '#fff',
@@ -686,31 +822,10 @@ const styles = StyleSheet.create({
     color: '#495057',
     marginBottom: 4,
   },
-  codeUnits: {
+  codeDetails: {
     fontSize: 12,
     color: '#6c757d',
     fontWeight: '500',
-  },
-  notesSection: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  notesInput: {
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    minHeight: 80,
   },
   actionSection: {
     gap: 12,
@@ -758,42 +873,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#333',
   },
-  extractionOptionButton: {
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-  },
-  toothExtractionOption: {
-    backgroundColor: '#f8d7da',
-    borderColor: '#dc3545',
-  },
-  rootTipOption: {
-    backgroundColor: '#f3e5f5',
-    borderColor: '#6f42c1',
-  },
-  noneOption: {
-    backgroundColor: '#f8f9fa',
-    borderColor: '#28a745',
-  },
-  optionText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  optionDescription: {
-    fontSize: 12,
-    color: '#665',
-    fontStyle: 'italic',
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 16,
   },
   cancelButton: {
+    flex: 1,
     backgroundColor: '#6c757d',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    marginTop: 8,
   },
   cancelButtonText: {
     color: 'white',
@@ -801,4 +892,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-}); 
+  updateButton: {
+    flex: 1,
+    backgroundColor: '#007bff',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  updateButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+});

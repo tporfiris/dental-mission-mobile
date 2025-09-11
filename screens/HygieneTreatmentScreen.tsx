@@ -1,82 +1,21 @@
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert } from 'react-native';
-import { useHygieneTreatment } from '../contexts/HygieneTreatmentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
-import AudioRecorder from '../components/AudioRecorder';
 
 const HygieneTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  const { user } = useAuth(); // Get current clinician info
-  const { 
-    treatmentState, 
-    updateScalingUnits, 
-    updateRootPlaningUnits, 
-    updateNotes,
-    markCompleted,
-    resetTreatment 
-  } = useHygieneTreatment();
-
-  const { scalingUnits, rootPlaningUnits, notes, completedAt } = treatmentState;
-
-  // Calculate billing codes based on units performed
-  const billingCodes = useMemo(() => {
-    const codes = [];
-    const totalUnits = scalingUnits + rootPlaningUnits;
-
-    // Basic prophylaxis if no scaling/root planing
-    if (totalUnits === 0) {
-      codes.push({
-        code: 'D1110',
-        description: 'Prophylaxis - Adult',
-        units: 1,
-        category: 'Preventive'
-      });
-    } else {
-      // Scaling and root planing codes
-      if (scalingUnits > 0) {
-        if (scalingUnits <= 3) {
-          codes.push({
-            code: 'D4341',
-            description: 'Periodontal scaling/root planing (1-3 teeth)',
-            units: scalingUnits,
-            category: 'Periodontics'
-          });
-        } else {
-          codes.push({
-            code: 'D4342',
-            description: 'Periodontal scaling/root planing (4+ teeth)',
-            units: scalingUnits,
-            category: 'Periodontics'
-          });
-        }
-      }
-
-      // Root planing specific codes
-      if (rootPlaningUnits > 0) {
-        codes.push({
-          code: 'D4381',
-          description: 'Root planing per quadrant',
-          units: rootPlaningUnits,
-          category: 'Periodontics'
-        });
-      }
-
-      // Full mouth debridement for extensive treatment
-      if (totalUnits >= 16) {
-        codes.push({
-          code: 'D4355',
-          description: 'Full mouth debridement',
-          units: 1,
-          category: 'Periodontics'
-        });
-      }
-    }
-
-    return codes;
-  }, [scalingUnits, rootPlaningUnits]);
+  const { user } = useAuth();
+  
+  // Local state for treatment data
+  const [scalingUnits, setScalingUnits] = useState(0);
+  const [polishingUnits, setPolishingUnits] = useState(0);
+  const [scalingMethod, setScalingMethod] = useState(''); // 'cavitron' or 'hand'
+  const [prescribedMedication, setPrescribedMedication] = useState('');
+  const [notes, setNotes] = useState('');
+  const [completedAt, setCompletedAt] = useState(null);
 
   const saveTreatmentToDatabase = async () => {
     try {
@@ -84,18 +23,26 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       const completedDate = new Date();
       const clinicianName = user?.email || 'Unknown Clinician';
 
+      const treatmentData = {
+        scalingUnits,
+        polishingUnits,
+        scalingMethod,
+        prescribedMedication,
+        notes
+      };
+
       await database.write(async () => {
         await database.get<Treatment>('treatments').create(treatment => {
           treatment._raw.id = treatmentId;
           treatment.patientId = patientId;
-          treatment.visitId = ''; // No specific visit for direct treatments
+          treatment.visitId = '';
           treatment.type = 'hygiene';
-          treatment.tooth = 'N/A'; // Full mouth hygiene treatment
-          treatment.surface = 'N/A'; // Not applicable for hygiene
-          treatment.units = scalingUnits + rootPlaningUnits; // Total units
-          treatment.value = 0; // Can be calculated later based on fee guide
-          treatment.billingCodes = JSON.stringify(billingCodes);
-          treatment.notes = notes || '';
+          treatment.tooth = 'N/A';
+          treatment.surface = 'N/A';
+          treatment.units = scalingUnits + polishingUnits;
+          treatment.value = 0;
+          treatment.billingCodes = '';
+          treatment.notes = JSON.stringify(treatmentData);
           treatment.clinicianName = clinicianName;
           treatment.completedAt = completedDate;
         });
@@ -106,9 +53,9 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         patientId,
         type: 'hygiene',
         scalingUnits,
-        rootPlaningUnits,
-        totalUnits: scalingUnits + rootPlaningUnits,
-        billingCodes: billingCodes.length,
+        polishingUnits,
+        scalingMethod,
+        prescribedMedication,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
       });
@@ -125,11 +72,11 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     }
   };
 
-  const handleCompletetreatment = async () => {
-    if (scalingUnits === 0 && rootPlaningUnits === 0) {
+  const handleCompleteTreatment = async () => {
+    if (scalingUnits === 0 && polishingUnits === 0) {
       Alert.alert(
         'No Treatment Recorded',
-        'Please enter the units of scaling and/or root planing performed before completing the treatment.',
+        'Please enter the units of scaling and/or polishing performed before completing the treatment.',
         [{ text: 'OK' }]
       );
       return;
@@ -137,27 +84,19 @@ const HygieneTreatmentScreen = ({ route }: any) => {
 
     Alert.alert(
       'Complete Treatment',
-      `Complete hygiene treatment for this patient?\n\nTreatment Summary:\n• Scaling Units: ${scalingUnits}\n• Root Planing Units: ${rootPlaningUnits}\n• Total Codes: ${billingCodes.length}\n\nThis will save the treatment to the database.`,
+      `Complete hygiene treatment for this patient?\n\nTreatment Details:\n• Scaling Units: ${scalingUnits}\n• Polishing Units: ${polishingUnits}\n• Method: ${scalingMethod || 'Not specified'}\n• Medication: ${prescribedMedication || 'None'}\n\nThis will save the treatment to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
           text: 'Complete & Save', 
           onPress: async () => {
-            // Save to database first
             const saved = await saveTreatmentToDatabase();
             
             if (saved) {
-              // Mark as completed in context
-              markCompleted();
+              setCompletedAt(new Date());
               Alert.alert(
                 'Success', 
-                '✅ Hygiene treatment completed and saved to database!\n\n' +
-                `Treatment Details:\n` +
-                `• Patient ID: ${patientId}\n` +
-                `• Scaling Units: ${scalingUnits}\n` +
-                `• Root Planing Units: ${rootPlaningUnits}\n` +
-                `• Billing Codes: ${billingCodes.length}\n` +
-                `• Completed: ${new Date().toLocaleString()}`
+                '✅ Hygiene treatment completed and saved to database!'
               );
             }
           }
@@ -172,10 +111,54 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       'Are you sure you want to reset all treatment data? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: resetTreatment }
+        { 
+          text: 'Reset', 
+          style: 'destructive', 
+          onPress: () => {
+            setScalingUnits(0);
+            setPolishingUnits(0);
+            setScalingMethod('');
+            setPrescribedMedication('');
+            setNotes('');
+            setCompletedAt(null);
+          }
+        }
       ]
     );
   };
+
+  const ScalingUnitButton = ({ value, selected, onPress }) => (
+    <Pressable 
+      style={[styles.unitOptionButton, selected && styles.unitOptionButtonSelected]} 
+      onPress={onPress}
+    >
+      <Text style={[styles.unitOptionText, selected && styles.unitOptionTextSelected]}>
+        {value}
+      </Text>
+    </Pressable>
+  );
+
+  const PolishingUnitButton = ({ value, selected, onPress }) => (
+    <Pressable 
+      style={[styles.unitOptionButton, selected && styles.unitOptionButtonSelected]} 
+      onPress={onPress}
+    >
+      <Text style={[styles.unitOptionText, selected && styles.unitOptionTextSelected]}>
+        {value}
+      </Text>
+    </Pressable>
+  );
+
+  const MethodButton = ({ method, selected, onPress }) => (
+    <Pressable 
+      style={[styles.methodButton, selected && styles.methodButtonSelected]} 
+      onPress={onPress}
+    >
+      <Text style={[styles.methodButtonText, selected && styles.methodButtonTextSelected]}>
+        {method}
+      </Text>
+    </Pressable>
+  );
 
   return (
     <ScrollView style={styles.container}>
@@ -186,8 +169,8 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         <View style={styles.completedBanner}>
           <Text style={styles.completedText}>✅ Treatment Completed</Text>
           <Text style={styles.completedDate}>
-            {new Date(completedAt).toLocaleDateString()} at{' '}
-            {new Date(completedAt).toLocaleTimeString()}
+            {completedAt.toLocaleDateString()} at{' '}
+            {completedAt.toLocaleTimeString()}
           </Text>
         </View>
       )}
@@ -199,78 +182,107 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         {/* Scaling Units */}
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Scaling Units Performed</Text>
-          <View style={styles.unitInputContainer}>
-            <Pressable 
-              style={styles.unitButton} 
-              onPress={() => updateScalingUnits(scalingUnits - 1)}
-            >
-              <Text style={styles.unitButtonText}>−</Text>
-            </Pressable>
-            
-            <TextInput
-              style={styles.unitInput}
-              value={scalingUnits.toString()}
-              onChangeText={(text) => {
-                const num = parseInt(text) || 0;
-                updateScalingUnits(num);
-              }}
-              keyboardType="numeric"
-              selectTextOnFocus
+          <View style={styles.unitOptionsContainer}>
+            <ScalingUnitButton 
+              value="0" 
+              selected={scalingUnits === 0} 
+              onPress={() => setScalingUnits(0)} 
             />
-            
-            <Pressable 
-              style={styles.unitButton} 
-              onPress={() => updateScalingUnits(scalingUnits + 1)}
-            >
-              <Text style={styles.unitButtonText}>+</Text>
-            </Pressable>
+            <ScalingUnitButton 
+              value="1" 
+              selected={scalingUnits === 1} 
+              onPress={() => setScalingUnits(1)} 
+            />
+            <ScalingUnitButton 
+              value="2" 
+              selected={scalingUnits === 2} 
+              onPress={() => setScalingUnits(2)} 
+            />
+            <ScalingUnitButton 
+              value="3" 
+              selected={scalingUnits === 3} 
+              onPress={() => setScalingUnits(3)} 
+            />
+            <ScalingUnitButton 
+              value="4" 
+              selected={scalingUnits === 4} 
+              onPress={() => setScalingUnits(4)} 
+            />
           </View>
           <Text style={styles.inputHint}>
-            Number of scaling units performed on patient
+            Select number of scaling units performed (typically 1-4)
           </Text>
         </View>
 
-        {/* Root Planing Units */}
+        {/* Polishing Units */}
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Root Planing Units Performed</Text>
-          <View style={styles.unitInputContainer}>
-            <Pressable 
-              style={styles.unitButton} 
-              onPress={() => updateRootPlaningUnits(rootPlaningUnits - 1)}
-            >
-              <Text style={styles.unitButtonText}>−</Text>
-            </Pressable>
-            
-            <TextInput
-              style={styles.unitInput}
-              value={rootPlaningUnits.toString()}
-              onChangeText={(text) => {
-                const num = parseInt(text) || 0;
-                updateRootPlaningUnits(num);
-              }}
-              keyboardType="numeric"
-              selectTextOnFocus
+          <Text style={styles.inputLabel}>Polishing Units Performed</Text>
+          <View style={styles.unitOptionsContainer}>
+            <PolishingUnitButton 
+              value="0" 
+              selected={polishingUnits === 0} 
+              onPress={() => setPolishingUnits(0)} 
             />
-            
-            <Pressable 
-              style={styles.unitButton} 
-              onPress={() => updateRootPlaningUnits(rootPlaningUnits + 1)}
-            >
-              <Text style={styles.unitButtonText}>+</Text>
-            </Pressable>
+            <PolishingUnitButton 
+              value="0.5" 
+              selected={polishingUnits === 0.5} 
+              onPress={() => setPolishingUnits(0.5)} 
+            />
+            <PolishingUnitButton 
+              value="1" 
+              selected={polishingUnits === 1} 
+              onPress={() => setPolishingUnits(1)} 
+            />
           </View>
           <Text style={styles.inputHint}>
-            Number of root planing units performed on patient
+            Select polishing units performed (typically 0.5 or 1 unit)
+          </Text>
+        </View>
+
+        {/* Scaling Method */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Scaling Method</Text>
+          <View style={styles.methodContainer}>
+            <MethodButton 
+              method="Cavitron" 
+              selected={scalingMethod === 'cavitron'} 
+              onPress={() => setScalingMethod(scalingMethod === 'cavitron' ? '' : 'cavitron')} 
+            />
+            <MethodButton 
+              method="Hand Scaled" 
+              selected={scalingMethod === 'hand'} 
+              onPress={() => setScalingMethod(scalingMethod === 'hand' ? '' : 'hand')} 
+            />
+          </View>
+          <Text style={styles.inputHint}>
+            Select the scaling method used (optional)
+          </Text>
+        </View>
+
+        {/* Prescribed Medication */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Prescribed Medication</Text>
+          <TextInput
+            style={styles.medicationInput}
+            value={prescribedMedication}
+            onChangeText={setPrescribedMedication}
+            placeholder="Enter prescribed medication (if any)..."
+            multiline
+            numberOfLines={2}
+            textAlignVertical="top"
+          />
+          <Text style={styles.inputHint}>
+            Enter any medication prescribed to the patient (optional)
           </Text>
         </View>
 
         {/* Notes */}
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Treatment Notes (Optional)</Text>
+          <Text style={styles.inputLabel}>Additional Notes (Optional)</Text>
           <TextInput
             style={styles.notesInput}
             value={notes}
-            onChangeText={updateNotes}
+            onChangeText={setNotes}
             placeholder="Additional notes about the hygiene treatment..."
             multiline
             numberOfLines={3}
@@ -279,52 +291,11 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         </View>
       </View>
 
-      {/* Generated Billing Codes */}
-      <View style={styles.billingSection}>
-        <Text style={styles.sectionTitle}>Generated Billing Codes</Text>
-        
-        {billingCodes.length === 0 ? (
-          <Text style={styles.noCodesText}>
-            Enter treatment units to generate billing codes
-          </Text>
-        ) : (
-          billingCodes.map((code, index) => (
-            <View key={index} style={styles.codeCard}>
-              <View style={styles.codeHeader}>
-                <Text style={styles.codeNumber}>{code.code}</Text>
-                <Text style={styles.codeCategory}>{code.category}</Text>
-              </View>
-              <Text style={styles.codeDescription}>{code.description}</Text>
-              <Text style={styles.codeUnits}>Units: {code.units}</Text>
-            </View>
-          ))
-        )}
-      </View>
-
-      {/* Treatment Summary */}
-      <View style={styles.summarySection}>
-        <Text style={styles.sectionTitle}>Treatment Summary</Text>
-        <View style={styles.summaryGrid}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Scaling Units:</Text>
-            <Text style={styles.summaryValue}>{scalingUnits}</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Root Planing Units:</Text>
-            <Text style={styles.summaryValue}>{rootPlaningUnits}</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Billing Codes Generated:</Text>
-            <Text style={styles.summaryValue}>{billingCodes.length}</Text>
-          </View>
-        </View>
-      </View>
-
       {/* Action Buttons */}
       <View style={styles.actionSection}>
         <Pressable 
           style={[styles.actionButton, styles.completeButton]} 
-          onPress={handleCompletetreatment}
+          onPress={handleCompleteTreatment}
         >
           <Text style={styles.actionButtonText}>
             {completedAt ? '✅ Treatment Completed' : '🏁 Complete Treatment'}
@@ -409,43 +380,75 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: '#495057',
   },
-  unitInputContainer: {
+  unitOptionsContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-around',
     marginBottom: 8,
   },
-  unitButton: {
-    backgroundColor: '#007bff',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  unitButtonText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  unitInput: {
+  unitOptionButton: {
     backgroundColor: '#f8f9fa',
     borderWidth: 2,
     borderColor: '#e9ecef',
     borderRadius: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 18,
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  unitOptionButtonSelected: {
+    backgroundColor: '#007bff',
+    borderColor: '#007bff',
+  },
+  unitOptionText: {
+    fontSize: 16,
     fontWeight: '600',
-    textAlign: 'center',
-    marginHorizontal: 16,
-    minWidth: 80,
+    color: '#495057',
+  },
+  unitOptionTextSelected: {
+    color: '#fff',
+  },
+  methodContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 8,
+  },
+  methodButton: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 2,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    flex: 0.45,
+    alignItems: 'center',
+  },
+  methodButtonSelected: {
+    backgroundColor: '#28a745',
+    borderColor: '#28a745',
+  },
+  methodButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#495057',
+  },
+  methodButtonTextSelected: {
+    color: '#fff',
   },
   inputHint: {
     fontSize: 12,
     color: '#6c757d',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  medicationInput: {
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    minHeight: 60,
   },
   notesInput: {
     backgroundColor: '#f8f9fa',
@@ -456,87 +459,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     minHeight: 80,
-  },
-  billingSection: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  noCodesText: {
-    fontSize: 14,
-    color: '#6c757d',
-    textAlign: 'center',
-    fontStyle: 'italic',
-    padding: 20,
-  },
-  codeCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#007bff',
-  },
-  codeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  codeNumber: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#007bff',
-  },
-  codeCategory: {
-    fontSize: 12,
-    color: '#6c757d',
-    backgroundColor: '#e9ecef',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  codeDescription: {
-    fontSize: 14,
-    color: '#495057',
-    marginBottom: 4,
-  },
-  codeUnits: {
-    fontSize: 12,
-    color: '#6c757d',
-    fontWeight: '500',
-  },
-  summarySection: {
-    backgroundColor: '#e7f3ff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#b3d9ff',
-  },
-  summaryGrid: {
-    gap: 12,
-  },
-  summaryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: '#495057',
-    fontWeight: '500',
-  },
-  summaryValue: {
-    fontSize: 16,
-    color: '#007bff',
-    fontWeight: 'bold',
   },
   actionSection: {
     gap: 12,

@@ -12,7 +12,7 @@ import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useDentitionAssessment } from '../contexts/DentitionAssessmentContext';
 
-const TOOTH_STATES = ['present', 'crown-missing', 'fully-missing'] as const;
+const TOOTH_STATES = ['present', 'crown-missing', 'roots-only', 'fully-missing'] as const;
 type ToothState = typeof TOOTH_STATES[number];
 
 const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
@@ -135,6 +135,8 @@ const DentitionAssessmentScreen = ({ route }: any) => {
         return styles.toothPresent;
       case 'crown-missing':
         return styles.toothCrownMissing;
+      case 'roots-only':
+        return styles.toothRootsOnly;
       case 'fully-missing':
         return styles.toothFullyMissing;
     }
@@ -203,6 +205,10 @@ const DentitionAssessmentScreen = ({ route }: any) => {
         <View style={styles.legendItem}>
           <View style={[styles.legendCircle, styles.toothCrownMissing]} />
           <Text style={styles.legendLabel}>Crown Missing</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendCircle, styles.toothRootsOnly]} />
+          <Text style={styles.legendLabel}>Roots Only</Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendCircle, styles.toothFullyMissing]} />
@@ -286,6 +292,9 @@ const styles = StyleSheet.create({
   },
   toothCrownMissing: {
     backgroundColor: '#FFC107',
+  },
+  toothRootsOnly: {
+    backgroundColor: '#FF5722', // Deep orange/red to indicate roots remaining
   },
   toothFullyMissing: {
     backgroundColor: 'rgba(108, 117, 125, 0.3)', // Transparent gray

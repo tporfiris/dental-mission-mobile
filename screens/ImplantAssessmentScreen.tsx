@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,175 +6,97 @@ import {
   Pressable,
   ScrollView,
   Alert,
-  Modal,
 } from 'react-native';
-import { database } from '../db'; // adjust path if needed
+import { database } from '../db';
 import ImplantAssessment from '../db/models/ImplantAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
-import { useImplantAssessment } from '../contexts/ImplantAssessmentContext';
 
-const IMPLANT_TYPES = [
-  'none',
-  'single-implant',
-  'multiple-implants',
-  'implant-bridge',
-  'all-on-4',
-  'all-on-6',
-  'mini-implants',
-  'zygomatic-implants'
-] as const;
-type ImplantType = typeof IMPLANT_TYPES[number];
-
-const IMPLANT_TECHNIQUES = [
-  'immediate-placement',
-  'delayed-placement',
-  'immediate-loading',
-  'delayed-loading',
-  'guided-surgery',
-  'conventional-surgery',
-  'bone-grafting',
-  'sinus-lift'
-] as const;
-type ImplantTechnique = typeof IMPLANT_TECHNIQUES[number];
+type ImplantMode = 'single' | 'bridge';
+type TimingMode = 'immediate' | 'delayed';
 
 const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
 const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
 const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
 
-interface ToothImplant {
-  planned: boolean;
-  implantType: ImplantType;
-  techniques: ImplantTechnique[];
-  prosthodontistNotes: string;
-}
-
-const IMPLANT_LABELS = {
-  'none': 'No Implant',
-  'single-implant': 'Single Implant',
-  'multiple-implants': 'Multiple Implants',
-  'implant-bridge': 'Implant-Supported Bridge',
-  'all-on-4': 'All-on-4',
-  'all-on-6': 'All-on-6',
-  'mini-implants': 'Mini Implants',
-  'zygomatic-implants': 'Zygomatic Implants'
-};
-
-const TECHNIQUE_LABELS = {
-  'immediate-placement': 'Immediate Placement',
-  'delayed-placement': 'Delayed Placement',
-  'immediate-loading': 'Immediate Loading',
-  'delayed-loading': 'Delayed Loading',
-  'guided-surgery': 'Guided Surgery',
-  'conventional-surgery': 'Conventional Surgery',
-  'bone-grafting': 'Bone Grafting',
-  'sinus-lift': 'Sinus Lift'
-};
-
 const ImplantAssessmentScreen = ({ route }: any) => {
-  const { patientId, hasXrays = false } = route.params || { patientId: 'DEMO', hasXrays: false };
-  const { 
-    implantState, 
-    updateToothImplant, 
-    updateProsthodontistConsult, 
-    updateGeneralNotes 
-  } = useImplantAssessment();
+  const { patientId } = route.params || { patientId: 'DEMO' };
   
-  const { implants, prosthodontistConsult, generalNotes } = implantState;
-  const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [implantMode, setImplantMode] = useState<ImplantMode>('single');
+  const [selectedTeeth, setSelectedTeeth] = useState<Set<string>>(new Set());
+  const [boneGraftingPlanned, setBoneGraftingPlanned] = useState(false);
+  const [timingMode, setTimingMode] = useState<TimingMode>('immediate');
 
-  // Updated tooth positions - same as other assessment screens
   const toothOffsets: Record<string, { x: number; y: number }> = {
-    // Upper arch - symmetric pairs
-    '21': { x: 20, y: -120 },   // Upper right central
-    '11': { x: -20, y: -120 },  // Upper left central (mirrored)
-    '22': { x: 55, y: -110 },   // Upper right lateral  
-    '12': { x: -55, y: -110 },  // Upper left lateral (mirrored)
-    '23': { x: 90, y: -90 },    // Upper right canine
-    '13': { x: -90, y: -90 },   // Upper left canine (mirrored)
-    '24': { x: 110, y: -60 },   // Upper right first premolar
-    '14': { x: -110, y: -60 },  // Upper left first premolar (mirrored)
-    '25': { x: 120, y: -25 },   // Upper right second premolar
-    '15': { x: -120, y: -25 },  // Upper left second premolar (mirrored)
-    '26': { x: 125, y: 10 },    // Upper right first molar
-    '16': { x: -125, y: 10 },   // Upper left first molar (mirrored)
-    '27': { x: 125, y: 45 },    // Upper right second molar
-    '17': { x: -125, y: 45 },   // Upper left second molar (mirrored)
-    '28': { x: 125, y: 80 },    // Upper right third molar (wisdom)
-    '18': { x: -125, y: 80 },   // Upper left third molar (mirrored)
-    
-    // Lower arch - symmetric pairs
-    '31': { x: 20, y: 330 },    // Lower right central
-    '41': { x: -20, y: 330 },   // Lower left central (mirrored)
-    '32': { x: 55, y: 320 },    // Lower right lateral
-    '42': { x: -55, y: 320 },   // Lower left lateral (mirrored)
-    '33': { x: 90, y: 300 },    // Lower right canine
-    '43': { x: -90, y: 300 },   // Lower left canine (mirrored)
-    '34': { x: 110, y: 270 },   // Lower right first premolar
-    '44': { x: -110, y: 270 },  // Lower left first premolar (mirrored)
-    '35': { x: 120, y: 235 },   // Lower right second premolar
-    '45': { x: -120, y: 235 },  // Lower left second premolar (mirrored)
-    '36': { x: 125, y: 200 },   // Lower right first molar
-    '46': { x: -125, y: 200 },  // Lower left first molar (mirrored)
-    '37': { x: 125, y: 165 },   // Lower right second molar
-    '47': { x: -125, y: 165 },  // Lower left second molar (mirrored)
-    '38': { x: 125, y: 130 },   // Lower right third molar (wisdom)
-    '48': { x: -125, y: 130 },  // Lower left third molar (mirrored)
+    '21': { x: 20, y: -120 },
+    '11': { x: -20, y: -120 },
+    '22': { x: 55, y: -110 },
+    '12': { x: -55, y: -110 },
+    '23': { x: 90, y: -90 },
+    '13': { x: -90, y: -90 },
+    '24': { x: 110, y: -60 },
+    '14': { x: -110, y: -60 },
+    '25': { x: 120, y: -25 },
+    '15': { x: -120, y: -25 },
+    '26': { x: 125, y: 10 },
+    '16': { x: -125, y: 10 },
+    '27': { x: 125, y: 45 },
+    '17': { x: -125, y: 45 },
+    '28': { x: 125, y: 80 },
+    '18': { x: -125, y: 80 },
+    '31': { x: 20, y: 330 },
+    '41': { x: -20, y: 330 },
+    '32': { x: 55, y: 320 },
+    '42': { x: -55, y: 320 },
+    '33': { x: 90, y: 300 },
+    '43': { x: -90, y: 300 },
+    '34': { x: 110, y: 270 },
+    '44': { x: -110, y: 270 },
+    '35': { x: 120, y: 235 },
+    '45': { x: -120, y: 235 },
+    '36': { x: 125, y: 200 },
+    '46': { x: -125, y: 200 },
+    '37': { x: 125, y: 165 },
+    '47': { x: -125, y: 165 },
+    '38': { x: 125, y: 130 },
+    '48': { x: -125, y: 130 },
   };
 
   const saveAssessment = async () => {
     try {
       const collection = database.get<ImplantAssessment>('implant_assessments');
-      console.log('🔎 Looking for existing implant assessment for patient:', patientId);
       const existing = await collection
         .query(Q.where('patient_id', Q.eq(patientId)))
         .fetch();
 
-      console.log('🔍 Matched existing implant assessment:', existing);
-  
-      // Create comprehensive assessment data object
       const assessmentData = {
-        implants,
-        prosthodontistConsult,
-        generalNotes,
-        hasXrays,
+        implantMode,
+        selectedTeeth: Array.from(selectedTeeth),
+        boneGraftingPlanned,
+        timingMode,
         timestamp: new Date().toISOString()
       };
       
       const jsonData = JSON.stringify(assessmentData);
-  
+
       await database.write(async () => {
-        console.log("existing implant assessments:")
-        console.log(existing)
-        console.log("existing length:")
-        console.log(existing.length)
         if (existing.length > 0) {
-          console.log('🔍 Existing implant assessments for patient', patientId, ':', existing);
-          // Update existing record
           await existing[0].update(record => {
             record.data = jsonData;
             record.updatedAt = new Date();
           });
-          console.log('✅ Implant assessment updated');
           Alert.alert('✅ Implant assessment updated');
         } else {
-          // Create new record
           await collection.create(record => {
             const id = uuid.v4();
             record._raw.id = id;
-            record.patientId = patientId; // must match schema!
+            record.patientId = patientId;
             record.data = jsonData;
             record.createdAt = new Date();
             record.updatedAt = new Date();
-            Alert.alert('✅ Implant assessment created')
-            console.log('🔧 Created implant assessment record:', {
-              id,
-              patient_id: patientId,
-              data: jsonData,
-            });
           });
+          Alert.alert('✅ Implant assessment created');
         }
       });
     } catch (err) {
@@ -183,104 +105,46 @@ const ImplantAssessmentScreen = ({ route }: any) => {
     }
   };
 
-  const openToothEditor = (toothId: string) => {
-    if (!hasXrays) {
-      Alert.alert(
-        'X-rays Required',
-        'Implant assessment requires X-rays to be completed first. Please complete the X-ray assessment before proceeding with implant planning.'
-      );
-      return;
+  const handleToothPress = (toothId: string) => {
+    const newSelectedTeeth = new Set(selectedTeeth);
+    
+    if (selectedTeeth.has(toothId)) {
+      newSelectedTeeth.delete(toothId);
+    } else {
+      newSelectedTeeth.add(toothId);
     }
-    setSelectedTooth(toothId);
-    setModalVisible(true);
-  };
-
-  const closeToothEditor = () => {
-    setSelectedTooth(null);
-    setModalVisible(false);
-  };
-
-  const toggleImplantPlanning = () => {
-    if (!selectedTooth) return;
     
-    const currentImplant = implants[selectedTooth];
-    const updatedImplant = {
-      ...currentImplant,
-      planned: !currentImplant.planned,
-      implantType: currentImplant.planned ? 'none' : 'single-implant'
-    };
-    updateToothImplant(selectedTooth, updatedImplant);
+    setSelectedTeeth(newSelectedTeeth);
   };
 
-  const setImplantType = (type: ImplantType) => {
-    if (!selectedTooth) return;
-    
-    const currentImplant = implants[selectedTooth];
-    const updatedImplant = {
-      ...currentImplant,
-      implantType: type,
-      planned: type !== 'none'
-    };
-    updateToothImplant(selectedTooth, updatedImplant);
-  };
-
-  const toggleTechnique = (technique: ImplantTechnique) => {
-    if (!selectedTooth) return;
-    
-    const currentImplant = implants[selectedTooth];
-    const updatedImplant = {
-      ...currentImplant,
-      techniques: currentImplant.techniques.includes(technique)
-        ? currentImplant.techniques.filter(t => t !== technique)
-        : [...currentImplant.techniques, technique]
-    };
-    updateToothImplant(selectedTooth, updatedImplant);
+  const clearSelection = () => {
+    setSelectedTeeth(new Set());
   };
 
   const getToothPosition = (toothId: string) => {
-    const chartCenter = { x: 180, y: 135 }; // Center of the chart container
+    const chartCenter = { x: 180, y: 135 };
     const offset = toothOffsets[toothId];
     
     return {
-      left: chartCenter.x + offset.x - 15, // -15 to center the 30px circle
+      left: chartCenter.x + offset.x - 15,
       top: chartCenter.y + offset.y - 15
     };
   };
 
   const getToothStyle = (toothId: string) => {
-    const implant = implants[toothId];
-    
-    if (!implant.planned) {
-      return hasXrays ? styles.toothNormal : styles.toothDisabled;
+    if (selectedTeeth.has(toothId)) {
+      return implantMode === 'single' ? styles.toothSingleImplant : styles.toothBridge;
     }
-    
-    switch (implant.implantType) {
-      case 'single-implant':
-        return styles.toothSingleImplant;
-      case 'multiple-implants':
-        return styles.toothMultipleImplants;
-      case 'implant-bridge':
-        return styles.toothImplantBridge;
-      case 'all-on-4':
-      case 'all-on-6':
-        return styles.toothAllOnX;
-      case 'mini-implants':
-        return styles.toothMiniImplants;
-      case 'zygomatic-implants':
-        return styles.toothZygomaticImplants;
-      default:
-        return styles.toothNormal;
-    }
+    return styles.toothNormal;
   };
 
   const renderTooth = (toothId: string) => {
     const position = getToothPosition(toothId);
-    const implant = implants[toothId];
     
     return (
       <Pressable
         key={toothId}
-        onPress={() => openToothEditor(toothId)}
+        onPress={() => handleToothPress(toothId)}
         style={[
           styles.toothCircle,
           getToothStyle(toothId),
@@ -292,83 +156,15 @@ const ImplantAssessmentScreen = ({ route }: any) => {
         ]}
       >
         <Text style={styles.toothLabel}>{toothId}</Text>
-        {implant.planned && (
+        {selectedTeeth.has(toothId) && (
           <View style={styles.implantFlag}>
-            <Text style={styles.implantText}>🔩</Text>
+            <Text style={styles.implantText}>
+              {implantMode === 'single' ? '🔩' : '🌉'}
+            </Text>
           </View>
         )}
       </Pressable>
     );
-  };
-
-  const implantSummary = useMemo(() => {
-    const plannedImplants = Object.entries(implants).filter(([_, implant]) => implant.planned);
-    
-    const byType = Object.keys(IMPLANT_LABELS).reduce((acc, type) => {
-      acc[type as ImplantType] = plannedImplants.filter(([_, implant]) => implant.implantType === type).length;
-      return acc;
-    }, {} as Record<ImplantType, number>);
-
-    const totalCost = plannedImplants.reduce((total, [_, implant]) => {
-      switch (implant.implantType) {
-        case 'single-implant': return total + 3000;
-        case 'multiple-implants': return total + 2800;
-        case 'implant-bridge': return total + 4500;
-        case 'all-on-4': return total + 15000;
-        case 'all-on-6': return total + 20000;
-        case 'mini-implants': return total + 1500;
-        case 'zygomatic-implants': return total + 8000;
-        default: return total;
-      }
-    }, 0);
-
-    return {
-      totalImplants: plannedImplants.length,
-      byType,
-      plannedImplants: plannedImplants.map(([toothId, implant]) => ({
-        toothId,
-        type: IMPLANT_LABELS[implant.implantType],
-        techniques: implant.techniques.map(t => TECHNIQUE_LABELS[t]).join(', ')
-      })),
-      estimatedCost: totalCost
-    };
-  }, [implants]);
-
-  const generateImplantReport = () => {
-    if (implantSummary.totalImplants === 0) {
-      Alert.alert('Implant Assessment', 'No implants currently planned for this patient.');
-      return;
-    }
-
-    const report = `
-Implant Treatment Plan
-Patient ID: ${patientId}
-Prosthodontist Consultation: ${prosthodontistConsult ? 'Completed' : 'Required'}
-
-Total Implants Planned: ${implantSummary.totalImplants}
-
-Breakdown by Type:
-${Object.entries(implantSummary.byType)
-  .filter(([_, count]) => count > 0)
-  .map(([type, count]) => `• ${IMPLANT_LABELS[type as ImplantType]}: ${count}`)
-  .join('\n')}
-
-Detailed Treatment Plan:
-${implantSummary.plannedImplants.map(implant => 
-  `• Tooth ${implant.toothId}: ${implant.type}${implant.techniques ? ` (${implant.techniques})` : ''}`
-).join('\n')}
-
-Estimated Total Cost: $${implantSummary.estimatedCost.toLocaleString()}
-
-${!prosthodontistConsult ? 
-  '⚠️ IMPORTANT: Prosthodontist consultation required before proceeding.\n' : ''}
-
-${generalNotes ? `General Notes:\n${generalNotes}` : ''}
-
-Note: Final implant plan requires prosthodontist approval and may change based on bone density analysis and 3D imaging.
-    `;
-    
-    Alert.alert('Implant Treatment Plan', report.trim());
   };
 
   return (
@@ -376,68 +172,141 @@ Note: Final implant plan requires prosthodontist approval and may change based o
       <Text style={styles.header}>🦷 Implant Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
-      {/* Prosthodontist Consultation Status */}
-      <View style={styles.consultCard}>
-        <Text style={styles.cardTitle}>Prosthodontist Consultation</Text>
-        <Pressable
-          style={[
-            styles.consultButton,
-            prosthodontistConsult && styles.consultButtonCompleted
-          ]}
-          onPress={() => updateProsthodontistConsult(!prosthodontistConsult)}
-        >
-          <Text style={[
-            styles.consultButtonText,
-            prosthodontistConsult && styles.consultButtonTextCompleted
-          ]}>
-            {prosthodontistConsult ? '✓ Consultation Completed' : '⏳ Consultation Required'}
-          </Text>
-        </Pressable>
-        {!prosthodontistConsult && (
-          <Text style={styles.consultWarning}>
-            ⚠️ Prosthodontist consultation required for final implant planning
-          </Text>
-        )}
+      {/* Implant Type Selector */}
+      <View style={styles.selectorCard}>
+        <Text style={styles.cardTitle}>Implant Type</Text>
+        <View style={styles.typeSelector}>
+          <Pressable
+            style={[
+              styles.typeSelectorButton,
+              implantMode === 'single' && styles.typeSelectorButtonActive
+            ]}
+            onPress={() => {
+              setImplantMode('single');
+              clearSelection();
+            }}
+          >
+            <Text style={[
+              styles.typeSelectorText,
+              implantMode === 'single' && styles.typeSelectorTextActive
+            ]}>
+              Single Implant
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.typeSelectorButton,
+              implantMode === 'bridge' && styles.typeSelectorButtonActive
+            ]}
+            onPress={() => {
+              setImplantMode('bridge');
+              clearSelection();
+            }}
+          >
+            <Text style={[
+              styles.typeSelectorText,
+              implantMode === 'bridge' && styles.typeSelectorTextActive
+            ]}>
+              Implant Bridge
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* Implant Summary */}
+      {/* Selection Summary */}
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Implant Planning Summary</Text>
+        <Text style={styles.summaryTitle}>Current Selection</Text>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Total Implants Planned:</Text>
-          <Text style={styles.summaryValue}>{implantSummary.totalImplants}</Text>
+          <Text style={styles.summaryLabel}>Selected Teeth:</Text>
+          <Text style={styles.summaryValue}>
+            {selectedTeeth.size === 0 ? 'None' : Array.from(selectedTeeth).sort().join(', ')}
+          </Text>
         </View>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Estimated Cost:</Text>
-          <Text style={styles.summaryValue}>${implantSummary.estimatedCost.toLocaleString()}</Text>
+          <Text style={styles.summaryLabel}>Count:</Text>
+          <Text style={styles.summaryValue}>{selectedTeeth.size}</Text>
         </View>
         
-        {implantSummary.totalImplants > 0 && (
-          <Pressable style={styles.reportButton} onPress={generateImplantReport}>
-            <Text style={styles.reportButtonText}>Generate Treatment Plan</Text>
+        {selectedTeeth.size > 0 && (
+          <Pressable style={styles.clearButton} onPress={clearSelection}>
+            <Text style={styles.clearButtonText}>Clear Selection</Text>
           </Pressable>
         )}
       </View>
 
       {/* Visual Chart */}
       <View style={styles.chartCard}>
-        <Text style={styles.cardTitle}>Implant Visualization</Text>
+        <Text style={styles.cardTitle}>
+          Select Teeth for {implantMode === 'single' ? 'Single Implants' : 'Implant Bridge'}
+        </Text>
         <View style={styles.dentalChart}>
-          {/* Upper Arch Label */}
           <Text style={styles.upperArchLabel}>Upper Arch</Text>
-          
-          {/* Lower Arch Label */}
           <Text style={styles.lowerArchLabel}>Lower Arch</Text>
-          
-          {/* Center Instructions */}
           <Text style={styles.centerInstructions}>
-            Tap teeth to{'\n'}plan implants{'\n'}(X-rays required)
+            Tap teeth to{'\n'}select for{'\n'}
+            {implantMode === 'single' ? 'implants' : 'bridge'}
           </Text>
           
-          {/* Render all teeth */}
           {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
             renderTooth(toothId)
           )}
+        </View>
+      </View>
+
+      {/* Treatment Options */}
+      <View style={styles.optionsCard}>
+        <Text style={styles.cardTitle}>Treatment Options</Text>
+        
+        <View style={styles.optionRow}>
+          <Text style={styles.optionLabel}>Bone Grafting Planned:</Text>
+          <Pressable
+            style={[
+              styles.optionToggle,
+              boneGraftingPlanned && styles.optionToggleActive
+            ]}
+            onPress={() => setBoneGraftingPlanned(!boneGraftingPlanned)}
+          >
+            <Text style={[
+              styles.optionToggleText,
+              boneGraftingPlanned && styles.optionToggleTextActive
+            ]}>
+              {boneGraftingPlanned ? 'Yes' : 'No'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.optionRow}>
+          <Text style={styles.optionLabel}>Implant Timing:</Text>
+          <View style={styles.timingSelector}>
+            <Pressable
+              style={[
+                styles.timingSelectorButton,
+                timingMode === 'immediate' && styles.timingSelectorButtonActive
+              ]}
+              onPress={() => setTimingMode('immediate')}
+            >
+              <Text style={[
+                styles.timingSelectorText,
+                timingMode === 'immediate' && styles.timingSelectorTextActive
+              ]}>
+                Immediate
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.timingSelectorButton,
+                timingMode === 'delayed' && styles.timingSelectorButtonActive
+              ]}
+              onPress={() => setTimingMode('delayed')}
+            >
+              <Text style={[
+                styles.timingSelectorText,
+                timingMode === 'delayed' && styles.timingSelectorTextActive
+              ]}>
+                Delayed
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -445,96 +314,21 @@ Note: Final implant plan requires prosthodontist approval and may change based o
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendCircle, styles.toothNormal]} />
-          <Text style={styles.legendLabel}>No Implant Planned</Text>
+          <Text style={styles.legendLabel}>Available for Selection</Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendCircle, styles.toothSingleImplant]} />
-          <Text style={styles.legendLabel}>Single Implant</Text>
+          <Text style={styles.legendLabel}>Single Implant Selected</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendCircle, styles.toothImplantBridge]} />
-          <Text style={styles.legendLabel}>Implant Bridge</Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendCircle, styles.toothAllOnX]} />
-          <Text style={styles.legendLabel}>All-on-4/6</Text>
+          <View style={[styles.legendCircle, styles.toothBridge]} />
+          <Text style={styles.legendLabel}>Bridge Implant Selected</Text>
         </View>
       </View>
 
-      {/* Save Button */}
       <Pressable style={styles.saveButton} onPress={saveAssessment}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
-
-      {/* Implant Planning Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={closeToothEditor}
-      >
-        <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalScrollContent}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>
-                Tooth {selectedTooth} - Implant Planning
-              </Text>
-              
-              <Text style={styles.sectionTitle}>Implant Type:</Text>
-              <View style={styles.implantTypeGrid}>
-                {(Object.keys(IMPLANT_LABELS) as ImplantType[]).map(type => (
-                  <Pressable
-                    key={type}
-                    style={[
-                      styles.typeButton,
-                      selectedTooth && implants[selectedTooth]?.implantType === type && styles.typeButtonSelected
-                    ]}
-                    onPress={() => setImplantType(type)}
-                  >
-                    <Text style={[
-                      styles.typeButtonText,
-                      selectedTooth && implants[selectedTooth]?.implantType === type && styles.typeButtonTextSelected
-                    ]}>
-                      {IMPLANT_LABELS[type]}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              {selectedTooth && implants[selectedTooth]?.implantType !== 'none' && (
-                <>
-                  <Text style={styles.sectionTitle}>Techniques & Procedures:</Text>
-                  <View style={styles.techniqueGrid}>
-                    {IMPLANT_TECHNIQUES.map(technique => (
-                      <Pressable
-                        key={technique}
-                        style={[
-                          styles.techniqueButton,
-                          selectedTooth && implants[selectedTooth]?.techniques.includes(technique) && styles.techniqueButtonSelected
-                        ]}
-                        onPress={() => toggleTechnique(technique)}
-                      >
-                        <Text style={[
-                          styles.techniqueButtonText,
-                          selectedTooth && implants[selectedTooth]?.techniques.includes(technique) && styles.techniqueButtonTextSelected
-                        ]}>
-                          {TECHNIQUE_LABELS[technique]}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </>
-              )}
-
-              <View style={styles.modalActions}>
-                <Pressable style={styles.cancelButton} onPress={closeToothEditor}>
-                  <Text style={styles.cancelButtonText}>Done</Text>
-                </Pressable>
-              </View>
-            </View>
-          </ScrollView>
-        </View>
-      </Modal>
     </ScrollView>
   );
 };
@@ -556,35 +350,7 @@ const styles = StyleSheet.create({
     color: '#665',
     marginBottom: 16,
   },
-  warningCard: {
-    backgroundColor: '#fff3cd',
-    borderRadius: 12,
-    padding: 20,
-    width: '100%',
-    borderWidth: 2,
-    borderColor: '#ffc107',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  warningTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#856404',
-    marginBottom: 12,
-  },
-  warningText: {
-    fontSize: 14,
-    color: '#856404',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  warningSubtext: {
-    fontSize: 12,
-    color: '#6c5700',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  consultCard: {
+  selectorCard: {
     backgroundColor: '#f8f9fa',
     borderRadius: 12,
     padding: 16,
@@ -599,30 +365,29 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     color: '#333',
   },
-  consultButton: {
-    backgroundColor: '#ffc107',
+  typeSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#e9ecef',
     borderRadius: 8,
-    paddingVertical: 12,
+    padding: 2,
+  },
+  typeSelectorButton: {
+    flex: 1,
+    paddingVertical: 10,
     paddingHorizontal: 16,
+    borderRadius: 6,
     alignItems: 'center',
-    marginBottom: 8,
   },
-  consultButtonCompleted: {
-    backgroundColor: '#28a745',
+  typeSelectorButtonActive: {
+    backgroundColor: '#007bff',
   },
-  consultButtonText: {
+  typeSelectorText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#212529',
+    color: '#6c757d',
   },
-  consultButtonTextCompleted: {
+  typeSelectorTextActive: {
     color: 'white',
-  },
-  consultWarning: {
-    fontSize: 12,
-    color: '#856404',
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
   summaryCard: {
     backgroundColor: '#f8f9fa',
@@ -647,21 +412,24 @@ const styles = StyleSheet.create({
   summaryLabel: {
     fontSize: 14,
     color: '#665',
+    flex: 1,
   },
   summaryValue: {
     fontSize: 14,
     fontWeight: '600',
     color: '#333',
+    flex: 2,
+    textAlign: 'right',
   },
-  reportButton: {
-    backgroundColor: '#007bff',
-    borderRadius: 8,
+  clearButton: {
+    backgroundColor: '#6c757d',
+    borderRadius: 6,
     paddingVertical: 8,
     paddingHorizontal: 16,
     marginTop: 12,
     alignSelf: 'flex-start',
   },
-  reportButtonText: {
+  clearButtonText: {
     color: 'white',
     fontSize: 12,
     fontWeight: '600',
@@ -740,26 +508,73 @@ const styles = StyleSheet.create({
   toothNormal: {
     backgroundColor: '#28a745',
   },
-  toothDisabled: {
-    backgroundColor: '#6c757d',
-  },
   toothSingleImplant: {
     backgroundColor: '#007bff',
   },
-  toothMultipleImplants: {
-    backgroundColor: '#0056b3',
-  },
-  toothImplantBridge: {
+  toothBridge: {
     backgroundColor: '#6f42c1',
   },
-  toothAllOnX: {
-    backgroundColor: '#dc3545',
+  optionsCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    width: '100%',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
   },
-  toothMiniImplants: {
-    backgroundColor: '#17a2b8',
+  optionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  toothZygomaticImplants: {
-    backgroundColor: '#fd7e14',
+  optionLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    flex: 1,
+  },
+  optionToggle: {
+    backgroundColor: '#e9ecef',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    minWidth: 50,
+    alignItems: 'center',
+  },
+  optionToggleActive: {
+    backgroundColor: '#28a745',
+  },
+  optionToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6c757d',
+  },
+  optionToggleTextActive: {
+    color: 'white',
+  },
+  timingSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#e9ecef',
+    borderRadius: 20,
+    padding: 2,
+  },
+  timingSelectorButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+  },
+  timingSelectorButtonActive: {
+    backgroundColor: '#ffc107',
+  },
+  timingSelectorText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6c757d',
+  },
+  timingSelectorTextActive: {
+    color: '#212529',
   },
   legend: {
     width: '100%',
@@ -794,108 +609,5 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalScrollContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 50,
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
-    width: '90%',
-    maxWidth: 400,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#333',
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 12,
-    marginTop: 16,
-    color: '#333',
-  },
-  implantTypeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  typeButton: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 8,
-    width: '48%',
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: '#e9ecef',
-    alignItems: 'center',
-  },
-  typeButtonSelected: {
-    backgroundColor: '#007bff',
-    borderColor: '#007bff',
-  },
-  typeButtonText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#333',
-    textAlign: 'center',
-  },
-  typeButtonTextSelected: {
-    color: 'white',
-  },
-  techniqueGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  techniqueButton: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 6,
-    padding: 6,
-    width: '48%',
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    alignItems: 'center',
-  },
-  techniqueButtonSelected: {
-    backgroundColor: '#28a745',
-    borderColor: '#28a745',
-  },
-  techniqueButtonText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#333',
-    textAlign: 'center',
-  },
-  techniqueButtonTextSelected: {
-    color: 'white',
-  },
-  modalActions: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  cancelButton: {
-    backgroundColor: '#007bff',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-  },
-  cancelButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
   },
 });

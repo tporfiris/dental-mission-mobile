@@ -7,6 +7,7 @@ const TOOTH_IDS = [
   '41','42','43','44','45','46','47','48',
 ];
 
+// Keep the original type for backwards compatibility
 type HygieneState = 'normal' | 'light-plaque' | 'moderate-plaque' | 'heavy-plaque' | 'calculus';
 
 type HygieneStates = Record<string, HygieneState>;
