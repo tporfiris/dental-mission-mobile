@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  Modal,
 } from 'react-native';
 import { database } from '../db'; // adjust path if needed
 import DentureAssessment from '../db/models/DentureAssessment';
@@ -43,8 +44,96 @@ const RELINE_OPTIONS = {
   'lower-soft-reline': 'Lower Soft Reline',
 };
 
-const DentureAssessmentScreen = ({ route }: any) => {
+// Clean Assessment Gate Component
+const AssessmentGate = ({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) => {
+  const [dentitionCompleted, setDentitionCompleted] = useState(false);
+  const [extractionsCompleted, setExtractionsCompleted] = useState(false);
+
+  const canProceed = dentitionCompleted && extractionsCompleted;
+
+  const handleProceed = () => {
+    if (canProceed) {
+      onConfirm();
+    } else {
+      Alert.alert(
+        'Prerequisites Required',
+        'Please confirm both assessments are completed before proceeding.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={true}
+      onRequestClose={onCancel}
+    >
+      <View style={styles.overlay}>
+        <View style={styles.modal}>
+          <View style={styles.header}>
+            <Text style={styles.title}>🦷 Denture Assessment</Text>
+            <Text style={styles.subtitle}>Prerequisites Required</Text>
+          </View>
+
+          <View style={styles.content}>
+            <Text style={styles.instruction}>
+              Please confirm these assessments are completed:
+            </Text>
+
+            {/* Dentition Assessment */}
+            <View style={styles.checkItem}>
+              <Pressable
+                style={[styles.checkButton, dentitionCompleted && styles.checkButtonActive]}
+                onPress={() => setDentitionCompleted(!dentitionCompleted)}
+              >
+                {dentitionCompleted && <Text style={styles.checkMark}>✓</Text>}
+              </Pressable>
+              <View style={styles.checkTextContainer}>
+                <Text style={styles.checkTitle}>Dentition Assessment</Text>
+                <Text style={styles.checkDescription}>Current tooth status documented</Text>
+              </View>
+            </View>
+
+            {/* Extractions Assessment */}
+            <View style={styles.checkItem}>
+              <Pressable
+                style={[styles.checkButton, extractionsCompleted && styles.checkButtonActive]}
+                onPress={() => setExtractionsCompleted(!extractionsCompleted)}
+              >
+                {extractionsCompleted && <Text style={styles.checkMark}>✓</Text>}
+              </Pressable>
+              <View style={styles.checkTextContainer}>
+                <Text style={styles.checkTitle}>Extractions Assessment</Text>
+                <Text style={styles.checkDescription}>Extraction planning completed</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.actions}>
+            <Pressable style={styles.cancelButton} onPress={onCancel}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
+            
+            <Pressable 
+              style={[styles.proceedButton, canProceed && styles.proceedButtonEnabled]} 
+              onPress={handleProceed}
+            >
+              <Text style={[styles.proceedButtonText, canProceed && styles.proceedButtonTextEnabled]}>
+                Continue
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+const DentureAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
+  const [showGate, setShowGate] = useState(true);
   const { 
     dentureState, 
     updateDentureType, 
@@ -53,6 +142,17 @@ const DentureAssessmentScreen = ({ route }: any) => {
   } = useDentureAssessment();
 
   const { selectedDentureType, dentureOptions, notes } = dentureState;
+
+  const handleGateConfirm = () => {
+    setShowGate(false);
+  };
+
+  const handleGateCancel = () => {
+    // Navigate back to previous screen
+    if (navigation?.goBack) {
+      navigation.goBack();
+    }
+  };
 
   const saveAssessment = async () => {
     try {
@@ -120,10 +220,28 @@ const DentureAssessmentScreen = ({ route }: any) => {
     updateDentureOptions(updatedOptions);
   };
 
+  // Show gate if not yet confirmed
+  if (showGate) {
+    return (
+      <AssessmentGate 
+        onConfirm={handleGateConfirm} 
+        onCancel={handleGateCancel}
+      />
+    );
+  }
+
+  // Main assessment content
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.header}>🦷 Denture Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
+
+      {/* Prerequisites Completed Banner */}
+      <View style={styles.completedBanner}>
+        <Text style={styles.completedText}>
+          ✅ Prerequisites confirmed
+        </Text>
+      </View>
 
       {/* Denture Type Selection */}
       <View style={styles.dentureTypeCard}>
@@ -187,6 +305,7 @@ const DentureAssessmentScreen = ({ route }: any) => {
 export default DentureAssessmentScreen;
 
 const styles = StyleSheet.create({
+  // Main screen styles
   container: {
     padding: 20,
     alignItems: 'center',
@@ -201,6 +320,152 @@ const styles = StyleSheet.create({
     color: '#665',
     marginBottom: 16,
   },
+  
+  // Completed Banner
+  completedBanner: {
+    backgroundColor: '#d4edda',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    width: '100%',
+    borderLeftWidth: 4,
+    borderLeftColor: '#28a745',
+  },
+  completedText: {
+    fontSize: 14,
+    color: '#155724',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+
+  // Modal Gate Styles
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modal: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 380,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  header: {
+    backgroundColor: '#f8f9fa',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  content: {
+    padding: 20,
+  },
+  instruction: {
+    fontSize: 15,
+    color: '#495057',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  checkItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+  },
+  checkButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#dee2e6',
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  checkButtonActive: {
+    backgroundColor: '#28a745',
+    borderColor: '#28a745',
+  },
+  checkMark: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  checkTextContainer: {
+    flex: 1,
+  },
+  checkTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  checkDescription: {
+    fontSize: 13,
+    color: '#6c757d',
+  },
+  actions: {
+    flexDirection: 'row',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#6c757d',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  proceedButton: {
+    flex: 1,
+    backgroundColor: '#e9ecef',
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  proceedButtonEnabled: {
+    backgroundColor: '#007bff',
+  },
+  proceedButtonText: {
+    color: '#6c757d',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  proceedButtonTextEnabled: {
+    color: 'white',
+  },
+
+  // Original denture assessment styles
   cardTitle: {
     fontSize: 16,
     fontWeight: '600',

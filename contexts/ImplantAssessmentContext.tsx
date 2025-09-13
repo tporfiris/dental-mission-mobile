@@ -1,63 +1,49 @@
 import React, { createContext, useContext, useState } from 'react';
 
-const TOOTH_IDS = [
-  '11','12','13','14','15','16','17','18',
-  '21','22','23','24','25','26','27','28',
-  '31','32','33','34','35','36','37','38',
-  '41','42','43','44','45','46','47','48',
-];
-
-type ImplantType = 'none' | 'single-implant' | 'multiple-implants' | 'implant-bridge' | 
-  'all-on-4' | 'all-on-6' | 'mini-implants' | 'zygomatic-implants';
-
-type ImplantTechnique = 'immediate-placement' | 'delayed-placement' | 'immediate-loading' | 
-  'delayed-loading' | 'guided-surgery' | 'conventional-surgery' | 'bone-grafting' | 'sinus-lift';
-
-interface ToothImplant {
-  planned: boolean;
-  implantType: ImplantType;
-  techniques: ImplantTechnique[];
-  prosthodontistNotes: string;
-}
+type ImplantMode = 'single' | 'bridge';
+type TimingMode = 'immediate' | 'delayed';
 
 interface ImplantAssessmentState {
-  implants: Record<string, ToothImplant>;
-  prosthodontistConsult: boolean;
-  generalNotes: string;
+  implantMode: ImplantMode;
+  // Separate selections for each mode
+  singleImplantTeeth: string[];
+  bridgeImplantTeeth: string[];
+  boneGraftingPlanned: boolean;
+  timingMode: TimingMode;
+  notes: string;
 }
 
-const defaultToothImplant: ToothImplant = {
-  planned: false,
-  implantType: 'none',
-  techniques: [],
-  prosthodontistNotes: ''
-};
-
-const defaultImplants: Record<string, ToothImplant> = {};
-TOOTH_IDS.forEach(id => {
-  defaultImplants[id] = { ...defaultToothImplant };
-});
-
 const defaultImplantState: ImplantAssessmentState = {
-  implants: defaultImplants,
-  prosthodontistConsult: false,
-  generalNotes: '',
+  implantMode: 'single',
+  singleImplantTeeth: [],
+  bridgeImplantTeeth: [],
+  boneGraftingPlanned: false,
+  timingMode: 'immediate',
+  notes: '',
 };
 
 interface ImplantAssessmentContextType {
   implantState: ImplantAssessmentState;
   setImplantState: (state: ImplantAssessmentState) => void;
-  updateToothImplant: (toothId: string, implant: ToothImplant) => void;
-  updateProsthodontistConsult: (consult: boolean) => void;
-  updateGeneralNotes: (notes: string) => void;
+  updateImplantMode: (mode: ImplantMode) => void;
+  getSelectedTeeth: () => string[];
+  toggleTooth: (toothId: string) => void;
+  updateBoneGrafting: (planned: boolean) => void;
+  updateTimingMode: (timing: TimingMode) => void;
+  updateNotes: (notes: string) => void;
+  clearCurrentSelection: () => void;
 }
 
 const ImplantAssessmentContext = createContext<ImplantAssessmentContextType>({
   implantState: defaultImplantState,
   setImplantState: () => {},
-  updateToothImplant: () => {},
-  updateProsthodontistConsult: () => {},
-  updateGeneralNotes: () => {},
+  updateImplantMode: () => {},
+  getSelectedTeeth: () => [],
+  toggleTooth: () => {},
+  updateBoneGrafting: () => {},
+  updateTimingMode: () => {},
+  updateNotes: () => {},
+  clearCurrentSelection: () => {},
 });
 
 export const useImplantAssessment = () => useContext(ImplantAssessmentContext);
@@ -65,31 +51,71 @@ export const useImplantAssessment = () => useContext(ImplantAssessmentContext);
 export const ImplantAssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [implantState, setImplantState] = useState<ImplantAssessmentState>(defaultImplantState);
 
-  const updateToothImplant = (toothId: string, implant: ToothImplant) => {
-    setImplantState(prev => ({
-      ...prev,
-      implants: {
-        ...prev.implants,
-        [toothId]: implant
-      }
+  const updateImplantMode = (mode: ImplantMode) => {
+    setImplantState(prev => ({ 
+      ...prev, 
+      implantMode: mode
+      // Don't clear selections - keep them separate
     }));
   };
 
-  const updateProsthodontistConsult = (consult: boolean) => {
-    setImplantState(prev => ({ ...prev, prosthodontistConsult: consult }));
+  const getSelectedTeeth = () => {
+    return implantState.implantMode === 'single' 
+      ? implantState.singleImplantTeeth 
+      : implantState.bridgeImplantTeeth;
   };
 
-  const updateGeneralNotes = (notes: string) => {
-    setImplantState(prev => ({ ...prev, generalNotes: notes }));
+  const toggleTooth = (toothId: string) => {
+    setImplantState(prev => {
+      if (prev.implantMode === 'single') {
+        const newSingleTeeth = prev.singleImplantTeeth.includes(toothId)
+          ? prev.singleImplantTeeth.filter(id => id !== toothId)
+          : [...prev.singleImplantTeeth, toothId];
+        
+        return { ...prev, singleImplantTeeth: newSingleTeeth };
+      } else {
+        const newBridgeTeeth = prev.bridgeImplantTeeth.includes(toothId)
+          ? prev.bridgeImplantTeeth.filter(id => id !== toothId)
+          : [...prev.bridgeImplantTeeth, toothId];
+        
+        return { ...prev, bridgeImplantTeeth: newBridgeTeeth };
+      }
+    });
+  };
+
+  const updateBoneGrafting = (planned: boolean) => {
+    setImplantState(prev => ({ ...prev, boneGraftingPlanned: planned }));
+  };
+
+  const updateTimingMode = (timing: TimingMode) => {
+    setImplantState(prev => ({ ...prev, timingMode: timing }));
+  };
+
+  const updateNotes = (notes: string) => {
+    setImplantState(prev => ({ ...prev, notes }));
+  };
+
+  const clearCurrentSelection = () => {
+    setImplantState(prev => {
+      if (prev.implantMode === 'single') {
+        return { ...prev, singleImplantTeeth: [] };
+      } else {
+        return { ...prev, bridgeImplantTeeth: [] };
+      }
+    });
   };
 
   return (
-    <ImplantAssessmentContext.Provider value={{ 
-      implantState, 
+    <ImplantAssessmentContext.Provider value={{
+      implantState,
       setImplantState,
-      updateToothImplant,
-      updateProsthodontistConsult,
-      updateGeneralNotes
+      updateImplantMode,
+      getSelectedTeeth,
+      toggleTooth,
+      updateBoneGrafting,
+      updateTimingMode,
+      updateNotes,
+      clearCurrentSelection,
     }}>
       {children}
     </ImplantAssessmentContext.Provider>

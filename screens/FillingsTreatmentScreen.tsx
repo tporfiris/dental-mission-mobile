@@ -1,4 +1,4 @@
-// Fresh Enhanced Filling Treatment Screen
+// Enhanced Filling Treatment Screen with Database Save Functionality
 
 import React, { useState, useMemo } from 'react';
 import {
@@ -217,7 +217,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
 
   // Generate billing codes
   const billingCodes = useMemo(() => {
-    const codes: Array<{ toothId: string; code: string; description: string; }> = [];
+    const codes: Array<{ toothId: string; code: string; description: string; category: string; }> = [];
 
     Object.entries(treatments).forEach(([toothId, treatment]) => {
       if (treatment.surfaces.length > 0 && treatment.fillingMaterial) {
@@ -243,7 +243,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
             description = `${material} - four or more surfaces`;
         }
 
-        codes.push({ toothId, code, description });
+        codes.push({ toothId, code, description, category: 'Restorative' });
       }
 
       if (treatment.rootCanalDone && treatment.canalCount) {
@@ -259,7 +259,8 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
         codes.push({
           toothId,
           code,
-          description: `Root canal therapy (${treatment.canalCount} canals)`
+          description: `Root canal therapy (${treatment.canalCount} canals)`,
+          category: 'Endodontics'
         });
       }
 
@@ -282,12 +283,101 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
             break;
         }
 
-        codes.push({ toothId, code, description });
+        codes.push({ toothId, code, description, category: 'Prosthodontics' });
       }
     });
 
     return codes;
   }, [treatments]);
+
+  // Database save functionality
+  const saveTreatmentToDatabase = async () => {
+    try {
+      const completedTreatments = getCompletedTreatments();
+      const clinicianName = user?.email || 'Unknown Clinician';
+      const completedDate = new Date();
+
+      await database.write(async () => {
+        for (const [toothId, treatment] of completedTreatments) {
+          // Create separate treatment records for each type of treatment
+          const treatmentTypes = [];
+          
+          // Filling/Restoration treatment
+          if (treatment.surfaces.length > 0 && treatment.fillingMaterial) {
+            treatmentTypes.push({
+              type: 'filling',
+              tooth: toothId,
+              surface: treatment.surfaces.join(''),
+              units: treatment.surfaces.length,
+              notes: `${treatment.fillingMaterial} filling on ${treatment.surfaces.join('')} surfaces${treatment.prepDepth ? `, ${treatment.prepDepth} prep` : ''}${treatment.hasCracks ? ', cracks present' : ''}`,
+              billingCodes: billingCodes.filter(c => c.toothId === toothId && c.category === 'Restorative')
+            });
+          }
+
+          // Root canal treatment
+          if (treatment.rootCanalDone && treatment.canalCount) {
+            treatmentTypes.push({
+              type: 'endodontic',
+              tooth: toothId,
+              surface: 'N/A',
+              units: 1,
+              notes: `Root canal therapy - ${treatment.canalCount} canals`,
+              billingCodes: billingCodes.filter(c => c.toothId === toothId && c.category === 'Endodontics')
+            });
+          }
+
+          // Crown treatment
+          if (treatment.crownIndicated && treatment.crownMaterial) {
+            treatmentTypes.push({
+              type: 'crown',
+              tooth: toothId,
+              surface: 'N/A',
+              units: 1,
+              notes: `${treatment.crownMaterial} crown indicated/placed`,
+              billingCodes: billingCodes.filter(c => c.toothId === toothId && c.category === 'Prosthodontics')
+            });
+          }
+
+          // Save each treatment type as a separate record
+          for (const treatmentType of treatmentTypes) {
+            const treatmentId = uuid.v4();
+            
+            await database.get<Treatment>('treatments').create(treatmentRecord => {
+              treatmentRecord._raw.id = treatmentId;
+              treatmentRecord.patientId = patientId;
+              treatmentRecord.visitId = '';
+              treatmentRecord.type = treatmentType.type;
+              treatmentRecord.tooth = treatmentType.tooth;
+              treatmentRecord.surface = treatmentType.surface;
+              treatmentRecord.units = treatmentType.units;
+              treatmentRecord.value = 0;
+              treatmentRecord.billingCodes = JSON.stringify(treatmentType.billingCodes);
+              treatmentRecord.notes = `${treatmentType.notes}. ${notes}`.trim();
+              treatmentRecord.clinicianName = clinicianName;
+              treatmentRecord.completedAt = completedDate;
+            });
+          }
+        }
+      });
+
+      console.log('✅ Filling treatments saved to database:', {
+        patientId,
+        teethTreated: completedTreatments.length,
+        totalSurfaces: getTotalSurfaceCount(),
+        rootCanals: Object.values(treatments).filter(t => t.rootCanalDone).length,
+        crowns: Object.values(treatments).filter(t => t.crownIndicated).length,
+        billingCodes: billingCodes.length,
+        clinician: clinicianName,
+        completedAt: completedDate.toISOString()
+      });
+
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to save filling treatments:', error);
+      Alert.alert('Error', 'Failed to save treatment to database. Please try again.');
+      return false;
+    }
+  };
 
   const handleCompleteTreatment = async () => {
     const completedTreatments = getCompletedTreatments();
@@ -297,53 +387,28 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
       return;
     }
 
+    const rootCanals = Object.values(treatments).filter(t => t.rootCanalDone).length;
+    const crowns = Object.values(treatments).filter(t => t.crownIndicated).length;
+
     Alert.alert(
       'Complete Treatment',
-      `Save ${completedTreatments.length} treatments?`,
+      `Complete treatment for this patient?\n\nTreatment Summary:\n• Teeth Treated: ${completedTreatments.length}\n• Total Surfaces: ${getTotalSurfaceCount()}\n• Root Canals: ${rootCanals}\n• Crowns: ${crowns}\n• Billing Codes: ${billingCodes.length}\n\nThis will save all treatments to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Save', onPress: saveTreatmentToDatabase }
+        { 
+          text: 'Complete & Save', 
+          onPress: async () => {
+            const saved = await saveTreatmentToDatabase();
+            
+            if (saved) {
+              setAllCompleted(true);
+              setCompletedAt(new Date());
+              Alert.alert('Success', '✅ Filling treatment completed and saved to database!');
+            }
+          }
+        }
       ]
     );
-  };
-
-  const saveTreatmentToDatabase = async () => {
-    try {
-      const completedTreatments = getCompletedTreatments();
-      const clinicianName = user?.email || 'Unknown Clinician';
-      const completedDate = new Date();
-
-      await database.write(async () => {
-        for (const [toothId, treatment] of completedTreatments) {
-          const treatmentId = uuid.v4();
-          
-          await database.get<Treatment>('treatments').create(treatmentRecord => {
-            treatmentRecord._raw.id = treatmentId;
-            treatmentRecord.patientId = patientId;
-            treatmentRecord.visitId = '';
-            treatmentRecord.type = treatment.rootCanalDone ? 'endodontic' : 'filling';
-            treatmentRecord.tooth = toothId;
-            treatmentRecord.surface = treatment.surfaces.join('');
-            treatmentRecord.units = treatment.surfaces.length || (treatment.rootCanalDone ? 1 : 0);
-            treatmentRecord.value = 0;
-            treatmentRecord.billingCodes = JSON.stringify(
-              billingCodes.filter(c => c.toothId === toothId)
-            );
-            treatmentRecord.notes = JSON.stringify(treatment);
-            treatmentRecord.clinicianName = clinicianName;
-            treatmentRecord.completedAt = completedDate;
-          });
-        }
-      });
-
-      setAllCompleted(true);
-      setCompletedAt(completedDate);
-      Alert.alert('Success', 'Treatment saved successfully!');
-
-    } catch (error) {
-      console.error('Save error:', error);
-      Alert.alert('Error', 'Failed to save treatment.');
-    }
   };
 
   const resetTreatment = () => {
@@ -411,9 +476,12 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
             <Text style={styles.sectionTitle}>Billing Codes ({billingCodes.length})</Text>
             {billingCodes.map((code, index) => (
               <View key={index} style={styles.codeCard}>
-                <Text style={styles.codeNumber}>
-                  {code.code} - Tooth {code.toothId}
-                </Text>
+                <View style={styles.codeHeader}>
+                  <Text style={styles.codeNumber}>
+                    {code.code} - Tooth {code.toothId}
+                  </Text>
+                  <Text style={styles.codeCategory}>{code.category}</Text>
+                </View>
                 <Text style={styles.codeDescription}>{code.description}</Text>
               </View>
             ))}
@@ -436,7 +504,11 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
 
         {/* Action Buttons */}
         <View style={styles.actionSection}>
-          <Pressable style={styles.completeButton} onPress={handleCompleteTreatment}>
+          <Pressable 
+            style={[styles.completeButton, allCompleted && styles.completedButton]} 
+            onPress={handleCompleteTreatment}
+            disabled={allCompleted}
+          >
             <Text style={styles.actionButtonText}>
               {allCompleted ? '✅ Completed' : 'Complete Treatment'}
             </Text>
@@ -899,11 +971,24 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#007bff',
   },
+  codeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   codeNumber: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#007bff',
-    marginBottom: 4,
+  },
+  codeCategory: {
+    fontSize: 12,
+    color: '#6c757d',
+    backgroundColor: '#e9ecef',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   codeDescription: {
     fontSize: 13,
@@ -940,6 +1025,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 20,
     alignItems: 'center',
+  },
+  completedButton: {
+    backgroundColor: '#6c757d',
   },
   resetButton: {
     backgroundColor: '#fff',

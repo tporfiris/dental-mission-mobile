@@ -1,6 +1,6 @@
-// Filloing assessment screen
+// Comprehensive Dental Assessment screen with State Preservation
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,13 @@ import FillingsAssessment from '../db/models/FillingsAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useFillingsAssessment } from '../contexts/FillingsAssessmentContext';
+
+const TOOTH_IDS = [
+  '11','12','13','14','15','16','17','18',
+  '21','22','23','24','25','26','27','28',
+  '31','32','33','34','35','36','37','38',
+  '41','42','43','44','45','46','47','48',
+];
 
 const SURFACES = ['M', 'D', 'L', 'B', 'O'] as const;
 type Surface = typeof SURFACES[number];
@@ -90,10 +97,19 @@ const defaultToothState: ToothAssessment = {
   apicalDiagnosis: null,
 };
 
+// Enhanced assessment state interface
+interface EnhancedFillingsAssessmentState {
+  teethStates: Record<string, ToothAssessment>;
+  selectedTooth: string | null;
+  modalVisible: boolean;
+  activeTab: 'fillings' | 'crowns' | 'existing_rc' | 'cavities' | 'broken' | 'rootcanal';
+}
+
 const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
+  const { restorationStates, setRestorationStates } = useFillingsAssessment();
   
-  // Initialize all teeth with default state
+  // Initialize teeth states
   const initializeTeethStates = () => {
     const initialStates: Record<string, ToothAssessment> = {};
     [...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].forEach(toothId => {
@@ -102,10 +118,37 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
     return initialStates;
   };
 
-  const [teethStates, setTeethStates] = useState<Record<string, ToothAssessment>>(initializeTeethStates);
-  const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<'fillings' | 'crowns' | 'existing_rc' | 'cavities' | 'broken' | 'rootcanal'>('fillings');
+  // Get initial state from context or defaults
+  const getInitialState = (): EnhancedFillingsAssessmentState => {
+    return {
+      teethStates: initializeTeethStates(),
+      selectedTooth: null,
+      modalVisible: false,
+      activeTab: 'fillings'
+    };
+  };
+
+  // Initialize state from context or defaults
+  const [enhancedState, setEnhancedState] = useState<EnhancedFillingsAssessmentState>(() => {
+    // Try to get saved state from restorationStates context
+    if (restorationStates && typeof restorationStates === 'object' && 'enhancedAssessment' in restorationStates) {
+      return { ...getInitialState(), ...restorationStates.enhancedAssessment };
+    }
+    return getInitialState();
+  });
+
+  // Save state to context whenever it changes
+  useEffect(() => {
+    setRestorationStates({
+      ...restorationStates,
+      enhancedAssessment: enhancedState
+    });
+  }, [enhancedState]);
+
+  // Helper function to update state
+  const updateState = (updates: Partial<EnhancedFillingsAssessmentState>) => {
+    setEnhancedState(prev => ({ ...prev, ...updates }));
+  };
 
   // Updated tooth positions - same as other assessment screens
   const toothOffsets: Record<string, { x: number; y: number }> = {
@@ -156,7 +199,14 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
 
       console.log('🔍 Matched existing dental assessment:', existing);
   
-      const jsonData = JSON.stringify(teethStates);
+      // Create comprehensive assessment data object
+      const assessmentData = {
+        ...enhancedState,
+        timestamp: new Date().toISOString(),
+        restorationStates
+      };
+      
+      const jsonData = JSON.stringify(assessmentData);
   
       await database.write(async () => {
         if (existing.length > 0) {
@@ -193,28 +243,33 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
   };
 
   const openToothEditor = (toothId: string) => {
-    setSelectedTooth(toothId);
-    setModalVisible(true);
-    setActiveTab('fillings');
+    updateState({ 
+      selectedTooth: toothId, 
+      modalVisible: true, 
+      activeTab: 'fillings' 
+    });
   };
 
   const closeToothEditor = () => {
-    setSelectedTooth(null);
-    setModalVisible(false);
+    updateState({ 
+      selectedTooth: null, 
+      modalVisible: false 
+    });
   };
 
   const updateToothState = (toothId: string, updates: Partial<ToothAssessment>) => {
-    setTeethStates(prev => ({
-      ...prev,
+    const newTeethStates = {
+      ...enhancedState.teethStates,
       [toothId]: {
-        ...prev[toothId],
+        ...enhancedState.teethStates[toothId],
         ...updates
       }
-    }));
+    };
+    updateState({ teethStates: newTeethStates });
   };
 
   const toggleSurface = (toothId: string, category: 'fillingSurfaces' | 'cavitySurfaces' | 'brokenSurfaces', surface: Surface) => {
-    const currentSurfaces = teethStates[toothId][category];
+    const currentSurfaces = enhancedState.teethStates[toothId][category];
     const newSurfaces = currentSurfaces.includes(surface)
       ? currentSurfaces.filter(s => s !== surface)
       : [...currentSurfaces, surface].sort();
@@ -223,12 +278,12 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
   };
 
   const clearTooth = () => {
-    if (!selectedTooth) return;
-    updateToothState(selectedTooth, { ...defaultToothState });
+    if (!enhancedState.selectedTooth) return;
+    updateToothState(enhancedState.selectedTooth, { ...defaultToothState });
   };
 
   const getToothStyle = (toothId: string) => {
-    const tooth = teethStates[toothId];
+    const tooth = enhancedState.teethStates[toothId];
     
     // Priority order: Root canal needed (red) > Existing RC (purple) > Broken (orange) > Cavities (yellow) > Crowns (gold) > Fillings (blue) > Normal (green)
     if (tooth.needsRootCanal) return styles.toothRootCanal;
@@ -252,7 +307,7 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
   };
 
   const getToothStatusIndicators = (toothId: string) => {
-    const tooth = teethStates[toothId];
+    const tooth = enhancedState.teethStates[toothId];
     const indicators = [];
     
     if (tooth.hasFillings && tooth.fillingSurfaces.length > 0) {
@@ -307,7 +362,7 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
 
   // Calculate assessment summary
   const assessmentSummary = useMemo(() => {
-    const teeth = Object.entries(teethStates);
+    const teeth = Object.entries(enhancedState.teethStates);
     
     return {
       totalFillings: teeth.filter(([_, tooth]) => tooth.hasFillings && tooth.fillingSurfaces.length > 0).length,
@@ -322,10 +377,10 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
       metalCrowns: teeth.filter(([_, tooth]) => tooth.crownMaterial === 'metal').length,
       pfmCrowns: teeth.filter(([_, tooth]) => tooth.crownMaterial === 'PFM').length,
     };
-  }, [teethStates]);
+  }, [enhancedState.teethStates]);
 
   const showDetailedReport = () => {
-    const teeth = Object.entries(teethStates).filter(([_, tooth]) => 
+    const teeth = Object.entries(enhancedState.teethStates).filter(([_, tooth]) => 
       tooth.hasFillings || tooth.hasCrowns || tooth.hasExistingRootCanal || tooth.hasCavities || tooth.isBroken || tooth.needsRootCanal
     );
 
@@ -486,63 +541,63 @@ ${teeth.map(([toothId, tooth]) => {
       <Modal
         animationType="slide"
         transparent={true}
-        visible={modalVisible}
+        visible={enhancedState.modalVisible}
         onRequestClose={closeToothEditor}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              Assess Tooth {selectedTooth}
+              Assess Tooth {enhancedState.selectedTooth}
             </Text>
             
             {/* Tab Navigation */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScrollContainer}>
               <View style={styles.tabContainer}>
                 <Pressable
-                  style={[styles.tab, activeTab === 'fillings' && styles.activeTab]}
-                  onPress={() => setActiveTab('fillings')}
+                  style={[styles.tab, enhancedState.activeTab === 'fillings' && styles.activeTab]}
+                  onPress={() => updateState({ activeTab: 'fillings' })}
                 >
-                  <Text style={[styles.tabText, activeTab === 'fillings' && styles.activeTabText]}>
+                  <Text style={[styles.tabText, enhancedState.activeTab === 'fillings' && styles.activeTabText]}>
                     Fillings
                   </Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.tab, activeTab === 'crowns' && styles.activeTab]}
-                  onPress={() => setActiveTab('crowns')}
+                  style={[styles.tab, enhancedState.activeTab === 'crowns' && styles.activeTab]}
+                  onPress={() => updateState({ activeTab: 'crowns' })}
                 >
-                  <Text style={[styles.tabText, activeTab === 'crowns' && styles.activeTabText]}>
+                  <Text style={[styles.tabText, enhancedState.activeTab === 'crowns' && styles.activeTabText]}>
                     Crowns
                   </Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.tab, activeTab === 'existing_rc' && styles.activeTab]}
-                  onPress={() => setActiveTab('existing_rc')}
+                  style={[styles.tab, enhancedState.activeTab === 'existing_rc' && styles.activeTab]}
+                  onPress={() => updateState({ activeTab: 'existing_rc' })}
                 >
-                  <Text style={[styles.tabText, activeTab === 'existing_rc' && styles.activeTabText]}>
+                  <Text style={[styles.tabText, enhancedState.activeTab === 'existing_rc' && styles.activeTabText]}>
                     Existing RCT
                   </Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.tab, activeTab === 'cavities' && styles.activeTab]}
-                  onPress={() => setActiveTab('cavities')}
+                  style={[styles.tab, enhancedState.activeTab === 'cavities' && styles.activeTab]}
+                  onPress={() => updateState({ activeTab: 'cavities' })}
                 >
-                  <Text style={[styles.tabText, activeTab === 'cavities' && styles.activeTabText]}>
+                  <Text style={[styles.tabText, enhancedState.activeTab === 'cavities' && styles.activeTabText]}>
                     Cavities
                   </Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.tab, activeTab === 'broken' && styles.activeTab]}
-                  onPress={() => setActiveTab('broken')}
+                  style={[styles.tab, enhancedState.activeTab === 'broken' && styles.activeTab]}
+                  onPress={() => updateState({ activeTab: 'broken' })}
                 >
-                  <Text style={[styles.tabText, activeTab === 'broken' && styles.activeTabText]}>
+                  <Text style={[styles.tabText, enhancedState.activeTab === 'broken' && styles.activeTabText]}>
                     Broken
                   </Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.tab, activeTab === 'rootcanal' && styles.activeTab]}
-                  onPress={() => setActiveTab('rootcanal')}
+                  style={[styles.tab, enhancedState.activeTab === 'rootcanal' && styles.activeTab]}
+                  onPress={() => updateState({ activeTab: 'rootcanal' })}
                 >
-                  <Text style={[styles.tabText, activeTab === 'rootcanal' && styles.activeTabText]}>
+                  <Text style={[styles.tabText, enhancedState.activeTab === 'rootcanal' && styles.activeTabText]}>
                     RCT Needed
                   </Text>
                 </Pressable>
@@ -550,30 +605,30 @@ ${teeth.map(([toothId, tooth]) => {
             </ScrollView>
 
             {/* Tab Content */}
-            {selectedTooth && (
+            {enhancedState.selectedTooth && (
               <ScrollView style={styles.tabContent}>
-                {activeTab === 'fillings' && (
+                {enhancedState.activeTab === 'fillings' && (
                   <View>
                     <Pressable
                       style={[
                         styles.toggleButton,
-                        teethStates[selectedTooth]?.hasFillings && styles.toggleButtonActive
+                        enhancedState.teethStates[enhancedState.selectedTooth]?.hasFillings && styles.toggleButtonActive
                       ]}
-                      onPress={() => updateToothState(selectedTooth, { 
-                        hasFillings: !teethStates[selectedTooth]?.hasFillings,
-                        fillingType: !teethStates[selectedTooth]?.hasFillings ? null : teethStates[selectedTooth]?.fillingType,
-                        fillingSurfaces: !teethStates[selectedTooth]?.hasFillings ? [] : teethStates[selectedTooth]?.fillingSurfaces
+                      onPress={() => updateToothState(enhancedState.selectedTooth!, { 
+                        hasFillings: !enhancedState.teethStates[enhancedState.selectedTooth!]?.hasFillings,
+                        fillingType: !enhancedState.teethStates[enhancedState.selectedTooth!]?.hasFillings ? null : enhancedState.teethStates[enhancedState.selectedTooth!]?.fillingType,
+                        fillingSurfaces: !enhancedState.teethStates[enhancedState.selectedTooth!]?.hasFillings ? [] : enhancedState.teethStates[enhancedState.selectedTooth!]?.fillingSurfaces
                       })}
                     >
                       <Text style={[
                         styles.toggleButtonText,
-                        teethStates[selectedTooth]?.hasFillings && styles.toggleButtonActiveText
+                        enhancedState.teethStates[enhancedState.selectedTooth]?.hasFillings && styles.toggleButtonActiveText
                       ]}>
                         Has Existing Fillings
                       </Text>
                     </Pressable>
 
-                    {teethStates[selectedTooth]?.hasFillings && (
+                    {enhancedState.teethStates[enhancedState.selectedTooth]?.hasFillings && (
                       <>
                         <Text style={styles.sectionTitle}>Filling Type:</Text>
                         <View style={styles.fillingTypeButtons}>
@@ -582,13 +637,13 @@ ${teeth.map(([toothId, tooth]) => {
                               key={type}
                               style={[
                                 styles.fillingTypeButton,
-                                teethStates[selectedTooth]?.fillingType === type && styles.fillingTypeButtonSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.fillingType === type && styles.fillingTypeButtonSelected
                               ]}
-                              onPress={() => updateToothState(selectedTooth, { fillingType: type })}
+                              onPress={() => updateToothState(enhancedState.selectedTooth!, { fillingType: type })}
                             >
                               <Text style={[
                                 styles.fillingTypeButtonText,
-                                teethStates[selectedTooth]?.fillingType === type && styles.fillingTypeButtonTextSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.fillingType === type && styles.fillingTypeButtonTextSelected
                               ]}>
                                 {type.charAt(0).toUpperCase() + type.slice(1)}
                               </Text>
@@ -603,13 +658,13 @@ ${teeth.map(([toothId, tooth]) => {
                               key={surface}
                               style={[
                                 styles.surfaceButton,
-                                teethStates[selectedTooth]?.fillingSurfaces.includes(surface) && styles.surfaceButtonSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.fillingSurfaces.includes(surface) && styles.surfaceButtonSelected
                               ]}
-                              onPress={() => toggleSurface(selectedTooth, 'fillingSurfaces', surface)}
+                              onPress={() => toggleSurface(enhancedState.selectedTooth!, 'fillingSurfaces', surface)}
                             >
                               <Text style={[
                                 styles.surfaceButtonText,
-                                teethStates[selectedTooth]?.fillingSurfaces.includes(surface) && styles.surfaceButtonTextSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.fillingSurfaces.includes(surface) && styles.surfaceButtonTextSelected
                               ]}>
                                 {surface}
                               </Text>
@@ -621,27 +676,27 @@ ${teeth.map(([toothId, tooth]) => {
                   </View>
                 )}
 
-                {activeTab === 'crowns' && (
+                {enhancedState.activeTab === 'crowns' && (
                   <View>
                     <Pressable
                       style={[
                         styles.toggleButton,
-                        teethStates[selectedTooth]?.hasCrowns && styles.toggleButtonActive
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCrowns && styles.toggleButtonActive
                       ]}
-                      onPress={() => updateToothState(selectedTooth, { 
-                        hasCrowns: !teethStates[selectedTooth]?.hasCrowns,
-                        crownMaterial: !teethStates[selectedTooth]?.hasCrowns ? null : teethStates[selectedTooth]?.crownMaterial
+                      onPress={() => updateToothState(enhancedState.selectedTooth!, { 
+                        hasCrowns: !enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCrowns,
+                        crownMaterial: !enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCrowns ? null : enhancedState.teethStates[enhancedState.selectedTooth!]?.crownMaterial
                       })}
                     >
                       <Text style={[
                         styles.toggleButtonText,
-                        teethStates[selectedTooth]?.hasCrowns && styles.toggleButtonActiveText
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCrowns && styles.toggleButtonActiveText
                       ]}>
                         Has Existing Crown
                       </Text>
                     </Pressable>
 
-                    {teethStates[selectedTooth]?.hasCrowns && (
+                    {enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCrowns && (
                       <>
                         <Text style={styles.sectionTitle}>Crown Material:</Text>
                         <View style={styles.fillingTypeButtons}>
@@ -650,13 +705,13 @@ ${teeth.map(([toothId, tooth]) => {
                               key={material}
                               style={[
                                 styles.fillingTypeButton,
-                                teethStates[selectedTooth]?.crownMaterial === material && styles.fillingTypeButtonSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.crownMaterial === material && styles.fillingTypeButtonSelected
                               ]}
-                              onPress={() => updateToothState(selectedTooth, { crownMaterial: material })}
+                              onPress={() => updateToothState(enhancedState.selectedTooth!, { crownMaterial: material })}
                             >
                               <Text style={[
                                 styles.fillingTypeButtonText,
-                                teethStates[selectedTooth]?.crownMaterial === material && styles.fillingTypeButtonTextSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.crownMaterial === material && styles.fillingTypeButtonTextSelected
                               ]}>
                                 {material.toUpperCase()}
                               </Text>
@@ -668,21 +723,21 @@ ${teeth.map(([toothId, tooth]) => {
                   </View>
                 )}
 
-                {activeTab === 'existing_rc' && (
+                {enhancedState.activeTab === 'existing_rc' && (
                   <View>
                     <Text style={styles.sectionTitle}>Root Canal Treatment History:</Text>
                     <Pressable
                       style={[
                         styles.toggleButton,
-                        teethStates[selectedTooth]?.hasExistingRootCanal && styles.toggleButtonActive
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.hasExistingRootCanal && styles.toggleButtonActive
                       ]}
-                      onPress={() => updateToothState(selectedTooth, { 
-                        hasExistingRootCanal: !teethStates[selectedTooth]?.hasExistingRootCanal
+                      onPress={() => updateToothState(enhancedState.selectedTooth!, { 
+                        hasExistingRootCanal: !enhancedState.teethStates[enhancedState.selectedTooth!]?.hasExistingRootCanal
                       })}
                     >
                       <Text style={[
                         styles.toggleButtonText,
-                        teethStates[selectedTooth]?.hasExistingRootCanal && styles.toggleButtonActiveText
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.hasExistingRootCanal && styles.toggleButtonActiveText
                       ]}>
                         Has Existing Root Canal Treatment
                       </Text>
@@ -690,27 +745,27 @@ ${teeth.map(([toothId, tooth]) => {
                   </View>
                 )}
 
-                {activeTab === 'cavities' && (
+                {enhancedState.activeTab === 'cavities' && (
                   <View>
                     <Pressable
                       style={[
                         styles.toggleButton,
-                        teethStates[selectedTooth]?.hasCavities && styles.toggleButtonActive
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCavities && styles.toggleButtonActive
                       ]}
-                      onPress={() => updateToothState(selectedTooth, { 
-                        hasCavities: !teethStates[selectedTooth]?.hasCavities,
-                        cavitySurfaces: !teethStates[selectedTooth]?.hasCavities ? [] : teethStates[selectedTooth]?.cavitySurfaces
+                      onPress={() => updateToothState(enhancedState.selectedTooth!, { 
+                        hasCavities: !enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCavities,
+                        cavitySurfaces: !enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCavities ? [] : enhancedState.teethStates[enhancedState.selectedTooth!]?.cavitySurfaces
                       })}
                     >
                       <Text style={[
                         styles.toggleButtonText,
-                        teethStates[selectedTooth]?.hasCavities && styles.toggleButtonActiveText
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCavities && styles.toggleButtonActiveText
                       ]}>
                         Has Cavities
                       </Text>
                     </Pressable>
 
-                    {teethStates[selectedTooth]?.hasCavities && (
+                    {enhancedState.teethStates[enhancedState.selectedTooth!]?.hasCavities && (
                       <>
                         <Text style={styles.sectionTitle}>Cavity Locations:</Text>
                         <View style={styles.surfaceButtons}>
@@ -719,13 +774,13 @@ ${teeth.map(([toothId, tooth]) => {
                               key={surface}
                               style={[
                                 styles.surfaceButton,
-                                teethStates[selectedTooth]?.cavitySurfaces.includes(surface) && styles.surfaceButtonSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.cavitySurfaces.includes(surface) && styles.surfaceButtonSelected
                               ]}
-                              onPress={() => toggleSurface(selectedTooth, 'cavitySurfaces', surface)}
+                              onPress={() => toggleSurface(enhancedState.selectedTooth!, 'cavitySurfaces', surface)}
                             >
                               <Text style={[
                                 styles.surfaceButtonText,
-                                teethStates[selectedTooth]?.cavitySurfaces.includes(surface) && styles.surfaceButtonTextSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.cavitySurfaces.includes(surface) && styles.surfaceButtonTextSelected
                               ]}>
                                 {surface}
                               </Text>
@@ -737,27 +792,27 @@ ${teeth.map(([toothId, tooth]) => {
                   </View>
                 )}
 
-                {activeTab === 'broken' && (
+                {enhancedState.activeTab === 'broken' && (
                   <View>
                     <Pressable
                       style={[
                         styles.toggleButton,
-                        teethStates[selectedTooth]?.isBroken && styles.toggleButtonActive
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.isBroken && styles.toggleButtonActive
                       ]}
-                      onPress={() => updateToothState(selectedTooth, { 
-                        isBroken: !teethStates[selectedTooth]?.isBroken,
-                        brokenSurfaces: !teethStates[selectedTooth]?.isBroken ? [] : teethStates[selectedTooth]?.brokenSurfaces
+                      onPress={() => updateToothState(enhancedState.selectedTooth!, { 
+                        isBroken: !enhancedState.teethStates[enhancedState.selectedTooth!]?.isBroken,
+                        brokenSurfaces: !enhancedState.teethStates[enhancedState.selectedTooth!]?.isBroken ? [] : enhancedState.teethStates[enhancedState.selectedTooth!]?.brokenSurfaces
                       })}
                     >
                       <Text style={[
                         styles.toggleButtonText,
-                        teethStates[selectedTooth]?.isBroken && styles.toggleButtonActiveText
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.isBroken && styles.toggleButtonActiveText
                       ]}>
                         Is Broken/Cracked
                       </Text>
                     </Pressable>
 
-                    {teethStates[selectedTooth]?.isBroken && (
+                    {enhancedState.teethStates[enhancedState.selectedTooth!]?.isBroken && (
                       <>
                         <Text style={styles.sectionTitle}>Affected Areas:</Text>
                         <View style={styles.surfaceButtons}>
@@ -766,13 +821,13 @@ ${teeth.map(([toothId, tooth]) => {
                               key={surface}
                               style={[
                                 styles.surfaceButton,
-                                teethStates[selectedTooth]?.brokenSurfaces.includes(surface) && styles.surfaceButtonSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.brokenSurfaces.includes(surface) && styles.surfaceButtonSelected
                               ]}
-                              onPress={() => toggleSurface(selectedTooth, 'brokenSurfaces', surface)}
+                              onPress={() => toggleSurface(enhancedState.selectedTooth!, 'brokenSurfaces', surface)}
                             >
                               <Text style={[
                                 styles.surfaceButtonText,
-                                teethStates[selectedTooth]?.brokenSurfaces.includes(surface) && styles.surfaceButtonTextSelected
+                                enhancedState.teethStates[enhancedState.selectedTooth!]?.brokenSurfaces.includes(surface) && styles.surfaceButtonTextSelected
                               ]}>
                                 {surface}
                               </Text>
@@ -784,28 +839,28 @@ ${teeth.map(([toothId, tooth]) => {
                   </View>
                 )}
 
-                {activeTab === 'rootcanal' && (
+                {enhancedState.activeTab === 'rootcanal' && (
                   <View>
                     <Pressable
                       style={[
                         styles.toggleButton,
-                        teethStates[selectedTooth]?.needsRootCanal && styles.toggleButtonActive
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.needsRootCanal && styles.toggleButtonActive
                       ]}
-                      onPress={() => updateToothState(selectedTooth, { 
-                        needsRootCanal: !teethStates[selectedTooth]?.needsRootCanal,
-                        pulpDiagnosis: !teethStates[selectedTooth]?.needsRootCanal ? null : teethStates[selectedTooth]?.pulpDiagnosis,
-                        apicalDiagnosis: !teethStates[selectedTooth]?.needsRootCanal ? null : teethStates[selectedTooth]?.apicalDiagnosis
+                      onPress={() => updateToothState(enhancedState.selectedTooth!, { 
+                        needsRootCanal: !enhancedState.teethStates[enhancedState.selectedTooth!]?.needsRootCanal,
+                        pulpDiagnosis: !enhancedState.teethStates[enhancedState.selectedTooth!]?.needsRootCanal ? null : enhancedState.teethStates[enhancedState.selectedTooth!]?.pulpDiagnosis,
+                        apicalDiagnosis: !enhancedState.teethStates[enhancedState.selectedTooth!]?.needsRootCanal ? null : enhancedState.teethStates[enhancedState.selectedTooth!]?.apicalDiagnosis
                       })}
                     >
                       <Text style={[
                         styles.toggleButtonText,
-                        teethStates[selectedTooth]?.needsRootCanal && styles.toggleButtonActiveText
+                        enhancedState.teethStates[enhancedState.selectedTooth!]?.needsRootCanal && styles.toggleButtonActiveText
                       ]}>
                         Needs Root Canal Treatment
                       </Text>
                     </Pressable>
 
-                    {teethStates[selectedTooth]?.needsRootCanal && (
+                    {enhancedState.teethStates[enhancedState.selectedTooth!]?.needsRootCanal && (
                       <>
                         <Text style={styles.sectionTitle}>Pulp Diagnosis:</Text>
                         {PULP_DIAGNOSES.map(diagnosis => (
@@ -813,13 +868,13 @@ ${teeth.map(([toothId, tooth]) => {
                             key={diagnosis}
                             style={[
                               styles.diagnosisButton,
-                              teethStates[selectedTooth]?.pulpDiagnosis === diagnosis && styles.diagnosisButtonSelected
+                              enhancedState.teethStates[enhancedState.selectedTooth!]?.pulpDiagnosis === diagnosis && styles.diagnosisButtonSelected
                             ]}
-                            onPress={() => updateToothState(selectedTooth, { pulpDiagnosis: diagnosis })}
+                            onPress={() => updateToothState(enhancedState.selectedTooth!, { pulpDiagnosis: diagnosis })}
                           >
                             <Text style={[
                               styles.diagnosisButtonText,
-                              teethStates[selectedTooth]?.pulpDiagnosis === diagnosis && styles.diagnosisButtonTextSelected
+                              enhancedState.teethStates[enhancedState.selectedTooth!]?.pulpDiagnosis === diagnosis && styles.diagnosisButtonTextSelected
                             ]}>
                               {diagnosis}
                             </Text>
@@ -832,13 +887,13 @@ ${teeth.map(([toothId, tooth]) => {
                             key={diagnosis}
                             style={[
                               styles.diagnosisButton,
-                              teethStates[selectedTooth]?.apicalDiagnosis === diagnosis && styles.diagnosisButtonSelected
+                              enhancedState.teethStates[enhancedState.selectedTooth!]?.apicalDiagnosis === diagnosis && styles.diagnosisButtonSelected
                             ]}
-                            onPress={() => updateToothState(selectedTooth, { apicalDiagnosis: diagnosis })}
+                            onPress={() => updateToothState(enhancedState.selectedTooth!, { apicalDiagnosis: diagnosis })}
                           >
                             <Text style={[
                               styles.diagnosisButtonText,
-                              teethStates[selectedTooth]?.apicalDiagnosis === diagnosis && styles.diagnosisButtonTextSelected
+                              enhancedState.teethStates[enhancedState.selectedTooth!]?.apicalDiagnosis === diagnosis && styles.diagnosisButtonTextSelected
                             ]}>
                               {diagnosis}
                             </Text>
@@ -1238,5 +1293,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
-// End of filling assessment screen

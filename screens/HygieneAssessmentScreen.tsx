@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -89,48 +89,87 @@ const AAP_GRADE_DESCRIPTIONS = {
   'D': 'Necrotizing gingivitis/periodontitis'
 };
 
+// Enhanced Hygiene Assessment State Interface
+interface EnhancedHygieneState {
+  // Assessment mode
+  assessmentMode: 'calculus' | 'plaque' | 'probing' | 'bleeding' | 'aap';
+  
+  // Calculus assessment
+  calculusLevel: HygieneLevel;
+  calculusDistribution: DistributionType;
+  calculusQuadrants: Quadrant[];
+  
+  // Plaque assessment
+  plaqueLevel: HygieneLevel;
+  plaqueDistribution: DistributionType;
+  plaqueQuadrants: Quadrant[];
+  
+  // Probing depths
+  probingDepths: Record<string, ProbingDepth>;
+  
+  // Bleeding on probing
+  bleedingOnProbing: Record<string, boolean>;
+  
+  // AAP Classification
+  aapStage: AAPStage | null;
+  aapGrade: AAPGrade | null;
+  
+  // UI state
+  selectedTooth: string | null;
+  showDepthSelector: boolean;
+}
+
 const HygieneAssessmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { hygieneStates, setHygieneStates } = useHygieneAssessment();
 
-  // Assessment mode state
-  const [assessmentMode, setAssessmentMode] = useState<'calculus' | 'plaque' | 'probing' | 'bleeding' | 'aap'>('calculus');
-
-  // Calculus assessment state
-  const [calculusLevel, setCalculusLevel] = useState<HygieneLevel>('none');
-  const [calculusDistribution, setCalculusDistribution] = useState<DistributionType>('none');
-  const [calculusQuadrants, setCalculusQuadrants] = useState<Quadrant[]>([]);
-
-  // Plaque assessment state
-  const [plaqueLevel, setPlaqueLevel] = useState<HygieneLevel>('none');
-  const [plaqueDistribution, setPlaqueDistribution] = useState<DistributionType>('none');
-  const [plaqueQuadrants, setPlaqueQuadrants] = useState<Quadrant[]>([]);
-  
-  // Probing depths state
-  const [probingDepths, setProbingDepths] = useState<Record<string, ProbingDepth>>(() => {
-    const initialDepths: Record<string, ProbingDepth> = {};
+  // Create a comprehensive state object that gets preserved in the context
+  const getInitialState = (): EnhancedHygieneState => {
+    const initialProbingDepths: Record<string, ProbingDepth> = {};
+    const initialBleedingOnProbing: Record<string, boolean> = {};
     ALL_TEETH.forEach(toothId => {
-      initialDepths[toothId] = 2;
+      initialProbingDepths[toothId] = 2;
+      initialBleedingOnProbing[toothId] = false;
     });
-    return initialDepths;
+
+    return {
+      assessmentMode: 'calculus',
+      calculusLevel: 'none',
+      calculusDistribution: 'none',
+      calculusQuadrants: [],
+      plaqueLevel: 'none',
+      plaqueDistribution: 'none',
+      plaqueQuadrants: [],
+      probingDepths: initialProbingDepths,
+      bleedingOnProbing: initialBleedingOnProbing,
+      aapStage: null,
+      aapGrade: null,
+      selectedTooth: null,
+      showDepthSelector: false,
+    };
+  };
+
+  // Initialize state from context or defaults
+  const [enhancedState, setEnhancedState] = useState<EnhancedHygieneState>(() => {
+    // Try to get saved state from hygieneStates context
+    if (hygieneStates && typeof hygieneStates === 'object' && 'enhancedAssessment' in hygieneStates) {
+      return { ...getInitialState(), ...hygieneStates.enhancedAssessment };
+    }
+    return getInitialState();
   });
 
-  // Bleeding on probing state
-  const [bleedingOnProbing, setBleedingOnProbing] = useState<Record<string, boolean>>(() => {
-    const initialBleeding: Record<string, boolean> = {};
-    ALL_TEETH.forEach(toothId => {
-      initialBleeding[toothId] = false;
+  // Save state to context whenever it changes
+  useEffect(() => {
+    setHygieneStates({
+      ...hygieneStates,
+      enhancedAssessment: enhancedState
     });
-    return initialBleeding;
-  });
+  }, [enhancedState]);
 
-  // AAP Classification state
-  const [aapStage, setAapStage] = useState<AAPStage | null>(null);
-  const [aapGrade, setAapGrade] = useState<AAPGrade | null>(null);
-  
-  // UI state for probing depth selector
-  const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
-  const [showDepthSelector, setShowDepthSelector] = useState(false);
+  // Helper function to update state
+  const updateState = (updates: Partial<EnhancedHygieneState>) => {
+    setEnhancedState(prev => ({ ...prev, ...updates }));
+  };
 
   // Tooth positions for diagram
   const toothOffsets: Record<string, { x: number; y: number }> = {
@@ -152,163 +191,135 @@ const HygieneAssessmentScreen = ({ route }: any) => {
     '38': { x: 125, y: 130 },   '48': { x: -125, y: 130 },
   };
 
-  // Logging functions
-  const logCalculusAssessment = () => {
-    console.log('🦷 CALCULUS ASSESSMENT LOG:');
-    console.log(`📊 Calculus Level: ${CALCULUS_LABELS[calculusLevel]}`);
-    console.log(`📍 Distribution: ${calculusDistribution}`);
-    
-    if (calculusLevel !== 'none' && calculusDistribution === 'localized' && calculusQuadrants.length > 0) {
-      console.log(`📋 Affected Quadrants (${calculusQuadrants.length}/4):`);
-      calculusQuadrants.forEach(quadrant => {
-        console.log(`   • ${QUADRANT_LABELS[quadrant]}`);
+  // Save assessment to WatermelonDB
+  const saveAssessment = async () => {
+    try {
+      const collection = database.get<HygieneAssessment>('hygiene_assessments');
+      console.log('🔎 Looking for existing hygiene assessment for patient:', patientId);
+      const existing = await collection
+        .query(Q.where('patient_id', Q.eq(patientId)))
+        .fetch();
+
+      const assessmentData = {
+        ...enhancedState,
+        timestamp: new Date().toISOString(),
+        hygieneStates
+      };
+      
+      const jsonData = JSON.stringify(assessmentData);
+
+      await database.write(async () => {
+        if (existing.length > 0) {
+          await existing[0].update(record => {
+            record.data = jsonData;
+            record.updatedAt = new Date();
+          });
+          console.log('✅ Hygiene assessment updated');
+          Alert.alert('✅ Hygiene assessment updated');
+        } else {
+          await collection.create(record => {
+            const id = uuid.v4();
+            record._raw.id = id;
+            record.patientId = patientId;
+            record.data = jsonData;
+            record.createdAt = new Date();
+            record.updatedAt = new Date();
+            Alert.alert('✅ Hygiene assessment created')
+          });
+        }
       });
+    } catch (err) {
+      console.error('❌ Failed to save hygiene assessment:', err);
+      Alert.alert('❌ Failed to save hygiene assessment');
     }
-    console.log('---');
-  };
-
-  const logPlaqueAssessment = () => {
-    console.log('🧽 PLAQUE ASSESSMENT LOG:');
-    console.log(`📊 Plaque Level: ${PLAQUE_LABELS[plaqueLevel]}`);
-    console.log(`📍 Distribution: ${plaqueDistribution}`);
-    
-    if (plaqueLevel !== 'none' && plaqueDistribution === 'localized' && plaqueQuadrants.length > 0) {
-      console.log(`📋 Affected Quadrants (${plaqueQuadrants.length}/4):`);
-      plaqueQuadrants.forEach(quadrant => {
-        console.log(`   • ${QUADRANT_LABELS[quadrant]}`);
-      });
-    }
-    console.log('---');
-  };
-
-  const logProbingDepthAssessment = () => {
-    console.log('🔍 PROBING DEPTH ASSESSMENT LOG:');
-    
-    const healthyTeeth = ALL_TEETH.filter(toothId => probingDepths[toothId] <= 3);
-    const severeTeeth = ALL_TEETH.filter(toothId => probingDepths[toothId] >= 7);
-    const averageDepth = (ALL_TEETH.reduce((sum, toothId) => sum + probingDepths[toothId], 0) / ALL_TEETH.length).toFixed(1);
-    
-    console.log(`🦷 HEALTHY (≤3mm): ${healthyTeeth.length} teeth`);
-    console.log(`🔴 SEVERE (≥7mm): ${severeTeeth.length} teeth`);
-    console.log(`📊 Average Probing Depth: ${averageDepth}mm`);
-    console.log('---');
-  };
-
-  const logBleedingOnProbingAssessment = () => {
-    console.log('🩸 BLEEDING ON PROBING ASSESSMENT LOG:');
-    
-    const bleedingTeeth = ALL_TEETH.filter(toothId => bleedingOnProbing[toothId]);
-    const bleedingPercentage = (bleedingTeeth.length / ALL_TEETH.length) * 100;
-    
-    console.log(`🩸 BLEEDING: ${bleedingTeeth.length} teeth (${bleedingPercentage.toFixed(1)}%)`);
-    
-    let status = 'Excellent';
-    if (bleedingPercentage > 50) status = 'Severe Inflammation';
-    else if (bleedingPercentage > 30) status = 'Moderate Inflammation';
-    else if (bleedingPercentage > 10) status = 'Mild Inflammation';
-    
-    console.log(`🏥 Gingival Health Status: ${status}`);
-    console.log('---');
-  };
-
-  const logAAPClassification = () => {
-    console.log('📋 AAP CLASSIFICATION LOG:');
-    console.log(`🏥 AAP Stage: ${aapStage ? AAP_STAGE_LABELS[aapStage] : 'Not Set'}`);
-    console.log(`📈 AAP Grade: ${aapGrade ? AAP_GRADE_LABELS[aapGrade] : 'Not Set'}`);
-    console.log('---');
   };
 
   // Assessment handler functions
   const handleCalculusLevelChange = (level: HygieneLevel) => {
-    setCalculusLevel(level);
+    const updates: Partial<EnhancedHygieneState> = { calculusLevel: level };
     if (level === 'none') {
-      setCalculusDistribution('none');
-      setCalculusQuadrants([]);
+      updates.calculusDistribution = 'none';
+      updates.calculusQuadrants = [];
     }
-    logCalculusAssessment();
+    updateState(updates);
   };
 
   const handleCalculusDistributionChange = (distribution: DistributionType) => {
-    setCalculusDistribution(distribution);
+    const updates: Partial<EnhancedHygieneState> = { calculusDistribution: distribution };
     if (distribution === 'generalized') {
-      setCalculusQuadrants(['upper-right', 'upper-left', 'lower-left', 'lower-right']);
+      updates.calculusQuadrants = ['upper-right', 'upper-left', 'lower-left', 'lower-right'];
     } else if (distribution === 'none') {
-      setCalculusQuadrants([]);
+      updates.calculusQuadrants = [];
     }
-    logCalculusAssessment();
+    updateState(updates);
   };
 
   const toggleCalculusQuadrant = (quadrant: Quadrant) => {
-    setCalculusQuadrants(prev => {
-      const newQuadrants = prev.includes(quadrant) 
-        ? prev.filter(q => q !== quadrant)
-        : [...prev, quadrant];
-      return newQuadrants;
-    });
+    const newQuadrants = enhancedState.calculusQuadrants.includes(quadrant) 
+      ? enhancedState.calculusQuadrants.filter(q => q !== quadrant)
+      : [...enhancedState.calculusQuadrants, quadrant];
+    updateState({ calculusQuadrants: newQuadrants });
   };
 
   const handlePlaqueLevelChange = (level: HygieneLevel) => {
-    setPlaqueLevel(level);
+    const updates: Partial<EnhancedHygieneState> = { plaqueLevel: level };
     if (level === 'none') {
-      setPlaqueDistribution('none');
-      setPlaqueQuadrants([]);
+      updates.plaqueDistribution = 'none';
+      updates.plaqueQuadrants = [];
     }
-    logPlaqueAssessment();
+    updateState(updates);
   };
 
   const handlePlaqueDistributionChange = (distribution: DistributionType) => {
-    setPlaqueDistribution(distribution);
+    const updates: Partial<EnhancedHygieneState> = { plaqueDistribution: distribution };
     if (distribution === 'generalized') {
-      setPlaqueQuadrants(['upper-right', 'upper-left', 'lower-left', 'lower-right']);
+      updates.plaqueQuadrants = ['upper-right', 'upper-left', 'lower-left', 'lower-right'];
     } else if (distribution === 'none') {
-      setPlaqueQuadrants([]);
+      updates.plaqueQuadrants = [];
     }
-    logPlaqueAssessment();
+    updateState(updates);
   };
 
   const togglePlaqueQuadrant = (quadrant: Quadrant) => {
-    setPlaqueQuadrants(prev => {
-      const newQuadrants = prev.includes(quadrant) 
-        ? prev.filter(q => q !== quadrant)
-        : [...prev, quadrant];
-      return newQuadrants;
-    });
+    const newQuadrants = enhancedState.plaqueQuadrants.includes(quadrant) 
+      ? enhancedState.plaqueQuadrants.filter(q => q !== quadrant)
+      : [...enhancedState.plaqueQuadrants, quadrant];
+    updateState({ plaqueQuadrants: newQuadrants });
   };
 
   // AAP Classification handlers
   const handleAAPStageChange = (stage: AAPStage) => {
-    setAapStage(stage);
-    logAAPClassification();
+    updateState({ aapStage: stage });
   };
 
   const handleAAPGradeChange = (grade: AAPGrade) => {
-    setAapGrade(grade);
-    logAAPClassification();
+    updateState({ aapGrade: grade });
   };
 
   // Probing and bleeding handler functions
   const onToothPress = (toothId: string) => {
-    if (assessmentMode === 'probing') {
-      setSelectedTooth(toothId);
-      setShowDepthSelector(true);
-    } else if (assessmentMode === 'bleeding') {
+    if (enhancedState.assessmentMode === 'probing') {
+      updateState({ selectedTooth: toothId, showDepthSelector: true });
+    } else if (enhancedState.assessmentMode === 'bleeding') {
       toggleBleedingOnProbing(toothId);
     }
   };
 
   const setProbingDepth = (toothId: string, depth: ProbingDepth) => {
-    setProbingDepths(prev => ({ ...prev, [toothId]: depth }));
-    console.log(`🔍 Probing Depth Updated: Tooth ${toothId} = ${depth}mm`);
-    setShowDepthSelector(false);
-    setSelectedTooth(null);
+    const newDepths = { ...enhancedState.probingDepths, [toothId]: depth };
+    updateState({ 
+      probingDepths: newDepths,
+      showDepthSelector: false,
+      selectedTooth: null 
+    });
   };
 
   const toggleBleedingOnProbing = (toothId: string) => {
-    setBleedingOnProbing(prev => {
-      const newBleeding = { ...prev, [toothId]: !prev[toothId] };
-      console.log(`🩸 Bleeding Updated: Tooth ${toothId} = ${newBleeding[toothId] ? 'YES' : 'NO'}`);
-      return newBleeding;
-    });
+    const newBleeding = { 
+      ...enhancedState.bleedingOnProbing, 
+      [toothId]: !enhancedState.bleedingOnProbing[toothId] 
+    };
+    updateState({ bleedingOnProbing: newBleeding });
   };
 
   const quickSetAllProbing = (depth: ProbingDepth) => {
@@ -316,8 +327,7 @@ const HygieneAssessmentScreen = ({ route }: any) => {
     ALL_TEETH.forEach(toothId => {
       newDepths[toothId] = depth;
     });
-    setProbingDepths(newDepths);
-    console.log(`🔍 Quick Set All Teeth to ${depth}mm`);
+    updateState({ probingDepths: newDepths });
   };
 
   const quickSetAllBleeding = (bleeding: boolean) => {
@@ -325,8 +335,7 @@ const HygieneAssessmentScreen = ({ route }: any) => {
     ALL_TEETH.forEach(toothId => {
       newBleeding[toothId] = bleeding;
     });
-    setBleedingOnProbing(newBleeding);
-    console.log(`🩸 Quick Set All Teeth Bleeding: ${bleeding ? 'YES' : 'NO'}`);
+    updateState({ bleedingOnProbing: newBleeding });
   };
 
   // Utility functions for tooth rendering
@@ -352,16 +361,16 @@ const HygieneAssessmentScreen = ({ route }: any) => {
 
   const renderTooth = (toothId: string) => {
     const position = getToothPosition(toothId);
-    const depth = probingDepths[toothId];
-    const bleeding = bleedingOnProbing[toothId];
+    const depth = enhancedState.probingDepths[toothId];
+    const bleeding = enhancedState.bleedingOnProbing[toothId];
     
     let toothStyle = styles.toothDefault;
     let displayText = toothId;
     
-    if (assessmentMode === 'probing') {
+    if (enhancedState.assessmentMode === 'probing') {
       toothStyle = getProbingToothStyle(depth);
       displayText = `${toothId}\n${depth}mm`;
-    } else if (assessmentMode === 'bleeding') {
+    } else if (enhancedState.assessmentMode === 'bleeding') {
       toothStyle = getBleedingToothStyle(bleeding);
       displayText = `${toothId}\n${bleeding ? 'YES' : 'NO'}`;
     }
@@ -373,79 +382,22 @@ const HygieneAssessmentScreen = ({ route }: any) => {
         style={[
           styles.toothCircle,
           toothStyle,
-          selectedTooth === toothId && styles.toothSelected,
+          enhancedState.selectedTooth === toothId && styles.toothSelected,
           {
             position: 'absolute',
             left: position.left,
             top: position.top,
           }
         ]}
-        disabled={assessmentMode === 'calculus' || assessmentMode === 'plaque' || assessmentMode === 'aap'}
+        disabled={enhancedState.assessmentMode === 'calculus' || enhancedState.assessmentMode === 'plaque' || enhancedState.assessmentMode === 'aap'}
       >
         <Text style={styles.toothLabel}>{displayText}</Text>
       </Pressable>
     );
   };
 
-  // Save and report functions
-  const saveAssessment = async () => {
-    try {
-      const collection = database.get<HygieneAssessment>('hygiene_assessments');
-      const existing = await collection
-        .query(Q.where('patient_id', Q.eq(patientId)))
-        .fetch();
-
-      const assessmentData = {
-        calculusLevel,
-        calculusDistribution,
-        calculusQuadrants,
-        plaqueLevel,
-        plaqueDistribution,
-        plaqueQuadrants,
-        probingDepths,
-        bleedingOnProbing,
-        aapStage,
-        aapGrade,
-        timestamp: new Date().toISOString(),
-        hygieneStates
-      };
-      
-      const jsonData = JSON.stringify(assessmentData);
-      
-      console.log('💾 SAVING COMPLETE HYGIENE ASSESSMENT:');
-      logCalculusAssessment();
-      logPlaqueAssessment();
-      logProbingDepthAssessment();
-      logBleedingOnProbingAssessment();
-      logAAPClassification();
-  
-      await database.write(async () => {
-        if (existing.length > 0) {
-          await existing[0].update(record => {
-            record.data = jsonData;
-            record.updatedAt = new Date();
-          });
-          Alert.alert('✅ Hygiene assessment updated');
-        } else {
-          await collection.create(record => {
-            const id = uuid.v4();
-            record._raw.id = id;
-            record.patientId = patientId;
-            record.data = jsonData;
-            record.createdAt = new Date();
-            record.updatedAt = new Date();
-          });
-          Alert.alert('✅ Hygiene assessment created');
-        }
-      });
-    } catch (err) {
-      console.error('❌ Failed to save hygiene assessment:', err);
-      Alert.alert('❌ Failed to save hygiene assessment');
-    }
-  };
-
   const showDetailedReport = () => {
-    const bleedingCount = ALL_TEETH.filter(toothId => bleedingOnProbing[toothId]).length;
+    const bleedingCount = ALL_TEETH.filter(toothId => enhancedState.bleedingOnProbing[toothId]).length;
     const bleedingPercentage = (bleedingCount / ALL_TEETH.length) * 100;
     
     const report = `
@@ -453,21 +405,21 @@ Full Mouth Hygiene Assessment Report
 Patient ID: ${patientId}
 
 AAP PERIODONTAL CLASSIFICATION:
-• Stage: ${aapStage ? AAP_STAGE_LABELS[aapStage] : 'Not assessed'}
-• Grade: ${aapGrade ? AAP_GRADE_LABELS[aapGrade] : 'Not assessed'}
+• Stage: ${enhancedState.aapStage ? AAP_STAGE_LABELS[enhancedState.aapStage] : 'Not assessed'}
+• Grade: ${enhancedState.aapGrade ? AAP_GRADE_LABELS[enhancedState.aapGrade] : 'Not assessed'}
 
 CALCULUS ASSESSMENT:
-• Level: ${CALCULUS_LABELS[calculusLevel]}
-• Distribution: ${calculusDistribution}
+• Level: ${CALCULUS_LABELS[enhancedState.calculusLevel]}
+• Distribution: ${enhancedState.calculusDistribution}
 
 PLAQUE ASSESSMENT:
-• Level: ${PLAQUE_LABELS[plaqueLevel]}
-• Distribution: ${plaqueDistribution}
+• Level: ${PLAQUE_LABELS[enhancedState.plaqueLevel]}
+• Distribution: ${enhancedState.plaqueDistribution}
 
 PROBING DEPTHS:
-• Average: ${(ALL_TEETH.reduce((sum, toothId) => sum + probingDepths[toothId], 0) / ALL_TEETH.length).toFixed(1)}mm
-• Healthy (≤3mm): ${ALL_TEETH.filter(toothId => probingDepths[toothId] <= 3).length} teeth
-• Severe (≥7mm): ${ALL_TEETH.filter(toothId => probingDepths[toothId] >= 7).length} teeth
+• Average: ${(ALL_TEETH.reduce((sum, toothId) => sum + enhancedState.probingDepths[toothId], 0) / ALL_TEETH.length).toFixed(1)}mm
+• Healthy (≤3mm): ${ALL_TEETH.filter(toothId => enhancedState.probingDepths[toothId] <= 3).length} teeth
+• Severe (≥7mm): ${ALL_TEETH.filter(toothId => enhancedState.probingDepths[toothId] >= 7).length} teeth
 
 BLEEDING ON PROBING:
 • Bleeding Sites: ${bleedingCount} teeth (${bleedingPercentage.toFixed(1)}%)
@@ -488,13 +440,13 @@ BLEEDING ON PROBING:
           <Pressable 
             style={[
               styles.modeToggleButton, 
-              assessmentMode === 'calculus' && styles.modeToggleButtonActive
+              enhancedState.assessmentMode === 'calculus' && styles.modeToggleButtonActive
             ]} 
-            onPress={() => setAssessmentMode('calculus')}
+            onPress={() => updateState({ assessmentMode: 'calculus' })}
           >
             <Text style={[
               styles.modeToggleButtonText,
-              assessmentMode === 'calculus' && styles.modeToggleButtonTextActive
+              enhancedState.assessmentMode === 'calculus' && styles.modeToggleButtonTextActive
             ]}>
               🦷 Calculus
             </Text>
@@ -502,13 +454,13 @@ BLEEDING ON PROBING:
           <Pressable 
             style={[
               styles.modeToggleButton, 
-              assessmentMode === 'plaque' && styles.modeToggleButtonActive
+              enhancedState.assessmentMode === 'plaque' && styles.modeToggleButtonActive
             ]} 
-            onPress={() => setAssessmentMode('plaque')}
+            onPress={() => updateState({ assessmentMode: 'plaque' })}
           >
             <Text style={[
               styles.modeToggleButtonText,
-              assessmentMode === 'plaque' && styles.modeToggleButtonTextActive
+              enhancedState.assessmentMode === 'plaque' && styles.modeToggleButtonTextActive
             ]}>
               🧽 Plaque
             </Text>
@@ -516,13 +468,13 @@ BLEEDING ON PROBING:
           <Pressable 
             style={[
               styles.modeToggleButton, 
-              assessmentMode === 'probing' && styles.modeToggleButtonActive
+              enhancedState.assessmentMode === 'probing' && styles.modeToggleButtonActive
             ]} 
-            onPress={() => setAssessmentMode('probing')}
+            onPress={() => updateState({ assessmentMode: 'probing' })}
           >
             <Text style={[
               styles.modeToggleButtonText,
-              assessmentMode === 'probing' && styles.modeToggleButtonTextActive
+              enhancedState.assessmentMode === 'probing' && styles.modeToggleButtonTextActive
             ]}>
               🔍 Probing
             </Text>
@@ -530,13 +482,13 @@ BLEEDING ON PROBING:
           <Pressable 
             style={[
               styles.modeToggleButton, 
-              assessmentMode === 'bleeding' && styles.modeToggleButtonActive
+              enhancedState.assessmentMode === 'bleeding' && styles.modeToggleButtonActive
             ]} 
-            onPress={() => setAssessmentMode('bleeding')}
+            onPress={() => updateState({ assessmentMode: 'bleeding' })}
           >
             <Text style={[
               styles.modeToggleButtonText,
-              assessmentMode === 'bleeding' && styles.modeToggleButtonTextActive
+              enhancedState.assessmentMode === 'bleeding' && styles.modeToggleButtonTextActive
             ]}>
               🩸 Bleeding
             </Text>
@@ -544,13 +496,13 @@ BLEEDING ON PROBING:
           <Pressable 
             style={[
               styles.modeToggleButton, 
-              assessmentMode === 'aap' && styles.modeToggleButtonActive
+              enhancedState.assessmentMode === 'aap' && styles.modeToggleButtonActive
             ]} 
-            onPress={() => setAssessmentMode('aap')}
+            onPress={() => updateState({ assessmentMode: 'aap' })}
           >
             <Text style={[
               styles.modeToggleButtonText,
-              assessmentMode === 'aap' && styles.modeToggleButtonTextActive
+              enhancedState.assessmentMode === 'aap' && styles.modeToggleButtonTextActive
             ]}>
               📋 AAP
             </Text>
@@ -562,48 +514,48 @@ BLEEDING ON PROBING:
       <View style={styles.currentAssessmentCard}>
         <Text style={styles.currentTitle}>Current Assessment</Text>
         
-        {assessmentMode === 'calculus' && (
+        {enhancedState.assessmentMode === 'calculus' && (
           <View style={styles.currentLevelContainer}>
-            <Text style={styles.currentLevel}>{CALCULUS_LABELS[calculusLevel]}</Text>
+            <Text style={styles.currentLevel}>{CALCULUS_LABELS[enhancedState.calculusLevel]}</Text>
           </View>
         )}
 
-        {assessmentMode === 'plaque' && (
+        {enhancedState.assessmentMode === 'plaque' && (
           <View style={styles.currentLevelContainer}>
-            <Text style={styles.currentLevel}>{PLAQUE_LABELS[plaqueLevel]}</Text>
+            <Text style={styles.currentLevel}>{PLAQUE_LABELS[enhancedState.plaqueLevel]}</Text>
           </View>
         )}
 
-        {assessmentMode === 'probing' && (
+        {enhancedState.assessmentMode === 'probing' && (
           <View style={styles.currentLevelContainer}>
             <Text style={styles.currentLevel}>Probing Depth Summary</Text>
             <Text style={styles.currentDescription}>
-              Average: {(ALL_TEETH.reduce((sum, toothId) => sum + probingDepths[toothId], 0) / ALL_TEETH.length).toFixed(1)}mm
+              Average: {(ALL_TEETH.reduce((sum, toothId) => sum + enhancedState.probingDepths[toothId], 0) / ALL_TEETH.length).toFixed(1)}mm
             </Text>
           </View>
         )}
 
-        {assessmentMode === 'bleeding' && (
+        {enhancedState.assessmentMode === 'bleeding' && (
           <View style={styles.currentLevelContainer}>
             <Text style={styles.currentLevel}>Bleeding Summary</Text>
             <Text style={styles.currentDescription}>
-              {((ALL_TEETH.filter(toothId => bleedingOnProbing[toothId]).length / ALL_TEETH.length) * 100).toFixed(1)}% bleeding sites
+              {((ALL_TEETH.filter(toothId => enhancedState.bleedingOnProbing[toothId]).length / ALL_TEETH.length) * 100).toFixed(1)}% bleeding sites
             </Text>
           </View>
         )}
 
-        {assessmentMode === 'aap' && (
+        {enhancedState.assessmentMode === 'aap' && (
           <View style={styles.currentLevelContainer}>
             <Text style={styles.currentLevel}>AAP Classification</Text>
             <Text style={styles.currentDescription}>
-              Stage: {aapStage || 'Not Set'} | Grade: {aapGrade || 'Not Set'}
+              Stage: {enhancedState.aapStage || 'Not Set'} | Grade: {enhancedState.aapGrade || 'Not Set'}
             </Text>
           </View>
         )}
       </View>
 
       {/* AAP Classification Content */}
-      {assessmentMode === 'aap' && (
+      {enhancedState.assessmentMode === 'aap' && (
         <View style={styles.selectionCard}>
           <Text style={styles.selectionTitle}>AAP Periodontal Classification</Text>
           
@@ -618,7 +570,7 @@ BLEEDING ON PROBING:
                   key={stage}
                   style={[
                     styles.aapOption,
-                    aapStage === stage && styles.aapOptionSelected,
+                    enhancedState.aapStage === stage && styles.aapOptionSelected,
                     styles.aapStageOption
                   ]}
                   onPress={() => handleAAPStageChange(stage)}
@@ -650,7 +602,7 @@ BLEEDING ON PROBING:
                   key={grade}
                   style={[
                     styles.aapOption,
-                    aapGrade === grade && styles.aapOptionSelected,
+                    enhancedState.aapGrade === grade && styles.aapOptionSelected,
                     styles.aapGradeOption
                   ]}
                   onPress={() => handleAAPGradeChange(grade)}
@@ -672,19 +624,19 @@ BLEEDING ON PROBING:
           </View>
 
           {/* Current Selection Summary */}
-          {(aapStage || aapGrade) && (
+          {(enhancedState.aapStage || enhancedState.aapGrade) && (
             <View style={styles.aapSummary}>
               <Text style={styles.aapSummaryTitle}>Current Classification</Text>
-              {aapStage && (
+              {enhancedState.aapStage && (
                 <View style={styles.aapSummaryItem}>
                   <Text style={styles.aapSummaryLabel}>Stage:</Text>
-                  <Text style={styles.aapSummaryValue}>{AAP_STAGE_LABELS[aapStage]}</Text>
+                  <Text style={styles.aapSummaryValue}>{AAP_STAGE_LABELS[enhancedState.aapStage]}</Text>
                 </View>
               )}
-              {aapGrade && (
+              {enhancedState.aapGrade && (
                 <View style={styles.aapSummaryItem}>
                   <Text style={styles.aapSummaryLabel}>Grade:</Text>
-                  <Text style={styles.aapSummaryValue}>{AAP_GRADE_LABELS[aapGrade]}</Text>
+                  <Text style={styles.aapSummaryValue}>{AAP_GRADE_LABELS[enhancedState.aapGrade]}</Text>
                 </View>
               )}
             </View>
@@ -693,7 +645,7 @@ BLEEDING ON PROBING:
       )}
 
       {/* Calculus Assessment Content */}
-      {assessmentMode === 'calculus' && (
+      {enhancedState.assessmentMode === 'calculus' && (
         <View style={styles.selectionCard}>
           <Text style={styles.selectionTitle}>Select Calculus Level</Text>
           
@@ -703,7 +655,7 @@ BLEEDING ON PROBING:
                 key={level}
                 style={[
                   styles.levelOption,
-                  calculusLevel === level && styles.levelOptionSelected,
+                  enhancedState.calculusLevel === level && styles.levelOptionSelected,
                 ]}
                 onPress={() => handleCalculusLevelChange(level)}
               >
@@ -714,7 +666,7 @@ BLEEDING ON PROBING:
             ))}
           </View>
 
-          {calculusLevel !== 'none' && (
+          {enhancedState.calculusLevel !== 'none' && (
             <>
               <Text style={styles.distributionTitle}>Calculus Distribution</Text>
               <View style={styles.distributionOptions}>
@@ -723,7 +675,7 @@ BLEEDING ON PROBING:
                     key={distribution}
                     style={[
                       styles.distributionOption,
-                      calculusDistribution === distribution && styles.distributionOptionSelected,
+                      enhancedState.calculusDistribution === distribution && styles.distributionOptionSelected,
                     ]}
                     onPress={() => handleCalculusDistributionChange(distribution as DistributionType)}
                   >
@@ -734,7 +686,7 @@ BLEEDING ON PROBING:
                 ))}
               </View>
 
-              {calculusDistribution === 'localized' && (
+              {enhancedState.calculusDistribution === 'localized' && (
                 <View style={styles.quadrantSection}>
                   <Text style={styles.quadrantTitle}>Select Affected Quadrants</Text>
                   <View style={styles.quadrantSelector}>
@@ -743,7 +695,7 @@ BLEEDING ON PROBING:
                         key={quadrant}
                         style={[
                           styles.quadrantButton,
-                          calculusQuadrants.includes(quadrant) && styles.quadrantButtonSelected,
+                          enhancedState.calculusQuadrants.includes(quadrant) && styles.quadrantButtonSelected,
                         ]}
                         onPress={() => toggleCalculusQuadrant(quadrant)}
                       >
@@ -761,7 +713,7 @@ BLEEDING ON PROBING:
       )}
 
       {/* Plaque Assessment Content */}
-      {assessmentMode === 'plaque' && (
+      {enhancedState.assessmentMode === 'plaque' && (
         <View style={styles.selectionCard}>
           <Text style={styles.selectionTitle}>Select Plaque Level</Text>
           
@@ -771,7 +723,7 @@ BLEEDING ON PROBING:
                 key={level}
                 style={[
                   styles.levelOption,
-                  plaqueLevel === level && styles.levelOptionSelected,
+                  enhancedState.plaqueLevel === level && styles.levelOptionSelected,
                 ]}
                 onPress={() => handlePlaqueLevelChange(level)}
               >
@@ -782,7 +734,7 @@ BLEEDING ON PROBING:
             ))}
           </View>
 
-          {plaqueLevel !== 'none' && (
+          {enhancedState.plaqueLevel !== 'none' && (
             <>
               <Text style={styles.distributionTitle}>Plaque Distribution</Text>
               <View style={styles.distributionOptions}>
@@ -791,7 +743,7 @@ BLEEDING ON PROBING:
                     key={distribution}
                     style={[
                       styles.distributionOption,
-                      plaqueDistribution === distribution && styles.distributionOptionSelected,
+                      enhancedState.plaqueDistribution === distribution && styles.distributionOptionSelected,
                     ]}
                     onPress={() => handlePlaqueDistributionChange(distribution as DistributionType)}
                   >
@@ -802,7 +754,7 @@ BLEEDING ON PROBING:
                 ))}
               </View>
 
-              {plaqueDistribution === 'localized' && (
+              {enhancedState.plaqueDistribution === 'localized' && (
                 <View style={styles.quadrantSection}>
                   <Text style={styles.quadrantTitle}>Select Affected Quadrants</Text>
                   <View style={styles.quadrantSelector}>
@@ -811,7 +763,7 @@ BLEEDING ON PROBING:
                         key={quadrant}
                         style={[
                           styles.quadrantButton,
-                          plaqueQuadrants.includes(quadrant) && styles.quadrantButtonSelected,
+                          enhancedState.plaqueQuadrants.includes(quadrant) && styles.quadrantButtonSelected,
                         ]}
                         onPress={() => togglePlaqueQuadrant(quadrant)}
                       >
@@ -829,7 +781,7 @@ BLEEDING ON PROBING:
       )}
 
       {/* Probing Assessment Content */}
-      {assessmentMode === 'probing' && (
+      {enhancedState.assessmentMode === 'probing' && (
         <View style={styles.selectionCard}>
           <Text style={styles.selectionTitle}>Probing Depth Assessment</Text>
           
@@ -851,7 +803,7 @@ BLEEDING ON PROBING:
       )}
 
       {/* Bleeding Assessment Content */}
-      {assessmentMode === 'bleeding' && (
+      {enhancedState.assessmentMode === 'bleeding' && (
         <View style={styles.selectionCard}>
           <Text style={styles.selectionTitle}>Bleeding on Probing Assessment</Text>
           
@@ -870,12 +822,12 @@ BLEEDING ON PROBING:
       )}
 
       {/* Dental Chart - Only for probing and bleeding modes */}
-      {(assessmentMode === 'probing' || assessmentMode === 'bleeding') && (
+      {(enhancedState.assessmentMode === 'probing' || enhancedState.assessmentMode === 'bleeding') && (
         <View style={styles.dentalChart}>
           <Text style={styles.upperArchLabel}>Upper Arch</Text>
           <Text style={styles.lowerArchLabel}>Lower Arch</Text>
           <Text style={styles.centerInstructions}>
-            {assessmentMode === 'probing' ? 'Tap to set\nprobing depth' : 'Tap to toggle\nbleeding status'}
+            {enhancedState.assessmentMode === 'probing' ? 'Tap to set\nprobing depth' : 'Tap to toggle\nbleeding status'}
           </Text>
           
           {ALL_TEETH.map(toothId => renderTooth(toothId))}
@@ -883,14 +835,14 @@ BLEEDING ON PROBING:
       )}
 
       {/* Depth Selector Modal */}
-      {showDepthSelector && selectedTooth && (
+      {enhancedState.showDepthSelector && enhancedState.selectedTooth && (
         <View style={styles.depthSelectorOverlay}>
           <View style={styles.depthSelectorContainer}>
             <Text style={styles.depthSelectorTitle}>
-              Probing Depth for Tooth {selectedTooth}
+              Probing Depth for Tooth {enhancedState.selectedTooth}
             </Text>
             <Text style={styles.depthSelectorSubtitle}>
-              Current: {probingDepths[selectedTooth]}mm
+              Current: {enhancedState.probingDepths[enhancedState.selectedTooth]}mm
             </Text>
             
             <View style={styles.depthGrid}>
@@ -900,9 +852,9 @@ BLEEDING ON PROBING:
                   style={[
                     styles.depthOption,
                     getProbingToothStyle(depth),
-                    probingDepths[selectedTooth] === depth && styles.depthOptionSelected
+                    enhancedState.probingDepths[enhancedState.selectedTooth] === depth && styles.depthOptionSelected
                   ]}
-                  onPress={() => setProbingDepth(selectedTooth, depth)}
+                  onPress={() => setProbingDepth(enhancedState.selectedTooth!, depth)}
                 >
                   <Text style={styles.depthOptionText}>{depth}mm</Text>
                 </Pressable>
@@ -911,10 +863,7 @@ BLEEDING ON PROBING:
             
             <Pressable 
               style={styles.cancelButton} 
-              onPress={() => {
-                setShowDepthSelector(false);
-                setSelectedTooth(null);
-              }}
+              onPress={() => updateState({ showDepthSelector: false, selectedTooth: null })}
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </Pressable>
@@ -923,7 +872,7 @@ BLEEDING ON PROBING:
       )}
 
       {/* Legends */}
-      {assessmentMode === 'probing' && (
+      {enhancedState.assessmentMode === 'probing' && (
         <View style={styles.legend}>
           <Text style={styles.legendTitle}>Probing Depth Legend</Text>
           <View style={styles.legendItems}>
@@ -947,7 +896,7 @@ BLEEDING ON PROBING:
         </View>
       )}
 
-      {assessmentMode === 'bleeding' && (
+      {enhancedState.assessmentMode === 'bleeding' && (
         <View style={styles.legend}>
           <Text style={styles.legendTitle}>Bleeding on Probing Legend</Text>
           <View style={styles.legendItems}>

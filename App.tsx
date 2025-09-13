@@ -9,7 +9,7 @@ import { HygieneAssessmentProvider } from './contexts/HygieneAssessmentContext';
 import { ExtractionsAssessmentProvider } from './contexts/ExtractionsAssessmentContext';
 import { FillingsAssessmentProvider } from './contexts/FillingsAssessmentContext';
 import { DentureAssessmentProvider } from './contexts/DentureAssessmentContext';
-import { ImplantAssessmentProvider } from './contexts/ImplantAssessmentContext';
+import { ImplantAssessmentProvider } from './contexts/ImplantAssessmentContext'; // NEW SIMPLE CONTEXT
 import { HygieneTreatmentProvider } from './contexts/HygieneTreatmentContext';
 import { ExtractionsTreatmentProvider } from './contexts/ExtractionsTreatmentContext';
 import { FillingsTreatmentProvider } from './contexts/FillingsTreatmentContext'; 

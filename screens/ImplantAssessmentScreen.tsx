@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,7 @@ import { database } from '../db';
 import ImplantAssessment from '../db/models/ImplantAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
-
-type ImplantMode = 'single' | 'bridge';
-type TimingMode = 'immediate' | 'delayed';
+import { useImplantAssessment } from '../contexts/ImplantAssessmentContext';
 
 const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
 const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
@@ -23,56 +21,52 @@ const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
 const ImplantAssessmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   
-  const [implantMode, setImplantMode] = useState<ImplantMode>('single');
-  const [selectedTeeth, setSelectedTeeth] = useState<Set<string>>(new Set());
-  const [boneGraftingPlanned, setBoneGraftingPlanned] = useState(false);
-  const [timingMode, setTimingMode] = useState<TimingMode>('immediate');
+  const { 
+    implantState,
+    updateImplantMode,
+    getSelectedTeeth,
+    toggleTooth,
+    updateBoneGrafting,
+    updateTimingMode,
+    clearCurrentSelection
+  } = useImplantAssessment();
+
+  const { implantMode, boneGraftingPlanned, timingMode } = implantState;
+  const selectedTeeth = getSelectedTeeth();
 
   const toothOffsets: Record<string, { x: number; y: number }> = {
-    '21': { x: 20, y: -120 },
-    '11': { x: -20, y: -120 },
-    '22': { x: 55, y: -110 },
-    '12': { x: -55, y: -110 },
-    '23': { x: 90, y: -90 },
-    '13': { x: -90, y: -90 },
-    '24': { x: 110, y: -60 },
-    '14': { x: -110, y: -60 },
-    '25': { x: 120, y: -25 },
-    '15': { x: -120, y: -25 },
-    '26': { x: 125, y: 10 },
-    '16': { x: -125, y: 10 },
-    '27': { x: 125, y: 45 },
-    '17': { x: -125, y: 45 },
-    '28': { x: 125, y: 80 },
-    '18': { x: -125, y: 80 },
-    '31': { x: 20, y: 330 },
-    '41': { x: -20, y: 330 },
-    '32': { x: 55, y: 320 },
-    '42': { x: -55, y: 320 },
-    '33': { x: 90, y: 300 },
-    '43': { x: -90, y: 300 },
-    '34': { x: 110, y: 270 },
-    '44': { x: -110, y: 270 },
-    '35': { x: 120, y: 235 },
-    '45': { x: -120, y: 235 },
-    '36': { x: 125, y: 200 },
-    '46': { x: -125, y: 200 },
-    '37': { x: 125, y: 165 },
-    '47': { x: -125, y: 165 },
-    '38': { x: 125, y: 130 },
-    '48': { x: -125, y: 130 },
+    '21': { x: 20, y: -120 }, '11': { x: -20, y: -120 },
+    '22': { x: 55, y: -110 }, '12': { x: -55, y: -110 },
+    '23': { x: 90, y: -90 }, '13': { x: -90, y: -90 },
+    '24': { x: 110, y: -60 }, '14': { x: -110, y: -60 },
+    '25': { x: 120, y: -25 }, '15': { x: -120, y: -25 },
+    '26': { x: 125, y: 10 }, '16': { x: -125, y: 10 },
+    '27': { x: 125, y: 45 }, '17': { x: -125, y: 45 },
+    '28': { x: 125, y: 80 }, '18': { x: -125, y: 80 },
+    '31': { x: 20, y: 330 }, '41': { x: -20, y: 330 },
+    '32': { x: 55, y: 320 }, '42': { x: -55, y: 320 },
+    '33': { x: 90, y: 300 }, '43': { x: -90, y: 300 },
+    '34': { x: 110, y: 270 }, '44': { x: -110, y: 270 },
+    '35': { x: 120, y: 235 }, '45': { x: -120, y: 235 },
+    '36': { x: 125, y: 200 }, '46': { x: -125, y: 200 },
+    '37': { x: 125, y: 165 }, '47': { x: -125, y: 165 },
+    '38': { x: 125, y: 130 }, '48': { x: -125, y: 130 },
   };
 
   const saveAssessment = async () => {
     try {
       const collection = database.get<ImplantAssessment>('implant_assessments');
+      console.log('🔎 Looking for existing implant assessment for patient:', patientId);
       const existing = await collection
         .query(Q.where('patient_id', Q.eq(patientId)))
         .fetch();
 
+      console.log('🔍 Matched existing implant assessment:', existing);
+
       const assessmentData = {
         implantMode,
-        selectedTeeth: Array.from(selectedTeeth),
+        singleImplantTeeth: implantState.singleImplantTeeth,
+        bridgeImplantTeeth: implantState.bridgeImplantTeeth,
         boneGraftingPlanned,
         timingMode,
         timestamp: new Date().toISOString()
@@ -81,22 +75,35 @@ const ImplantAssessmentScreen = ({ route }: any) => {
       const jsonData = JSON.stringify(assessmentData);
 
       await database.write(async () => {
+        console.log("existing implant assessments:")
+        console.log(existing)
+        console.log("existing length:")
+        console.log(existing.length)
         if (existing.length > 0) {
+          console.log('🔍 Existing implant assessments for patient', patientId, ':', existing);
+          // Update existing record
           await existing[0].update(record => {
             record.data = jsonData;
             record.updatedAt = new Date();
           });
+          console.log('✅ Implant assessment updated');
           Alert.alert('✅ Implant assessment updated');
         } else {
+          // Create new record
           await collection.create(record => {
             const id = uuid.v4();
             record._raw.id = id;
-            record.patientId = patientId;
+            record.patientId = patientId; // must match schema!
             record.data = jsonData;
             record.createdAt = new Date();
             record.updatedAt = new Date();
+            Alert.alert('✅ Implant assessment created')
+            console.log('🔧 Created implant assessment record:', {
+              id,
+              patient_id: patientId,
+              data: jsonData,
+            });
           });
-          Alert.alert('✅ Implant assessment created');
         }
       });
     } catch (err) {
@@ -105,20 +112,8 @@ const ImplantAssessmentScreen = ({ route }: any) => {
     }
   };
 
-  const handleToothPress = (toothId: string) => {
-    const newSelectedTeeth = new Set(selectedTeeth);
-    
-    if (selectedTeeth.has(toothId)) {
-      newSelectedTeeth.delete(toothId);
-    } else {
-      newSelectedTeeth.add(toothId);
-    }
-    
-    setSelectedTeeth(newSelectedTeeth);
-  };
-
-  const clearSelection = () => {
-    setSelectedTeeth(new Set());
+  const handleImplantModeChange = (mode: 'single' | 'bridge') => {
+    updateImplantMode(mode);
   };
 
   const getToothPosition = (toothId: string) => {
@@ -132,7 +127,7 @@ const ImplantAssessmentScreen = ({ route }: any) => {
   };
 
   const getToothStyle = (toothId: string) => {
-    if (selectedTeeth.has(toothId)) {
+    if (selectedTeeth.includes(toothId)) {
       return implantMode === 'single' ? styles.toothSingleImplant : styles.toothBridge;
     }
     return styles.toothNormal;
@@ -144,7 +139,7 @@ const ImplantAssessmentScreen = ({ route }: any) => {
     return (
       <Pressable
         key={toothId}
-        onPress={() => handleToothPress(toothId)}
+        onPress={() => toggleTooth(toothId)}
         style={[
           styles.toothCircle,
           getToothStyle(toothId),
@@ -156,7 +151,7 @@ const ImplantAssessmentScreen = ({ route }: any) => {
         ]}
       >
         <Text style={styles.toothLabel}>{toothId}</Text>
-        {selectedTeeth.has(toothId) && (
+        {selectedTeeth.includes(toothId) && (
           <View style={styles.implantFlag}>
             <Text style={styles.implantText}>
               {implantMode === 'single' ? '🔩' : '🌉'}
@@ -172,6 +167,15 @@ const ImplantAssessmentScreen = ({ route }: any) => {
       <Text style={styles.header}>🦷 Implant Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
+      {/* State Preservation Indicator */}
+      {(implantState.singleImplantTeeth.length > 0 || implantState.bridgeImplantTeeth.length > 0) && (
+        <View style={styles.stateIndicator}>
+          <Text style={styles.stateIndicatorText}>
+            ✅ State preserved: Single ({implantState.singleImplantTeeth.length}) | Bridge ({implantState.bridgeImplantTeeth.length})
+          </Text>
+        </View>
+      )}
+
       {/* Implant Type Selector */}
       <View style={styles.selectorCard}>
         <Text style={styles.cardTitle}>Implant Type</Text>
@@ -181,16 +185,13 @@ const ImplantAssessmentScreen = ({ route }: any) => {
               styles.typeSelectorButton,
               implantMode === 'single' && styles.typeSelectorButtonActive
             ]}
-            onPress={() => {
-              setImplantMode('single');
-              clearSelection();
-            }}
+            onPress={() => handleImplantModeChange('single')}
           >
             <Text style={[
               styles.typeSelectorText,
               implantMode === 'single' && styles.typeSelectorTextActive
             ]}>
-              Single Implant
+              Single Implant ({implantState.singleImplantTeeth.length})
             </Text>
           </Pressable>
           <Pressable
@@ -198,16 +199,13 @@ const ImplantAssessmentScreen = ({ route }: any) => {
               styles.typeSelectorButton,
               implantMode === 'bridge' && styles.typeSelectorButtonActive
             ]}
-            onPress={() => {
-              setImplantMode('bridge');
-              clearSelection();
-            }}
+            onPress={() => handleImplantModeChange('bridge')}
           >
             <Text style={[
               styles.typeSelectorText,
               implantMode === 'bridge' && styles.typeSelectorTextActive
             ]}>
-              Implant Bridge
+              Bridge ({implantState.bridgeImplantTeeth.length})
             </Text>
           </Pressable>
         </View>
@@ -215,21 +213,21 @@ const ImplantAssessmentScreen = ({ route }: any) => {
 
       {/* Selection Summary */}
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Current Selection</Text>
+        <Text style={styles.summaryTitle}>Current Selection - {implantMode === 'single' ? 'Single Implants' : 'Implant Bridge'}</Text>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Selected Teeth:</Text>
           <Text style={styles.summaryValue}>
-            {selectedTeeth.size === 0 ? 'None' : Array.from(selectedTeeth).sort().join(', ')}
+            {selectedTeeth.length === 0 ? 'None' : selectedTeeth.sort().join(', ')}
           </Text>
         </View>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Count:</Text>
-          <Text style={styles.summaryValue}>{selectedTeeth.size}</Text>
+          <Text style={styles.summaryValue}>{selectedTeeth.length}</Text>
         </View>
         
-        {selectedTeeth.size > 0 && (
-          <Pressable style={styles.clearButton} onPress={clearSelection}>
-            <Text style={styles.clearButtonText}>Clear Selection</Text>
+        {selectedTeeth.length > 0 && (
+          <Pressable style={styles.clearButton} onPress={clearCurrentSelection}>
+            <Text style={styles.clearButtonText}>Clear {implantMode === 'single' ? 'Single' : 'Bridge'} Selection</Text>
           </Pressable>
         )}
       </View>
@@ -264,7 +262,7 @@ const ImplantAssessmentScreen = ({ route }: any) => {
               styles.optionToggle,
               boneGraftingPlanned && styles.optionToggleActive
             ]}
-            onPress={() => setBoneGraftingPlanned(!boneGraftingPlanned)}
+            onPress={() => updateBoneGrafting(!boneGraftingPlanned)}
           >
             <Text style={[
               styles.optionToggleText,
@@ -283,7 +281,7 @@ const ImplantAssessmentScreen = ({ route }: any) => {
                 styles.timingSelectorButton,
                 timingMode === 'immediate' && styles.timingSelectorButtonActive
               ]}
-              onPress={() => setTimingMode('immediate')}
+              onPress={() => updateTimingMode('immediate')}
             >
               <Text style={[
                 styles.timingSelectorText,
@@ -297,7 +295,7 @@ const ImplantAssessmentScreen = ({ route }: any) => {
                 styles.timingSelectorButton,
                 timingMode === 'delayed' && styles.timingSelectorButtonActive
               ]}
-              onPress={() => setTimingMode('delayed')}
+              onPress={() => updateTimingMode('delayed')}
             >
               <Text style={[
                 styles.timingSelectorText,
@@ -350,6 +348,21 @@ const styles = StyleSheet.create({
     color: '#665',
     marginBottom: 16,
   },
+  stateIndicator: {
+    backgroundColor: '#d4edda',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    width: '100%',
+    borderLeftWidth: 4,
+    borderLeftColor: '#28a745',
+  },
+  stateIndicatorText: {
+    fontSize: 12,
+    color: '#155724',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   selectorCard: {
     backgroundColor: '#f8f9fa',
     borderRadius: 12,
@@ -382,9 +395,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#007bff',
   },
   typeSelectorText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#6c757d',
+    textAlign: 'center',
   },
   typeSelectorTextActive: {
     color: 'white',
