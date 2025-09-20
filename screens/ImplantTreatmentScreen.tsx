@@ -1,60 +1,61 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal } from 'react-native';
 import { useImplantTreatment } from '../contexts/ImplantTreatmentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
-
-type TreatmentType = 'single-implant' | 'implant-bridge';
-
-interface ImplantRecord {
-  id: string;
-  type: TreatmentType;
-  toothNumber?: string; // For single implant
-  implantLocations?: string; // For bridge (e.g., "24, 26")
-  ponticLocations?: string; // For bridge (e.g., "25")
-  notes: string;
-  placedAt: Date;
-}
+import type { TreatmentType, ImplantRecord } from '../contexts/ImplantTreatmentContext';
 
 const ImplantTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
+  
+  const {
+    treatmentState,
+    updateImplantRecords,
+    updateGeneralNotes,
+    updateModalState,
+    setTreatmentCompleted,
+    resetTreatment
+  } = useImplantTreatment();
 
-  // State for implant records
-  const [implantRecords, setImplantRecords] = useState<ImplantRecord[]>([]);
-  const [generalNotes, setGeneralNotes] = useState('');
-  const [treatmentCompleted, setTreatmentCompleted] = useState(false);
-  const [completedAt, setCompletedAt] = useState<Date | null>(null);
-
-  // Modal state
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedType, setSelectedType] = useState<TreatmentType>('single-implant');
-  const [toothNumber, setToothNumber] = useState('');
-  const [implantLocations, setImplantLocations] = useState('');
-  const [ponticLocations, setPonticLocations] = useState('');
-  const [notes, setNotes] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const {
+    implantRecords,
+    generalNotes,
+    treatmentCompleted,
+    completedAt,
+    modalVisible,
+    selectedType,
+    toothNumber,
+    implantLocations,
+    ponticLocations,
+    notes,
+    editingId
+  } = treatmentState;
 
   const openNewImplantModal = () => {
-    setEditingId(null);
-    setSelectedType('single-implant');
-    setToothNumber('');
-    setImplantLocations('');
-    setPonticLocations('');
-    setNotes('');
-    setModalVisible(true);
+    updateModalState({
+      editingId: null,
+      selectedType: 'single-implant',
+      toothNumber: '',
+      implantLocations: '',
+      ponticLocations: '',
+      notes: '',
+      modalVisible: true
+    });
   };
 
   const openEditImplantModal = (record: ImplantRecord) => {
-    setEditingId(record.id);
-    setSelectedType(record.type);
-    setToothNumber(record.toothNumber || '');
-    setImplantLocations(record.implantLocations || '');
-    setPonticLocations(record.ponticLocations || '');
-    setNotes(record.notes);
-    setModalVisible(true);
+    updateModalState({
+      editingId: record.id,
+      selectedType: record.type,
+      toothNumber: record.toothNumber || '',
+      implantLocations: record.implantLocations || '',
+      ponticLocations: record.ponticLocations || '',
+      notes: record.notes,
+      modalVisible: true
+    });
   };
 
   const handleSaveImplant = () => {
@@ -85,17 +86,19 @@ const ImplantTreatmentScreen = ({ route }: any) => {
       placedAt: new Date(),
     };
 
+    let updatedRecords: ImplantRecord[];
     if (editingId) {
       // Update existing record
-      setImplantRecords(prev => 
-        prev.map(record => record.id === editingId ? recordData : record)
+      updatedRecords = implantRecords.map(record => 
+        record.id === editingId ? recordData : record
       );
     } else {
       // Add new record
-      setImplantRecords(prev => [...prev, recordData]);
+      updatedRecords = [...implantRecords, recordData];
     }
 
-    setModalVisible(false);
+    updateImplantRecords(updatedRecords);
+    updateModalState({ modalVisible: false });
   };
 
   const removeImplantRecord = (id: string) => {
@@ -107,7 +110,10 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         { 
           text: 'Remove', 
           style: 'destructive',
-          onPress: () => setImplantRecords(prev => prev.filter(record => record.id !== id))
+          onPress: () => {
+            const updatedRecords = implantRecords.filter(record => record.id !== id);
+            updateImplantRecords(updatedRecords);
+          }
         }
       ]
     );
@@ -166,7 +172,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
   };
 
   const handleCompleteTreatment = async () => {
-    if (implantRecords.length === 0) {
+    if ((implantRecords || []).length === 0) {
       Alert.alert(
         'No Records',
         'Please add at least one implant record before completing the treatment.',
@@ -177,7 +183,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
 
     Alert.alert(
       'Complete Treatment',
-      `Complete implant treatment for this patient?\n\nTreatment Summary:\n• Records: ${implantRecords.length}\n\nThis will save the treatment to the database.`,
+      `Complete implant treatment for this patient?\n\nTreatment Summary:\n• Records: ${(implantRecords || []).length}\n\nThis will save the treatment to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -186,8 +192,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             const saved = await saveTreatmentToDatabase();
             
             if (saved) {
-              setTreatmentCompleted(true);
-              setCompletedAt(new Date());
+              setTreatmentCompleted(true, new Date());
               Alert.alert(
                 'Success', 
                 '✅ Implant treatment completed and saved to database!'
@@ -209,10 +214,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
           text: 'Reset', 
           style: 'destructive', 
           onPress: () => {
-            setImplantRecords([]);
-            setGeneralNotes('');
-            setTreatmentCompleted(false);
-            setCompletedAt(null);
+            resetTreatment();
           }
         }
       ]
@@ -231,6 +233,15 @@ const ImplantTreatmentScreen = ({ route }: any) => {
     <ScrollView style={styles.container}>
       <Text style={styles.header}>🦷 Implant Treatment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
+
+      {/* State Preservation Indicator */}
+      {(implantRecords.length > 0 || generalNotes.trim() !== '') && !treatmentCompleted && (
+        <View style={styles.stateIndicator}>
+          <Text style={styles.stateIndicatorText}>
+            ✅ State preserved: {implantRecords.length} records, {generalNotes.trim() ? 'notes saved' : 'no notes'}
+          </Text>
+        </View>
+      )}
 
       {treatmentCompleted && completedAt && (
         <View style={styles.completedBanner}>
@@ -295,7 +306,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         <TextInput
           style={styles.notesInput}
           value={generalNotes}
-          onChangeText={setGeneralNotes}
+          onChangeText={updateGeneralNotes}
           placeholder="General notes about the implant treatment session..."
           multiline
           numberOfLines={3}
@@ -352,7 +363,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => updateModalState({ modalVisible: false })}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -369,7 +380,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
                     styles.typeButton,
                     selectedType === 'single-implant' && styles.typeButtonSelected
                   ]}
-                  onPress={() => setSelectedType('single-implant')}
+                  onPress={() => updateModalState({ selectedType: 'single-implant' })}
                 >
                   <Text style={[
                     styles.typeButtonText,
@@ -383,7 +394,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
                     styles.typeButton,
                     selectedType === 'implant-bridge' && styles.typeButtonSelected
                   ]}
-                  onPress={() => setSelectedType('implant-bridge')}
+                  onPress={() => updateModalState({ selectedType: 'implant-bridge' })}
                 >
                   <Text style={[
                     styles.typeButtonText,
@@ -402,7 +413,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
                 <TextInput
                   style={styles.textInput}
                   value={toothNumber}
-                  onChangeText={setToothNumber}
+                  onChangeText={(text) => updateModalState({ toothNumber: text })}
                   placeholder="e.g., 11, 24, 36"
                   autoCapitalize="none"
                 />
@@ -414,7 +425,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
                   <TextInput
                     style={styles.textInput}
                     value={implantLocations}
-                    onChangeText={setImplantLocations}
+                    onChangeText={(text) => updateModalState({ implantLocations: text })}
                     placeholder="e.g., 24, 26"
                     autoCapitalize="none"
                   />
@@ -424,7 +435,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
                   <TextInput
                     style={styles.textInput}
                     value={ponticLocations}
-                    onChangeText={setPonticLocations}
+                    onChangeText={(text) => updateModalState({ ponticLocations: text })}
                     placeholder="e.g., 25"
                     autoCapitalize="none"
                   />
@@ -442,7 +453,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
               <TextInput
                 style={styles.modalNotesInput}
                 value={notes}
-                onChangeText={setNotes}
+                onChangeText={(text) => updateModalState({ notes: text })}
                 placeholder={
                   selectedType === 'single-implant'
                     ? "e.g., Nobel Biocare 4.3x10mm, torque 35Ncm, primary stability excellent..."
@@ -458,7 +469,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             <View style={styles.modalActions}>
               <Pressable 
                 style={styles.modalCancelButton} 
-                onPress={() => setModalVisible(false)}
+                onPress={() => updateModalState({ modalVisible: false })}
               >
                 <Text style={styles.modalCancelButtonText}>Cancel</Text>
               </Pressable>
@@ -497,6 +508,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 20,
+    textAlign: 'center',
+  },
+  stateIndicator: {
+    backgroundColor: '#d1ecf1',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#0c5460',
+  },
+  stateIndicatorText: {
+    fontSize: 12,
+    color: '#0c5460',
+    fontWeight: '600',
     textAlign: 'center',
   },
   completedBanner: {

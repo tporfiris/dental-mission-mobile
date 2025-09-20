@@ -2,14 +2,18 @@ import React, { createContext, useContext, useState } from 'react';
 
 interface HygieneTreatmentState {
   scalingUnits: number;
-  rootPlaningUnits: number;
+  polishingUnits: number;
+  scalingMethod: string; // 'cavitron' or 'hand' or ''
+  prescribedMedication: string;
   notes: string;
-  completedAt: string | null;
+  completedAt: Date | null;
 }
 
 const defaultHygieneTreatmentState: HygieneTreatmentState = {
   scalingUnits: 0,
-  rootPlaningUnits: 0,
+  polishingUnits: 0,
+  scalingMethod: '',
+  prescribedMedication: '',
   notes: '',
   completedAt: null,
 };
@@ -18,7 +22,9 @@ interface HygieneTreatmentContextType {
   treatmentState: HygieneTreatmentState;
   setTreatmentState: (state: HygieneTreatmentState) => void;
   updateScalingUnits: (units: number) => void;
-  updateRootPlaningUnits: (units: number) => void;
+  updatePolishingUnits: (units: number) => void;
+  updateScalingMethod: (method: string) => void;
+  updatePrescribedMedication: (medication: string) => void;
   updateNotes: (notes: string) => void;
   markCompleted: () => void;
   resetTreatment: () => void;
@@ -28,7 +34,9 @@ const HygieneTreatmentContext = createContext<HygieneTreatmentContextType>({
   treatmentState: defaultHygieneTreatmentState,
   setTreatmentState: () => {},
   updateScalingUnits: () => {},
-  updateRootPlaningUnits: () => {},
+  updatePolishingUnits: () => {},
+  updateScalingMethod: () => {},
+  updatePrescribedMedication: () => {},
   updateNotes: () => {},
   markCompleted: () => {},
   resetTreatment: () => {},
@@ -43,8 +51,16 @@ export const HygieneTreatmentProvider: React.FC<{ children: React.ReactNode }> =
     setTreatmentState(prev => ({ ...prev, scalingUnits: Math.max(0, units) }));
   };
 
-  const updateRootPlaningUnits = (units: number) => {
-    setTreatmentState(prev => ({ ...prev, rootPlaningUnits: Math.max(0, units) }));
+  const updatePolishingUnits = (units: number) => {
+    setTreatmentState(prev => ({ ...prev, polishingUnits: Math.max(0, units) }));
+  };
+
+  const updateScalingMethod = (method: string) => {
+    setTreatmentState(prev => ({ ...prev, scalingMethod: method }));
+  };
+
+  const updatePrescribedMedication = (medication: string) => {
+    setTreatmentState(prev => ({ ...prev, prescribedMedication: medication }));
   };
 
   const updateNotes = (notes: string) => {
@@ -54,7 +70,7 @@ export const HygieneTreatmentProvider: React.FC<{ children: React.ReactNode }> =
   const markCompleted = () => {
     setTreatmentState(prev => ({ 
       ...prev, 
-      completedAt: new Date().toISOString() 
+      completedAt: new Date() 
     }));
   };
 
@@ -67,7 +83,9 @@ export const HygieneTreatmentProvider: React.FC<{ children: React.ReactNode }> =
       treatmentState,
       setTreatmentState,
       updateScalingUnits,
-      updateRootPlaningUnits,
+      updatePolishingUnits,
+      updateScalingMethod,
+      updatePrescribedMedication,
       updateNotes,
       markCompleted,
       resetTreatment,

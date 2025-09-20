@@ -23,25 +23,67 @@ interface PlacedImplant {
   placedAt: string; // Timestamp when this implant was recorded as placed
 }
 
+type TreatmentType = 'single-implant' | 'implant-bridge';
+
+interface ImplantRecord {
+  id: string;
+  type: TreatmentType;
+  toothNumber?: string; // For single implant
+  implantLocations?: string; // For bridge (e.g., "24, 26")
+  ponticLocations?: string; // For bridge (e.g., "25")
+  notes: string;
+  placedAt: Date;
+}
+
 interface ImplantTreatmentState {
+  // Legacy structure for backward compatibility
   placedImplants: PlacedImplant[];
+  
+  // New structure for the updated screen
+  implantRecords: ImplantRecord[];
   generalNotes: string;
-  completedAt: string | null;
+  treatmentCompleted: boolean;
+  completedAt: Date | null;
+  
+  // Modal state preservation
+  modalVisible: boolean;
+  selectedType: TreatmentType;
+  toothNumber: string;
+  implantLocations: string;
+  ponticLocations: string;
+  notes: string;
+  editingId: string | null;
 }
 
 const defaultImplantTreatmentState: ImplantTreatmentState = {
   placedImplants: [],
+  implantRecords: [],
   generalNotes: '',
+  treatmentCompleted: false,
   completedAt: null,
+  modalVisible: false,
+  selectedType: 'single-implant',
+  toothNumber: '',
+  implantLocations: '',
+  ponticLocations: '',
+  notes: '',
+  editingId: null,
 };
 
 interface ImplantTreatmentContextType {
   treatmentState: ImplantTreatmentState;
   setTreatmentState: (state: ImplantTreatmentState) => void;
+  
+  // Legacy methods for backward compatibility
   addPlacedImplant: (implant: Omit<PlacedImplant, 'placedAt'>) => void;
   removePlacedImplant: (index: number) => void;
   updatePlacedImplant: (index: number, implant: Omit<PlacedImplant, 'placedAt'>) => void;
+  
+  // New methods for updated functionality
+  updateImplantRecords: (records: ImplantRecord[]) => void;
   updateGeneralNotes: (notes: string) => void;
+  updateModalState: (updates: Partial<Pick<ImplantTreatmentState, 'modalVisible' | 'selectedType' | 'toothNumber' | 'implantLocations' | 'ponticLocations' | 'notes' | 'editingId'>>) => void;
+  setTreatmentCompleted: (completed: boolean, completedAt?: Date) => void;
   markCompleted: () => void;
   resetTreatment: () => void;
 }
@@ -52,7 +94,10 @@ const ImplantTreatmentContext = createContext<ImplantTreatmentContextType>({
   addPlacedImplant: () => {},
   removePlacedImplant: () => {},
   updatePlacedImplant: () => {},
+  updateImplantRecords: () => {},
   updateGeneralNotes: () => {},
+  updateModalState: () => {},
+  setTreatmentCompleted: () => {},
   markCompleted: () => {},
   resetTreatment: () => {},
 });
@@ -92,19 +137,39 @@ export const ImplantTreatmentProvider: React.FC<{ children: React.ReactNode }> =
     }));
   };
 
+  const updateImplantRecords = (records: ImplantRecord[]) => {
+    setTreatmentState(prev => ({
+      ...prev,
+      implantRecords: records
+    }));
+  };
+
   const updateGeneralNotes = (notes: string) => {
     setTreatmentState(prev => ({ ...prev, generalNotes: notes }));
+  };
+
+  const updateModalState = (updates: Partial<Pick<ImplantTreatmentState, 'modalVisible' | 'selectedType' | 'toothNumber' | 'implantLocations' | 'ponticLocations' | 'notes' | 'editingId'>>) => {
+    setTreatmentState(prev => ({ ...prev, ...updates }));
+  };
+
+  const setTreatmentCompleted = (completed: boolean, completedAt?: Date) => {
+    setTreatmentState(prev => ({
+      ...prev,
+      treatmentCompleted: completed,
+      completedAt: completedAt || (completed ? new Date() : null)
+    }));
   };
 
   const markCompleted = () => {
     setTreatmentState(prev => ({ 
       ...prev, 
-      completedAt: new Date().toISOString() 
+      treatmentCompleted: true,
+      completedAt: new Date() 
     }));
   };
 
   const resetTreatment = () => {
-    setTreatmentState(defaultImplantTreatmentState);
+    setTreatmentState(createSafeInitialState());
   };
 
   return (
@@ -114,7 +179,10 @@ export const ImplantTreatmentProvider: React.FC<{ children: React.ReactNode }> =
       addPlacedImplant,
       removePlacedImplant,
       updatePlacedImplant,
+      updateImplantRecords,
       updateGeneralNotes,
+      updateModalState,
+      setTreatmentCompleted,
       markCompleted,
       resetTreatment,
     }}>
@@ -124,7 +192,7 @@ export const ImplantTreatmentProvider: React.FC<{ children: React.ReactNode }> =
 };
 
 // Export types and constants for use in components
-export type { ImplantType, ImplantProcedure, PlacedImplant };
+export type { ImplantType, ImplantProcedure, PlacedImplant, TreatmentType, ImplantRecord };
 
 export const IMPLANT_TYPES: Record<ImplantType, string> = {
   'single-implant': 'Single Implant',

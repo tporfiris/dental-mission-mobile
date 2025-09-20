@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { useHygieneTreatment } from '../contexts/HygieneTreatmentContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
@@ -9,13 +10,26 @@ const HygieneTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
   
-  // Local state for treatment data
-  const [scalingUnits, setScalingUnits] = useState(0);
-  const [polishingUnits, setPolishingUnits] = useState(0);
-  const [scalingMethod, setScalingMethod] = useState(''); // 'cavitron' or 'hand'
-  const [prescribedMedication, setPrescribedMedication] = useState('');
-  const [notes, setNotes] = useState('');
-  const [completedAt, setCompletedAt] = useState(null);
+  // Use context instead of local state
+  const {
+    treatmentState,
+    updateScalingUnits,
+    updatePolishingUnits,
+    updateScalingMethod,
+    updatePrescribedMedication,
+    updateNotes,
+    markCompleted,
+    resetTreatment,
+  } = useHygieneTreatment();
+
+  const {
+    scalingUnits,
+    polishingUnits,
+    scalingMethod,
+    prescribedMedication,
+    notes,
+    completedAt,
+  } = treatmentState;
 
   const saveTreatmentToDatabase = async () => {
     try {
@@ -93,7 +107,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
             const saved = await saveTreatmentToDatabase();
             
             if (saved) {
-              setCompletedAt(new Date());
+              markCompleted();
               Alert.alert(
                 'Success', 
                 '✅ Hygiene treatment completed and saved to database!'
@@ -115,19 +129,14 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           text: 'Reset', 
           style: 'destructive', 
           onPress: () => {
-            setScalingUnits(0);
-            setPolishingUnits(0);
-            setScalingMethod('');
-            setPrescribedMedication('');
-            setNotes('');
-            setCompletedAt(null);
+            resetTreatment();
           }
         }
       ]
     );
   };
 
-  const ScalingUnitButton = ({ value, selected, onPress }) => (
+  const ScalingUnitButton = ({ value, selected, onPress }: { value: string; selected: boolean; onPress: () => void }) => (
     <Pressable 
       style={[styles.unitOptionButton, selected && styles.unitOptionButtonSelected]} 
       onPress={onPress}
@@ -138,7 +147,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     </Pressable>
   );
 
-  const PolishingUnitButton = ({ value, selected, onPress }) => (
+  const PolishingUnitButton = ({ value, selected, onPress }: { value: string; selected: boolean; onPress: () => void }) => (
     <Pressable 
       style={[styles.unitOptionButton, selected && styles.unitOptionButtonSelected]} 
       onPress={onPress}
@@ -149,7 +158,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     </Pressable>
   );
 
-  const MethodButton = ({ method, selected, onPress }) => (
+  const MethodButton = ({ method, selected, onPress }: { method: string; selected: boolean; onPress: () => void }) => (
     <Pressable 
       style={[styles.methodButton, selected && styles.methodButtonSelected]} 
       onPress={onPress}
@@ -164,6 +173,16 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     <ScrollView style={styles.container}>
       <Text style={styles.header}>🪥 Hygiene Treatment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
+
+      {/* State Preservation Indicator */}
+      {(scalingUnits > 0 || polishingUnits > 0 || scalingMethod || prescribedMedication || notes) && !completedAt && (
+        <View style={styles.stateIndicator}>
+          <Text style={styles.stateIndicatorText}>
+            ✅ State preserved: Scaling {scalingUnits}, Polishing {polishingUnits}
+            {scalingMethod && `, Method: ${scalingMethod}`}
+          </Text>
+        </View>
+      )}
 
       {completedAt && (
         <View style={styles.completedBanner}>
@@ -186,27 +205,27 @@ const HygieneTreatmentScreen = ({ route }: any) => {
             <ScalingUnitButton 
               value="0" 
               selected={scalingUnits === 0} 
-              onPress={() => setScalingUnits(0)} 
+              onPress={() => updateScalingUnits(0)} 
             />
             <ScalingUnitButton 
               value="1" 
               selected={scalingUnits === 1} 
-              onPress={() => setScalingUnits(1)} 
+              onPress={() => updateScalingUnits(1)} 
             />
             <ScalingUnitButton 
               value="2" 
               selected={scalingUnits === 2} 
-              onPress={() => setScalingUnits(2)} 
+              onPress={() => updateScalingUnits(2)} 
             />
             <ScalingUnitButton 
               value="3" 
               selected={scalingUnits === 3} 
-              onPress={() => setScalingUnits(3)} 
+              onPress={() => updateScalingUnits(3)} 
             />
             <ScalingUnitButton 
               value="4" 
               selected={scalingUnits === 4} 
-              onPress={() => setScalingUnits(4)} 
+              onPress={() => updateScalingUnits(4)} 
             />
           </View>
           <Text style={styles.inputHint}>
@@ -221,17 +240,17 @@ const HygieneTreatmentScreen = ({ route }: any) => {
             <PolishingUnitButton 
               value="0" 
               selected={polishingUnits === 0} 
-              onPress={() => setPolishingUnits(0)} 
+              onPress={() => updatePolishingUnits(0)} 
             />
             <PolishingUnitButton 
               value="0.5" 
               selected={polishingUnits === 0.5} 
-              onPress={() => setPolishingUnits(0.5)} 
+              onPress={() => updatePolishingUnits(0.5)} 
             />
             <PolishingUnitButton 
               value="1" 
               selected={polishingUnits === 1} 
-              onPress={() => setPolishingUnits(1)} 
+              onPress={() => updatePolishingUnits(1)} 
             />
           </View>
           <Text style={styles.inputHint}>
@@ -246,12 +265,12 @@ const HygieneTreatmentScreen = ({ route }: any) => {
             <MethodButton 
               method="Cavitron" 
               selected={scalingMethod === 'cavitron'} 
-              onPress={() => setScalingMethod(scalingMethod === 'cavitron' ? '' : 'cavitron')} 
+              onPress={() => updateScalingMethod(scalingMethod === 'cavitron' ? '' : 'cavitron')} 
             />
             <MethodButton 
               method="Hand Scaled" 
               selected={scalingMethod === 'hand'} 
-              onPress={() => setScalingMethod(scalingMethod === 'hand' ? '' : 'hand')} 
+              onPress={() => updateScalingMethod(scalingMethod === 'hand' ? '' : 'hand')} 
             />
           </View>
           <Text style={styles.inputHint}>
@@ -265,7 +284,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           <TextInput
             style={styles.medicationInput}
             value={prescribedMedication}
-            onChangeText={setPrescribedMedication}
+            onChangeText={updatePrescribedMedication}
             placeholder="Enter prescribed medication (if any)..."
             multiline
             numberOfLines={2}
@@ -282,7 +301,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           <TextInput
             style={styles.notesInput}
             value={notes}
-            onChangeText={setNotes}
+            onChangeText={updateNotes}
             placeholder="Additional notes about the hygiene treatment..."
             multiline
             numberOfLines={3}
@@ -334,6 +353,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 20,
+    textAlign: 'center',
+  },
+  stateIndicator: {
+    backgroundColor: '#d4edda',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#28a745',
+  },
+  stateIndicatorText: {
+    fontSize: 12,
+    color: '#155724',
+    fontWeight: '600',
     textAlign: 'center',
   },
   completedBanner: {

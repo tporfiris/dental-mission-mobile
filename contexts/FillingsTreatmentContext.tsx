@@ -1,43 +1,67 @@
 import React, { createContext, useContext, useState } from 'react';
 
-const TOOTH_IDS = [
-  '11','12','13','14','15','16','17','18',
-  '21','22','23','24','25','26','27','28',
-  '31','32','33','34','35','36','37','38',
-  '41','42','43','44','45','46','47','48',
-];
-
-const SURFACES = ['M', 'D', 'L', 'B', 'O'] as const;
+const SURFACES = ['M', 'O', 'D', 'B', 'L'] as const;
 type Surface = typeof SURFACES[number];
 
-interface ToothFilling {
+const FILLING_MATERIALS = ['amalgam', 'composite', 'resin', 'glass ionomer'] as const;
+type FillingMaterial = typeof FILLING_MATERIALS[number];
+
+const CROWN_MATERIALS = ['metal', 'porcelain', 'PFM'] as const;
+type CrownMaterial = typeof CROWN_MATERIALS[number];
+
+const PREP_DEPTHS = ['shallow', 'medium', 'deep'] as const;
+type PrepDepth = typeof PREP_DEPTHS[number];
+
+const CANAL_COUNTS = [1, 2, 3, 4] as const;
+type CanalCount = typeof CANAL_COUNTS[number];
+
+const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
+const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
+const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
+const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
+
+interface ToothTreatment {
   surfaces: Surface[];
+  fillingMaterial: FillingMaterial | null;
+  prepDepth: PrepDepth | null;
+  hasCracks: boolean | null;
+  crownIndicated: boolean | null;
+  crownMaterial: CrownMaterial | null;
+  rootCanalDone: boolean;
+  canalCount: CanalCount | null;
   completed: boolean;
-  completedAt: string | null;
 }
 
-interface FillingsTreatmentState {
-  treatments: Record<string, ToothFilling>;
-  notes: string;
-  allCompleted: boolean;
-  completedAt: string | null;
-}
-
-type TreatmentStates = Record<string, ToothFilling>;
-
-const defaultToothFilling: ToothFilling = {
+const defaultToothTreatment: ToothTreatment = {
   surfaces: [],
+  fillingMaterial: null,
+  prepDepth: null,
+  hasCracks: null,
+  crownIndicated: null,
+  crownMaterial: null,
+  rootCanalDone: false,
+  canalCount: null,
   completed: false,
-  completedAt: null,
 };
 
-const defaultTreatmentStates: TreatmentStates = {};
-TOOTH_IDS.forEach(id => {
-  defaultTreatmentStates[id] = { ...defaultToothFilling };
-});
+interface FillingsTreatmentState {
+  treatments: Record<string, ToothTreatment>;
+  notes: string;
+  allCompleted: boolean;
+  completedAt: Date | null;
+}
+
+// Initialize all teeth with default treatment state
+const initializeTeethStates = () => {
+  const initialStates: Record<string, ToothTreatment> = {};
+  [...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].forEach(toothId => {
+    initialStates[toothId] = { ...defaultToothTreatment };
+  });
+  return initialStates;
+};
 
 const defaultFillingsTreatmentState: FillingsTreatmentState = {
-  treatments: defaultTreatmentStates,
+  treatments: initializeTeethStates(),
   notes: '',
   allCompleted: false,
   completedAt: null,
@@ -46,29 +70,29 @@ const defaultFillingsTreatmentState: FillingsTreatmentState = {
 interface FillingsTreatmentContextType {
   treatmentState: FillingsTreatmentState;
   setTreatmentState: (state: FillingsTreatmentState) => void;
-  updateToothSurfaces: (toothId: string, surfaces: Surface[]) => void;
+  updateTreatment: (toothId: string, updates: Partial<ToothTreatment>) => void;
   toggleSurface: (toothId: string, surface: Surface) => void;
   clearTooth: (toothId: string) => void;
   updateNotes: (notes: string) => void;
-  markToothCompleted: (toothId: string) => void;
   markAllCompleted: () => void;
   resetTreatment: () => void;
-  getCompletedTreatments: () => Array<{toothId: string, surfaces: Surface[], completedAt: string}>;
+  getCompletedTreatments: () => Array<{toothId: string; treatment: ToothTreatment}>;
   getTotalSurfaceCount: () => number;
+  quickSetAllProbing: (depth: number) => void; // For compatibility if needed
 }
 
 const FillingsTreatmentContext = createContext<FillingsTreatmentContextType>({
   treatmentState: defaultFillingsTreatmentState,
   setTreatmentState: () => {},
-  updateToothSurfaces: () => {},
+  updateTreatment: () => {},
   toggleSurface: () => {},
   clearTooth: () => {},
   updateNotes: () => {},
-  markToothCompleted: () => {},
   markAllCompleted: () => {},
   resetTreatment: () => {},
   getCompletedTreatments: () => [],
   getTotalSurfaceCount: () => 0,
+  quickSetAllProbing: () => {},
 });
 
 export const useFillingsTreatment = () => useContext(FillingsTreatmentContext);
@@ -76,34 +100,28 @@ export const useFillingsTreatment = () => useContext(FillingsTreatmentContext);
 export const FillingsTreatmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [treatmentState, setTreatmentState] = useState<FillingsTreatmentState>(defaultFillingsTreatmentState);
 
-  const updateToothSurfaces = (toothId: string, surfaces: Surface[]) => {
+  const updateTreatment = (toothId: string, updates: Partial<ToothTreatment>) => {
     setTreatmentState(prev => ({
       ...prev,
       treatments: {
         ...prev.treatments,
-        [toothId]: {
-          ...prev.treatments[toothId],
-          surfaces: [...surfaces].sort(), // Keep surfaces sorted
-        }
+        [toothId]: { ...prev.treatments[toothId], ...updates }
       }
     }));
   };
 
   const toggleSurface = (toothId: string, surface: Surface) => {
     setTreatmentState(prev => {
-      const currentSurfaces = prev.treatments[toothId].surfaces;
-      const newSurfaces = currentSurfaces.includes(surface)
-        ? currentSurfaces.filter(s => s !== surface)
-        : [...currentSurfaces, surface].sort();
-
+      const treatment = prev.treatments[toothId];
+      const newSurfaces = treatment.surfaces.includes(surface)
+        ? treatment.surfaces.filter(s => s !== surface)
+        : [...treatment.surfaces, surface].sort();
+      
       return {
         ...prev,
         treatments: {
           ...prev.treatments,
-          [toothId]: {
-            ...prev.treatments[toothId],
-            surfaces: newSurfaces,
-          }
+          [toothId]: { ...treatment, surfaces: newSurfaces }
         }
       };
     });
@@ -114,11 +132,7 @@ export const FillingsTreatmentProvider: React.FC<{ children: React.ReactNode }> 
       ...prev,
       treatments: {
         ...prev.treatments,
-        [toothId]: {
-          surfaces: [],
-          completed: false,
-          completedAt: null,
-        }
+        [toothId]: { ...defaultToothTreatment }
       }
     }));
   };
@@ -127,25 +141,11 @@ export const FillingsTreatmentProvider: React.FC<{ children: React.ReactNode }> 
     setTreatmentState(prev => ({ ...prev, notes }));
   };
 
-  const markToothCompleted = (toothId: string) => {
-    setTreatmentState(prev => ({
-      ...prev,
-      treatments: {
-        ...prev.treatments,
-        [toothId]: {
-          ...prev.treatments[toothId],
-          completed: true,
-          completedAt: new Date().toISOString(),
-        }
-      }
-    }));
-  };
-
   const markAllCompleted = () => {
     setTreatmentState(prev => ({
       ...prev,
       allCompleted: true,
-      completedAt: new Date().toISOString(),
+      completedAt: new Date(),
     }));
   };
 
@@ -155,12 +155,8 @@ export const FillingsTreatmentProvider: React.FC<{ children: React.ReactNode }> 
 
   const getCompletedTreatments = () => {
     return Object.entries(treatmentState.treatments)
-      .filter(([_, treatment]) => treatment.surfaces.length > 0)
-      .map(([toothId, treatment]) => ({
-        toothId,
-        surfaces: treatment.surfaces,
-        completedAt: treatment.completedAt || new Date().toISOString(),
-      }));
+      .filter(([_, treatment]) => treatment.surfaces.length > 0 || treatment.rootCanalDone)
+      .map(([toothId, treatment]) => ({ toothId, treatment }));
   };
 
   const getTotalSurfaceCount = () => {
@@ -168,21 +164,36 @@ export const FillingsTreatmentProvider: React.FC<{ children: React.ReactNode }> 
       .reduce((total, treatment) => total + treatment.surfaces.length, 0);
   };
 
+  const quickSetAllProbing = (depth: number) => {
+    // Placeholder for compatibility - not used in fillings treatment
+  };
+
   return (
     <FillingsTreatmentContext.Provider value={{
       treatmentState,
       setTreatmentState,
-      updateToothSurfaces,
+      updateTreatment,
       toggleSurface,
       clearTooth,
       updateNotes,
-      markToothCompleted,
       markAllCompleted,
       resetTreatment,
       getCompletedTreatments,
       getTotalSurfaceCount,
+      quickSetAllProbing,
     }}>
       {children}
     </FillingsTreatmentContext.Provider>
   );
+};
+
+// Export types for use in components
+export type { 
+  ToothTreatment, 
+  FillingMaterial, 
+  CrownMaterial, 
+  PrepDepth, 
+  CanalCount, 
+  Surface,
+  FillingsTreatmentState 
 };

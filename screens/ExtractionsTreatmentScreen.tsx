@@ -6,31 +6,36 @@ import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
 
-type ExtractionComplexity = 'simple' | 'complicated';
-
-interface ExtractionRecord {
-  toothNumber: string;
-  complexity: ExtractionComplexity;
-  notes: string;
-  id: string;
-}
-
 const ExtractionsTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
   
-  // State for managing extractions
-  const [extractions, setExtractions] = React.useState<ExtractionRecord[]>([]);
-  const [completedAt, setCompletedAt] = React.useState<Date | null>(null);
-  
-  // Form state for adding new extractions
-  const [toothNumber, setToothNumber] = React.useState('');
-  const [selectedComplexity, setSelectedComplexity] = React.useState<ExtractionComplexity>('simple');
-  const [extractionNotes, setExtractionNotes] = React.useState('');
-  
-  // Modal for editing extractions
-  const [editingExtraction, setEditingExtraction] = React.useState<ExtractionRecord | null>(null);
-  const [modalVisible, setModalVisible] = React.useState(false);
+  // Use the context for all state management
+  const {
+    treatmentState,
+    addExtraction,
+    updateExtraction,
+    removeExtraction,
+    updateToothNumber,
+    updateSelectedComplexity,
+    updateExtractionNotes,
+    setEditingExtraction,
+    setModalVisible,
+    markCompleted,
+    resetTreatment,
+    validateToothNumber,
+    getExtractionById
+  } = useExtractionsTreatment();
+
+  const {
+    extractions,
+    completedAt,
+    toothNumber,
+    selectedComplexity,
+    extractionNotes,
+    editingExtraction,
+    modalVisible
+  } = treatmentState;
 
   // Calculate billing codes based on extractions performed
   const billingCodes = useMemo(() => {
@@ -65,19 +70,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
     });
   }, [extractions]);
 
-  const validateToothNumber = (tooth: string): boolean => {
-    const num = parseInt(tooth);
-    if (isNaN(num)) return false;
-    
-    // Valid tooth numbers: 11-18, 21-28, 31-38, 41-48
-    const validRanges = [
-      [11, 18], [21, 28], [31, 38], [41, 48]
-    ];
-    
-    return validRanges.some(([min, max]) => num >= min && num <= max);
-  };
-
-  const addExtraction = () => {
+  const handleAddExtraction = () => {
     if (!toothNumber.trim()) {
       Alert.alert('Error', 'Please enter a tooth number');
       return;
@@ -99,44 +92,43 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         `Tooth ${toothNumber} has already been recorded for extraction. Would you like to edit it?`,
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Edit', onPress: () => editExtraction(existingExtraction) }
+          { text: 'Edit', onPress: () => handleEditExtraction(existingExtraction) }
         ]
       );
       return;
     }
     
-    const newExtraction: ExtractionRecord = {
-      id: uuid.v4() as string,
+    const newExtraction = {
       toothNumber,
       complexity: selectedComplexity,
       notes: extractionNotes.trim()
     };
     
-    setExtractions(prev => [...prev, newExtraction]);
+    addExtraction(newExtraction);
     
     // Clear form
-    setToothNumber('');
-    setSelectedComplexity('simple');
-    setExtractionNotes('');
+    updateToothNumber('');
+    updateSelectedComplexity('simple');
+    updateExtractionNotes('');
     
     Alert.alert('Success', `Tooth ${toothNumber} extraction recorded successfully`);
   };
 
-  const editExtraction = (extraction: ExtractionRecord) => {
+  const handleEditExtraction = (extraction: any) => {
     setEditingExtraction(extraction);
     setModalVisible(true);
   };
 
-  const updateExtraction = (updatedExtraction: ExtractionRecord) => {
-    setExtractions(prev => 
-      prev.map(e => e.id === updatedExtraction.id ? updatedExtraction : e)
-    );
-    setModalVisible(false);
-    setEditingExtraction(null);
+  const handleUpdateExtraction = (updatedExtraction: any) => {
+    if (editingExtraction) {
+      updateExtraction(editingExtraction.id, updatedExtraction);
+      setModalVisible(false);
+      setEditingExtraction(null);
+    }
   };
 
-  const removeExtraction = (extractionId: string) => {
-    const extraction = extractions.find(e => e.id === extractionId);
+  const handleRemoveExtraction = (extractionId: string) => {
+    const extraction = getExtractionById(extractionId);
     if (!extraction) return;
     
     Alert.alert(
@@ -147,9 +139,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         { 
           text: 'Remove', 
           style: 'destructive',
-          onPress: () => {
-            setExtractions(prev => prev.filter(e => e.id !== extractionId));
-          }
+          onPress: () => removeExtraction(extractionId)
         }
       ]
     );
@@ -231,7 +221,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             const saved = await saveTreatmentToDatabase();
             
             if (saved) {
-              setCompletedAt(new Date());
+              markCompleted();
               Alert.alert(
                 'Success', 
                 `✅ Extractions treatment completed and saved!\n\n` +
@@ -257,13 +247,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         { 
           text: 'Reset', 
           style: 'destructive', 
-          onPress: () => {
-            setExtractions([]);
-            setCompletedAt(null);
-            setToothNumber('');
-            setSelectedComplexity('simple');
-            setExtractionNotes('');
-          }
+          onPress: resetTreatment
         }
       ]
     );
@@ -293,7 +277,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             <TextInput
               style={styles.toothNumberInput}
               value={toothNumber}
-              onChangeText={setToothNumber}
+              onChangeText={updateToothNumber}
               placeholder="e.g., 11, 26, 48"
               keyboardType="numeric"
               maxLength={2}
@@ -308,7 +292,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
                   styles.complexityButton,
                   selectedComplexity === 'simple' && styles.complexityButtonSelected
                 ]}
-                onPress={() => setSelectedComplexity('simple')}
+                onPress={() => updateSelectedComplexity('simple')}
               >
                 <Text style={[
                   styles.complexityButtonText,
@@ -322,7 +306,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
                   styles.complexityButton,
                   selectedComplexity === 'complicated' && styles.complexityButtonSelected
                 ]}
-                onPress={() => setSelectedComplexity('complicated')}
+                onPress={() => updateSelectedComplexity('complicated')}
               >
                 <Text style={[
                   styles.complexityButtonText,
@@ -339,7 +323,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             <TextInput
               style={styles.notesInput}
               value={extractionNotes}
-              onChangeText={setExtractionNotes}
+              onChangeText={updateExtractionNotes}
               placeholder="Details about the extraction procedure..."
               multiline
               numberOfLines={3}
@@ -347,7 +331,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             />
           </View>
 
-          <Pressable style={styles.addButton} onPress={addExtraction}>
+          <Pressable style={styles.addButton} onPress={handleAddExtraction}>
             <Text style={styles.addButtonText}>➕ Add Extraction</Text>
           </Pressable>
         </View>
@@ -379,13 +363,13 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
                     <View style={styles.actionButtons}>
                       <Pressable
                         style={styles.editButton}
-                        onPress={() => editExtraction(extraction)}
+                        onPress={() => handleEditExtraction(extraction)}
                       >
                         <Text style={styles.editButtonText}>✏️</Text>
                       </Pressable>
                       <Pressable
                         style={styles.deleteButton}
-                        onPress={() => removeExtraction(extraction.id)}
+                        onPress={() => handleRemoveExtraction(extraction.id)}
                       >
                         <Text style={styles.deleteButtonText}>🗑️</Text>
                       </Pressable>
@@ -465,7 +449,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             {editingExtraction && (
               <EditExtractionForm
                 extraction={editingExtraction}
-                onUpdate={updateExtraction}
+                onUpdate={handleUpdateExtraction}
                 onCancel={() => setModalVisible(false)}
               />
             )}
@@ -478,16 +462,16 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
 
 // Edit Extraction Form Component
 const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
-  extraction: ExtractionRecord;
-  onUpdate: (extraction: ExtractionRecord) => void;
+  extraction: any;
+  onUpdate: (extraction: any) => void;
   onCancel: () => void;
 }) => {
-  const [complexity, setComplexity] = React.useState<ExtractionComplexity>(extraction.complexity);
+  const [complexity, setComplexity] = React.useState(extraction.complexity);
   const [notes, setNotes] = React.useState(extraction.notes);
 
   const handleUpdate = () => {
-    const updatedExtraction: ExtractionRecord = {
-      ...extraction,
+    const updatedExtraction = {
+      toothNumber: extraction.toothNumber,
       complexity,
       notes: notes.trim()
     };
@@ -557,6 +541,7 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
 
 export default ExtractionsTreatmentScreen;
 
+// Styles remain the same as the original file
 const styles = StyleSheet.create({
   container: {
     flex: 1,
