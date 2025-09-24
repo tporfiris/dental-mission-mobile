@@ -1,9 +1,12 @@
 import React, { createContext, useContext, useState } from 'react';
 
+type FluorideType = 'none' | 'rinse' | 'varnish';
+
 interface HygieneTreatmentState {
   scalingUnits: number;
   polishingUnits: number;
   scalingMethod: string; // 'cavitron' or 'hand' or ''
+  fluorideType: FluorideType;
   prescribedMedication: string;
   notes: string;
   completedAt: Date | null;
@@ -13,6 +16,7 @@ const defaultHygieneTreatmentState: HygieneTreatmentState = {
   scalingUnits: 0,
   polishingUnits: 0,
   scalingMethod: '',
+  fluorideType: 'none',
   prescribedMedication: '',
   notes: '',
   completedAt: null,
@@ -24,6 +28,7 @@ interface HygieneTreatmentContextType {
   updateScalingUnits: (units: number) => void;
   updatePolishingUnits: (units: number) => void;
   updateScalingMethod: (method: string) => void;
+  updateFluorideType: (type: FluorideType) => void;
   updatePrescribedMedication: (medication: string) => void;
   updateNotes: (notes: string) => void;
   markCompleted: () => void;
@@ -36,6 +41,7 @@ const HygieneTreatmentContext = createContext<HygieneTreatmentContextType>({
   updateScalingUnits: () => {},
   updatePolishingUnits: () => {},
   updateScalingMethod: () => {},
+  updateFluorideType: () => {},
   updatePrescribedMedication: () => {},
   updateNotes: () => {},
   markCompleted: () => {},
@@ -57,6 +63,10 @@ export const HygieneTreatmentProvider: React.FC<{ children: React.ReactNode }> =
 
   const updateScalingMethod = (method: string) => {
     setTreatmentState(prev => ({ ...prev, scalingMethod: method }));
+  };
+
+  const updateFluorideType = (type: FluorideType) => {
+    setTreatmentState(prev => ({ ...prev, fluorideType: type }));
   };
 
   const updatePrescribedMedication = (medication: string) => {
@@ -85,6 +95,7 @@ export const HygieneTreatmentProvider: React.FC<{ children: React.ReactNode }> =
       updateScalingUnits,
       updatePolishingUnits,
       updateScalingMethod,
+      updateFluorideType,
       updatePrescribedMedication,
       updateNotes,
       markCompleted,
@@ -94,3 +105,5 @@ export const HygieneTreatmentProvider: React.FC<{ children: React.ReactNode }> =
     </HygieneTreatmentContext.Provider>
   );
 };
+
+export type { FluorideType };

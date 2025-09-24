@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { useHygieneTreatment } from '../contexts/HygieneTreatmentContext';
+import { useHygieneTreatment, FluorideType } from '../contexts/HygieneTreatmentContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
@@ -10,12 +10,12 @@ const HygieneTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
   
-  // Use context instead of local state
+  // Use context for state management
   const {
     treatmentState,
     updateScalingUnits,
     updatePolishingUnits,
-    updateScalingMethod,
+    updateFluorideType,
     updatePrescribedMedication,
     updateNotes,
     markCompleted,
@@ -25,7 +25,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
   const {
     scalingUnits,
     polishingUnits,
-    scalingMethod,
+    fluorideType,
     prescribedMedication,
     notes,
     completedAt,
@@ -40,7 +40,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       const treatmentData = {
         scalingUnits,
         polishingUnits,
-        scalingMethod,
+        fluorideType,
         prescribedMedication,
         notes
       };
@@ -68,7 +68,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         type: 'hygiene',
         scalingUnits,
         polishingUnits,
-        scalingMethod,
+        fluorideType,
         prescribedMedication,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
@@ -96,9 +96,12 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       return;
     }
 
+    const fluorideText = fluorideType === 'none' ? 'None' : 
+                        fluorideType === 'rinse' ? 'Fluoride Rinse' : 'Fluoride Varnish';
+
     Alert.alert(
       'Complete Treatment',
-      `Complete hygiene treatment for this patient?\n\nTreatment Details:\n• Scaling Units: ${scalingUnits}\n• Polishing Units: ${polishingUnits}\n• Method: ${scalingMethod || 'Not specified'}\n• Medication: ${prescribedMedication || 'None'}\n\nThis will save the treatment to the database.`,
+      `Complete hygiene treatment for this patient?\n\nTreatment Details:\n• Scaling Units: ${scalingUnits}\n• Polishing Units: ${polishingUnits}\n• Fluoride: ${fluorideText}\n• Medication: ${prescribedMedication || 'None'}\n\nThis will save the treatment to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -158,13 +161,20 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     </Pressable>
   );
 
-  const MethodButton = ({ method, selected, onPress }: { method: string; selected: boolean; onPress: () => void }) => (
+
+
+  const FluorideButton = ({ type, selected, onPress, children }: { 
+    type: FluorideType; 
+    selected: boolean; 
+    onPress: () => void; 
+    children: React.ReactNode;
+  }) => (
     <Pressable 
-      style={[styles.methodButton, selected && styles.methodButtonSelected]} 
+      style={[styles.fluorideButton, selected && styles.fluorideButtonSelected]} 
       onPress={onPress}
     >
-      <Text style={[styles.methodButtonText, selected && styles.methodButtonTextSelected]}>
-        {method}
+      <Text style={[styles.fluorideButtonText, selected && styles.fluorideButtonTextSelected]}>
+        {children}
       </Text>
     </Pressable>
   );
@@ -175,11 +185,11 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
       {/* State Preservation Indicator */}
-      {(scalingUnits > 0 || polishingUnits > 0 || scalingMethod || prescribedMedication || notes) && !completedAt && (
+      {(scalingUnits > 0 || polishingUnits > 0 || fluorideType !== 'none' || prescribedMedication || notes) && !completedAt && (
         <View style={styles.stateIndicator}>
           <Text style={styles.stateIndicatorText}>
             ✅ State preserved: Scaling {scalingUnits}, Polishing {polishingUnits}
-            {scalingMethod && `, Method: ${scalingMethod}`}
+            {fluorideType !== 'none' && `, Fluoride: ${fluorideType}`}
           </Text>
         </View>
       )}
@@ -258,24 +268,53 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           </Text>
         </View>
 
-        {/* Scaling Method */}
+
+
+        {/* Fluoride Treatment */}
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Scaling Method</Text>
-          <View style={styles.methodContainer}>
-            <MethodButton 
-              method="Cavitron" 
-              selected={scalingMethod === 'cavitron'} 
-              onPress={() => updateScalingMethod(scalingMethod === 'cavitron' ? '' : 'cavitron')} 
-            />
-            <MethodButton 
-              method="Hand Scaled" 
-              selected={scalingMethod === 'hand'} 
-              onPress={() => updateScalingMethod(scalingMethod === 'hand' ? '' : 'hand')} 
-            />
+          <Text style={styles.inputLabel}>Fluoride Treatment</Text>
+          <View style={styles.fluorideContainer}>
+            <FluorideButton 
+              type="none"
+              selected={fluorideType === 'none'} 
+              onPress={() => updateFluorideType('none')}
+            >
+              None
+            </FluorideButton>
+            <FluorideButton 
+              type="rinse"
+              selected={fluorideType === 'rinse'} 
+              onPress={() => updateFluorideType('rinse')}
+            >
+              Fluoride Rinse
+            </FluorideButton>
+            <FluorideButton 
+              type="varnish"
+              selected={fluorideType === 'varnish'} 
+              onPress={() => updateFluorideType('varnish')}
+            >
+              Fluoride Varnish
+            </FluorideButton>
           </View>
           <Text style={styles.inputHint}>
-            Select the scaling method used (optional)
+            Select fluoride treatment performed (optional)
           </Text>
+          
+          {/* Fluoride Information */}
+          {fluorideType === 'rinse' && (
+            <View style={styles.fluorideInfo}>
+              <Text style={styles.fluorideInfoText}>
+                💧 Fluoride rinse typically contains 0.2% sodium fluoride and helps prevent cavities
+              </Text>
+            </View>
+          )}
+          {fluorideType === 'varnish' && (
+            <View style={styles.fluorideInfo}>
+              <Text style={styles.fluorideInfoText}>
+                🎨 Fluoride varnish provides longer-lasting protection and is applied directly to teeth
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Prescribed Medication */}
@@ -440,32 +479,48 @@ const styles = StyleSheet.create({
   unitOptionTextSelected: {
     color: '#fff',
   },
-  methodContainer: {
+
+  fluorideContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     marginBottom: 8,
+    gap: 8,
   },
-  methodButton: {
+  fluorideButton: {
     backgroundColor: '#f8f9fa',
     borderWidth: 2,
     borderColor: '#e9ecef',
     borderRadius: 8,
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    flex: 0.45,
+    flex: 1,
     alignItems: 'center',
   },
-  methodButtonSelected: {
-    backgroundColor: '#28a745',
-    borderColor: '#28a745',
+  fluorideButtonSelected: {
+    backgroundColor: '#6f42c1',
+    borderColor: '#6f42c1',
   },
-  methodButtonText: {
-    fontSize: 14,
+  fluorideButtonText: {
+    fontSize: 13,
     fontWeight: '600',
     color: '#495057',
+    textAlign: 'center',
   },
-  methodButtonTextSelected: {
+  fluorideButtonTextSelected: {
     color: '#fff',
+  },
+  fluorideInfo: {
+    backgroundColor: '#e7f3ff',
+    borderRadius: 6,
+    padding: 12,
+    marginTop: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#6f42c1',
+  },
+  fluorideInfoText: {
+    fontSize: 12,
+    color: '#495057',
+    fontStyle: 'italic',
   },
   inputHint: {
     fontSize: 12,
