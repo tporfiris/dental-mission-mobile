@@ -5,12 +5,12 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyC9SoLgaPlSfqexjujaYD9eDifpQuDUWxg",
+  apiKey: "id",
   authDomain: "dentalmissionapp.firebaseapp.com",
   projectId: "dentalmissionapp",
   storageBucket: "dentalmissionapp.appspot.com",
-  messagingSenderId: "983357842520",
-  appId: "1:983357842520:ios:210d20911ffb13337bd62d"
+  messagingSenderId: "id",
+  appId: "id"
 };
 
 
