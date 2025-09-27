@@ -1,104 +1,133 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal } from 'react-native';
 import { useImplantTreatment } from '../contexts/ImplantTreatmentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
-import type { TreatmentType, ImplantRecord } from '../contexts/ImplantTreatmentContext';
+
+interface ImplantRecord {
+  id: string;
+  toothNumber: string;
+  notes: string;
+  placedAt: Date;
+}
+
+interface ImplantCrownRecord {
+  id: string;
+  toothNumber: string;
+  crownType: 'screw-retained' | 'cemented';
+  notes: string;
+  placedAt: Date;
+}
 
 const ImplantTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
-  
-  const {
-    treatmentState,
-    updateImplantRecords,
-    updateGeneralNotes,
-    updateModalState,
-    setTreatmentCompleted,
-    resetTreatment
-  } = useImplantTreatment();
 
-  const {
-    implantRecords,
-    generalNotes,
-    treatmentCompleted,
-    completedAt,
-    modalVisible,
-    selectedType,
-    toothNumber,
-    implantLocations,
-    ponticLocations,
-    notes,
-    editingId
-  } = treatmentState;
+  // State for implant records
+  const [implantRecords, setImplantRecords] = useState<ImplantRecord[]>([]);
+  const [crownRecords, setCrownRecords] = useState<ImplantCrownRecord[]>([]);
+  const [generalNotes, setGeneralNotes] = useState('');
+  const [treatmentCompleted, setTreatmentCompleted] = useState(false);
+  const [completedAt, setCompletedAt] = useState<Date | null>(null);
+
+  // Modal state for implants
+  const [implantModalVisible, setImplantModalVisible] = useState(false);
+  const [toothNumber, setToothNumber] = useState('');
+  const [notes, setNotes] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Modal state for crowns
+  const [crownModalVisible, setCrownModalVisible] = useState(false);
+  const [crownToothNumber, setCrownToothNumber] = useState('');
+  const [crownType, setCrownType] = useState<'screw-retained' | 'cemented'>('screw-retained');
+  const [crownNotes, setCrownNotes] = useState('');
+  const [editingCrownId, setEditingCrownId] = useState<string | null>(null);
 
   const openNewImplantModal = () => {
-    updateModalState({
-      editingId: null,
-      selectedType: 'single-implant',
-      toothNumber: '',
-      implantLocations: '',
-      ponticLocations: '',
-      notes: '',
-      modalVisible: true
-    });
+    setEditingId(null);
+    setToothNumber('');
+    setNotes('');
+    setImplantModalVisible(true);
   };
 
   const openEditImplantModal = (record: ImplantRecord) => {
-    updateModalState({
-      editingId: record.id,
-      selectedType: record.type,
-      toothNumber: record.toothNumber || '',
-      implantLocations: record.implantLocations || '',
-      ponticLocations: record.ponticLocations || '',
-      notes: record.notes,
-      modalVisible: true
-    });
+    setEditingId(record.id);
+    setToothNumber(record.toothNumber);
+    setNotes(record.notes);
+    setImplantModalVisible(true);
+  };
+
+  const openNewCrownModal = () => {
+    setEditingCrownId(null);
+    setCrownToothNumber('');
+    setCrownType('screw-retained');
+    setCrownNotes('');
+    setCrownModalVisible(true);
+  };
+
+  const openEditCrownModal = (record: ImplantCrownRecord) => {
+    setEditingCrownId(record.id);
+    setCrownToothNumber(record.toothNumber);
+    setCrownType(record.crownType);
+    setCrownNotes(record.notes);
+    setCrownModalVisible(true);
   };
 
   const handleSaveImplant = () => {
     // Validation
-    if (selectedType === 'single-implant' && !toothNumber.trim()) {
-      Alert.alert('Validation Error', 'Please enter the tooth number for the single implant.');
+    if (!toothNumber.trim()) {
+      Alert.alert('Validation Error', 'Please enter the tooth number for the implant.');
       return;
-    }
-    
-    if (selectedType === 'implant-bridge') {
-      if (!implantLocations.trim()) {
-        Alert.alert('Validation Error', 'Please enter the implant locations for the bridge.');
-        return;
-      }
-      if (!ponticLocations.trim()) {
-        Alert.alert('Validation Error', 'Please enter the pontic locations for the bridge.');
-        return;
-      }
     }
 
     const recordData: ImplantRecord = {
       id: editingId || uuid.v4() as string,
-      type: selectedType,
-      toothNumber: selectedType === 'single-implant' ? toothNumber.trim() : undefined,
-      implantLocations: selectedType === 'implant-bridge' ? implantLocations.trim() : undefined,
-      ponticLocations: selectedType === 'implant-bridge' ? ponticLocations.trim() : undefined,
+      toothNumber: toothNumber.trim(),
       notes: notes.trim(),
       placedAt: new Date(),
     };
 
-    let updatedRecords: ImplantRecord[];
     if (editingId) {
       // Update existing record
-      updatedRecords = implantRecords.map(record => 
-        record.id === editingId ? recordData : record
+      setImplantRecords(prev => 
+        prev.map(record => record.id === editingId ? recordData : record)
       );
     } else {
       // Add new record
-      updatedRecords = [...implantRecords, recordData];
+      setImplantRecords(prev => [...prev, recordData]);
     }
 
-    updateImplantRecords(updatedRecords);
-    updateModalState({ modalVisible: false });
+    setImplantModalVisible(false);
+  };
+
+  const handleSaveCrown = () => {
+    // Validation
+    if (!crownToothNumber.trim()) {
+      Alert.alert('Validation Error', 'Please enter the tooth number for the implant crown.');
+      return;
+    }
+
+    const recordData: ImplantCrownRecord = {
+      id: editingCrownId || uuid.v4() as string,
+      toothNumber: crownToothNumber.trim(),
+      crownType: crownType,
+      notes: crownNotes.trim(),
+      placedAt: new Date(),
+    };
+
+    if (editingCrownId) {
+      // Update existing record
+      setCrownRecords(prev => 
+        prev.map(record => record.id === editingCrownId ? recordData : record)
+      );
+    } else {
+      // Add new record
+      setCrownRecords(prev => [...prev, recordData]);
+    }
+
+    setCrownModalVisible(false);
   };
 
   const removeImplantRecord = (id: string) => {
@@ -110,10 +139,22 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         { 
           text: 'Remove', 
           style: 'destructive',
-          onPress: () => {
-            const updatedRecords = implantRecords.filter(record => record.id !== id);
-            updateImplantRecords(updatedRecords);
-          }
+          onPress: () => setImplantRecords(prev => prev.filter(record => record.id !== id))
+        }
+      ]
+    );
+  };
+
+  const removeCrownRecord = (id: string) => {
+    Alert.alert(
+      'Remove Crown Record',
+      'Are you sure you want to remove this implant crown record?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Remove', 
+          style: 'destructive',
+          onPress: () => setCrownRecords(prev => prev.filter(record => record.id !== id))
         }
       ]
     );
@@ -125,6 +166,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
       const clinicianName = user?.email || 'Unknown Clinician';
 
       await database.write(async () => {
+        // Save implant records
         for (const record of implantRecords) {
           const treatmentId = uuid.v4();
           
@@ -133,19 +175,32 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             treatment.patientId = patientId;
             treatment.visitId = '';
             treatment.type = 'implant';
-            
-            if (record.type === 'single-implant') {
-              treatment.tooth = record.toothNumber || '';
-              treatment.notes = `Single implant placed at tooth ${record.toothNumber}. ${record.notes}`;
-            } else {
-              treatment.tooth = record.implantLocations || '';
-              treatment.notes = `Implant-supported bridge: Implants placed at ${record.implantLocations}, pontic(s) at ${record.ponticLocations}. ${record.notes}`;
-            }
-            
+            treatment.tooth = record.toothNumber;
             treatment.surface = 'N/A';
             treatment.units = 1;
             treatment.value = 0;
             treatment.billingCodes = JSON.stringify([]);
+            treatment.notes = `Single implant placed at tooth ${record.toothNumber}. ${record.notes}`;
+            treatment.clinicianName = clinicianName;
+            treatment.completedAt = completedDate;
+          });
+        }
+
+        // Save crown records
+        for (const record of crownRecords) {
+          const treatmentId = uuid.v4();
+          
+          await database.get<Treatment>('treatments').create(treatment => {
+            treatment._raw.id = treatmentId;
+            treatment.patientId = patientId;
+            treatment.visitId = '';
+            treatment.type = 'implant-crown';
+            treatment.tooth = record.toothNumber;
+            treatment.surface = 'N/A';
+            treatment.units = 1;
+            treatment.value = 0;
+            treatment.billingCodes = JSON.stringify([]);
+            treatment.notes = `${record.crownType === 'screw-retained' ? 'Screw-retained' : 'Cemented'} implant crown placed at tooth ${record.toothNumber}. ${record.notes}`;
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
@@ -154,7 +209,9 @@ const ImplantTreatmentScreen = ({ route }: any) => {
 
       console.log('✅ Implant treatment saved to database:', {
         patientId,
-        totalRecords: implantRecords.length,
+        implantRecords: implantRecords.length,
+        crownRecords: crownRecords.length,
+        totalRecords: implantRecords.length + crownRecords.length,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
       });
@@ -172,10 +229,10 @@ const ImplantTreatmentScreen = ({ route }: any) => {
   };
 
   const handleCompleteTreatment = async () => {
-    if ((implantRecords || []).length === 0) {
+    if (implantRecords.length === 0 && crownRecords.length === 0) {
       Alert.alert(
         'No Records',
-        'Please add at least one implant record before completing the treatment.',
+        'Please add at least one implant or crown record before completing the treatment.',
         [{ text: 'OK' }]
       );
       return;
@@ -183,7 +240,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
 
     Alert.alert(
       'Complete Treatment',
-      `Complete implant treatment for this patient?\n\nTreatment Summary:\n• Records: ${(implantRecords || []).length}\n\nThis will save the treatment to the database.`,
+      `Complete implant treatment for this patient?\n\nTreatment Summary:\n• Single Implants: ${implantRecords.length}\n• Implant Crowns: ${crownRecords.length}\n\nThis will save the treatment to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -192,7 +249,8 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             const saved = await saveTreatmentToDatabase();
             
             if (saved) {
-              setTreatmentCompleted(true, new Date());
+              setTreatmentCompleted(true);
+              setCompletedAt(new Date());
               Alert.alert(
                 'Success', 
                 '✅ Implant treatment completed and saved to database!'
@@ -214,34 +272,21 @@ const ImplantTreatmentScreen = ({ route }: any) => {
           text: 'Reset', 
           style: 'destructive', 
           onPress: () => {
-            resetTreatment();
+            setImplantRecords([]);
+            setCrownRecords([]);
+            setGeneralNotes('');
+            setTreatmentCompleted(false);
+            setCompletedAt(null);
           }
         }
       ]
     );
   };
 
-  const formatRecordTitle = (record: ImplantRecord) => {
-    if (record.type === 'single-implant') {
-      return `Single Implant - Tooth ${record.toothNumber}`;
-    } else {
-      return `Implant Bridge - Implants: ${record.implantLocations}, Pontics: ${record.ponticLocations}`;
-    }
-  };
-
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.header}>🦷 Implant Treatment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
-
-      {/* State Preservation Indicator */}
-      {(implantRecords.length > 0 || generalNotes.trim() !== '') && !treatmentCompleted && (
-        <View style={styles.stateIndicator}>
-          <Text style={styles.stateIndicatorText}>
-            ✅ State preserved: {implantRecords.length} records, {generalNotes.trim() ? 'notes saved' : 'no notes'}
-          </Text>
-        </View>
-      )}
 
       {treatmentCompleted && completedAt && (
         <View style={styles.completedBanner}>
@@ -255,22 +300,22 @@ const ImplantTreatmentScreen = ({ route }: any) => {
       {/* Implant Records Section */}
       <View style={styles.recordsSection}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Implant Records ({implantRecords.length})</Text>
+          <Text style={styles.sectionTitle}>Single Implants ({implantRecords.length})</Text>
           <Pressable style={styles.addButton} onPress={openNewImplantModal}>
-            <Text style={styles.addButtonText}>+ Add Record</Text>
+            <Text style={styles.addButtonText}>+ Add Implant</Text>
           </Pressable>
         </View>
 
         {implantRecords.length === 0 ? (
           <Text style={styles.noRecordsText}>
-            No implant records yet. Tap "Add Record" to record implant placement.
+            No implant records yet. Tap "Add Implant" to record implant placement.
           </Text>
         ) : (
           implantRecords.map((record) => (
             <View key={record.id} style={styles.recordCard}>
               <View style={styles.recordHeader}>
                 <Text style={styles.recordTitle}>
-                  {formatRecordTitle(record)}
+                  Single Implant - Tooth {record.toothNumber}
                 </Text>
                 <View style={styles.recordActions}>
                   <Pressable 
@@ -300,13 +345,61 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         )}
       </View>
 
+      {/* Implant Crown Records Section */}
+      <View style={styles.recordsSection}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Implant Crowns ({crownRecords.length})</Text>
+          <Pressable style={styles.addButton} onPress={openNewCrownModal}>
+            <Text style={styles.addButtonText}>+ Add Crown</Text>
+          </Pressable>
+        </View>
+
+        {crownRecords.length === 0 ? (
+          <Text style={styles.noRecordsText}>
+            No implant crown records yet. Tap "Add Crown" to record crown placement.
+          </Text>
+        ) : (
+          crownRecords.map((record) => (
+            <View key={record.id} style={styles.crownCard}>
+              <View style={styles.recordHeader}>
+                <Text style={styles.recordTitle}>
+                  {record.crownType === 'screw-retained' ? 'Screw-Retained' : 'Cemented'} Crown - Tooth {record.toothNumber}
+                </Text>
+                <View style={styles.recordActions}>
+                  <Pressable 
+                    style={styles.editButton} 
+                    onPress={() => openEditCrownModal(record)}
+                  >
+                    <Text style={styles.editButtonText}>Edit</Text>
+                  </Pressable>
+                  <Pressable 
+                    style={styles.deleteButton} 
+                    onPress={() => removeCrownRecord(record.id)}
+                  >
+                    <Text style={styles.deleteButtonText}>×</Text>
+                  </Pressable>
+                </View>
+              </View>
+              
+              {record.notes && (
+                <Text style={styles.recordNotesText}>Notes: {record.notes}</Text>
+              )}
+              
+              <Text style={styles.placedAtText}>
+                Recorded: {record.placedAt.toLocaleString()}
+              </Text>
+            </View>
+          ))
+        )}
+      </View>
+
       {/* General Notes */}
       <View style={styles.notesSection}>
         <Text style={styles.sectionTitle}>Treatment Notes</Text>
         <TextInput
           style={styles.notesInput}
           value={generalNotes}
-          onChangeText={updateGeneralNotes}
+          onChangeText={setGeneralNotes}
           placeholder="General notes about the implant treatment session..."
           multiline
           numberOfLines={3}
@@ -319,20 +412,16 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         <Text style={styles.sectionTitle}>Treatment Summary</Text>
         <View style={styles.summaryGrid}>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Records:</Text>
+            <Text style={styles.summaryLabel}>Total Implants:</Text>
             <Text style={styles.summaryValue}>{implantRecords.length}</Text>
           </View>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Single Implants:</Text>
-            <Text style={styles.summaryValue}>
-              {implantRecords.filter(r => r.type === 'single-implant').length}
-            </Text>
+            <Text style={styles.summaryLabel}>Implant Crowns:</Text>
+            <Text style={styles.summaryValue}>{crownRecords.length}</Text>
           </View>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Implant Bridges:</Text>
-            <Text style={styles.summaryValue}>
-              {implantRecords.filter(r => r.type === 'implant-bridge').length}
-            </Text>
+            <Text style={styles.summaryLabel}>Total Procedures:</Text>
+            <Text style={styles.summaryValue}>{implantRecords.length + crownRecords.length}</Text>
           </View>
         </View>
       </View>
@@ -358,107 +447,39 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         </Pressable>
       </View>
 
-      {/* Add/Edit Record Modal */}
+      {/* Add/Edit Implant Modal */}
       <Modal
         animationType="slide"
         transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => updateModalState({ modalVisible: false })}
+        visible={implantModalVisible}
+        onRequestClose={() => setImplantModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {editingId ? 'Edit Record' : 'Add Implant Record'}
+              {editingId ? 'Edit Implant' : 'Add Single Implant'}
             </Text>
 
-            {/* Treatment Type Selection */}
+            {/* Tooth Number Input */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Treatment Type</Text>
-              <View style={styles.typeButtons}>
-                <Pressable
-                  style={[
-                    styles.typeButton,
-                    selectedType === 'single-implant' && styles.typeButtonSelected
-                  ]}
-                  onPress={() => updateModalState({ selectedType: 'single-implant' })}
-                >
-                  <Text style={[
-                    styles.typeButtonText,
-                    selectedType === 'single-implant' && styles.typeButtonTextSelected
-                  ]}>
-                    Single Implant
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.typeButton,
-                    selectedType === 'implant-bridge' && styles.typeButtonSelected
-                  ]}
-                  onPress={() => updateModalState({ selectedType: 'implant-bridge' })}
-                >
-                  <Text style={[
-                    styles.typeButtonText,
-                    selectedType === 'implant-bridge' && styles.typeButtonTextSelected
-                  ]}>
-                    Implant Bridge
-                  </Text>
-                </Pressable>
-              </View>
+              <Text style={styles.inputLabel}>Tooth Number</Text>
+              <TextInput
+                style={styles.textInput}
+                value={toothNumber}
+                onChangeText={setToothNumber}
+                placeholder="e.g., 11, 24, 36"
+                autoCapitalize="none"
+              />
             </View>
-
-            {/* Conditional Inputs Based on Type */}
-            {selectedType === 'single-implant' ? (
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Tooth Number</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={toothNumber}
-                  onChangeText={(text) => updateModalState({ toothNumber: text })}
-                  placeholder="e.g., 11, 24, 36"
-                  autoCapitalize="none"
-                />
-              </View>
-            ) : (
-              <>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Implant Locations</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={implantLocations}
-                    onChangeText={(text) => updateModalState({ implantLocations: text })}
-                    placeholder="e.g., 24, 26"
-                    autoCapitalize="none"
-                  />
-                </View>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Pontic Locations</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={ponticLocations}
-                    onChangeText={(text) => updateModalState({ ponticLocations: text })}
-                    placeholder="e.g., 25"
-                    autoCapitalize="none"
-                  />
-                </View>
-              </>
-            )}
 
             {/* Notes */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>
-                {selectedType === 'single-implant' 
-                  ? 'Notes (Brand, placement details, etc.)' 
-                  : 'Notes (Details about the bridge)'}
-              </Text>
+              <Text style={styles.inputLabel}>Notes (Brand, placement details, etc.)</Text>
               <TextInput
                 style={styles.modalNotesInput}
                 value={notes}
-                onChangeText={(text) => updateModalState({ notes: text })}
-                placeholder={
-                  selectedType === 'single-implant'
-                    ? "e.g., Nobel Biocare 4.3x10mm, torque 35Ncm, primary stability excellent..."
-                    : "e.g., 3-unit bridge, temporary placed, healing abutments..."
-                }
+                onChangeText={setNotes}
+                placeholder="e.g., Nobel Biocare 4.3x10mm, torque 35Ncm, primary stability excellent..."
                 multiline
                 numberOfLines={4}
                 textAlignVertical="top"
@@ -469,7 +490,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             <View style={styles.modalActions}>
               <Pressable 
                 style={styles.modalCancelButton} 
-                onPress={() => updateModalState({ modalVisible: false })}
+                onPress={() => setImplantModalVisible(false)}
               >
                 <Text style={styles.modalCancelButtonText}>Cancel</Text>
               </Pressable>
@@ -478,7 +499,102 @@ const ImplantTreatmentScreen = ({ route }: any) => {
                 onPress={handleSaveImplant}
               >
                 <Text style={styles.modalSaveButtonText}>
-                  {editingId ? 'Update' : 'Add'} Record
+                  {editingId ? 'Update' : 'Add'} Implant
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add/Edit Crown Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={crownModalVisible}
+        onRequestClose={() => setCrownModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {editingCrownId ? 'Edit Crown' : 'Add Implant Crown'}
+            </Text>
+
+            {/* Tooth Number Input */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Tooth Number</Text>
+              <TextInput
+                style={styles.textInput}
+                value={crownToothNumber}
+                onChangeText={setCrownToothNumber}
+                placeholder="e.g., 11, 24, 36"
+                autoCapitalize="none"
+              />
+            </View>
+
+            {/* Crown Type Selection */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Crown Type</Text>
+              <View style={styles.crownTypeButtons}>
+                <Pressable
+                  style={[
+                    styles.crownTypeButton,
+                    crownType === 'screw-retained' && styles.crownTypeButtonSelected
+                  ]}
+                  onPress={() => setCrownType('screw-retained')}
+                >
+                  <Text style={[
+                    styles.crownTypeButtonText,
+                    crownType === 'screw-retained' && styles.crownTypeButtonTextSelected
+                  ]}>
+                    Screw-Retained
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.crownTypeButton,
+                    crownType === 'cemented' && styles.crownTypeButtonSelected
+                  ]}
+                  onPress={() => setCrownType('cemented')}
+                >
+                  <Text style={[
+                    styles.crownTypeButtonText,
+                    crownType === 'cemented' && styles.crownTypeButtonTextSelected
+                  ]}>
+                    Cemented
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Notes */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Notes (Material, fit details, etc.)</Text>
+              <TextInput
+                style={styles.modalNotesInput}
+                value={crownNotes}
+                onChangeText={setCrownNotes}
+                placeholder="e.g., Zirconia crown, excellent fit, torqued to 15Ncm..."
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+            </View>
+
+            {/* Modal Actions */}
+            <View style={styles.modalActions}>
+              <Pressable 
+                style={styles.modalCancelButton} 
+                onPress={() => setCrownModalVisible(false)}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable 
+                style={styles.modalSaveButton} 
+                onPress={handleSaveCrown}
+              >
+                <Text style={styles.modalSaveButtonText}>
+                  {editingCrownId ? 'Update' : 'Add'} Crown
                 </Text>
               </Pressable>
             </View>
@@ -508,20 +624,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 20,
-    textAlign: 'center',
-  },
-  stateIndicator: {
-    backgroundColor: '#d1ecf1',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#0c5460',
-  },
-  stateIndicatorText: {
-    fontSize: 12,
-    color: '#0c5460',
-    fontWeight: '600',
     textAlign: 'center',
   },
   completedBanner: {
@@ -589,6 +691,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderLeftWidth: 4,
     borderLeftColor: '#007bff',
+  },
+  crownCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#28a745',
   },
   recordHeader: {
     flexDirection: 'row',
@@ -743,31 +853,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: '#495057',
   },
-  typeButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  typeButton: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-    borderWidth: 2,
-    borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  typeButtonSelected: {
-    backgroundColor: '#007bff',
-    borderColor: '#007bff',
-  },
-  typeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#495057',
-  },
-  typeButtonTextSelected: {
-    color: '#fff',
-  },
   textInput: {
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
@@ -821,5 +906,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  crownTypeButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  crownTypeButton: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 2,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  crownTypeButtonSelected: {
+    backgroundColor: '#28a745',
+    borderColor: '#28a745',
+  },
+  crownTypeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#495057',
+  },
+  crownTypeButtonTextSelected: {
+    color: '#fff',
   },
 });

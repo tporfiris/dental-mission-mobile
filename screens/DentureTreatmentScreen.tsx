@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal } from 'react-native';
-import { useDentureTreatment, DenturePlacement } from '../contexts/DentureTreatmentContext';
+import { useDentureTreatment } from '../contexts/DentureTreatmentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
@@ -11,30 +11,24 @@ const DENTURE_TYPES = [
   'Upper partial cast denture',
   'Lower partial acrylic denture',
   'Lower partial cast denture',
-  'Upper immediate complete denture',
   'Upper complete denture',
-  'Lower immediate complete denture',
   'Lower complete denture'
 ];
+
+interface DenturePlacement {
+  id: string;
+  placement: string; // e.g., "maxillary partial acrylic denture placed"
+  type: string;
+}
 
 const DentureTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
   
-  // Use context for persistent state
-  const {
-    treatmentState,
-    addDenturePlacement,
-    updateDenturePlacement,
-    removeDenturePlacement,
-    updateGeneralNotes,
-    markCompleted,
-    resetTreatment,
-  } = useDentureTreatment();
-
-  const { placements, generalNotes, completedAt } = treatmentState;
-
-  // Modal state (local, doesn't need to persist)
+  const [placements, setPlacements] = useState<DenturePlacement[]>([]);
+  const [generalNotes, setGeneralNotes] = useState('');
+  const [completedAt, setCompletedAt] = useState<Date | null>(null);
+  
   const [modalVisible, setModalVisible] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [currentPlacement, setCurrentPlacement] = useState('');
@@ -46,37 +40,36 @@ const DentureTreatmentScreen = ({ route }: any) => {
       code: string;
       description: string;
       category: string;
-      placement: any;
+      placement: DenturePlacement;
     }> = [];
 
     placements.forEach(placement => {
       let code = '';
       let description = '';
 
-      // Map denture types to billing codes based on the placement's fitNotes field
-      const placementText = placement.fitNotes || '';
-      
-      if (placementText.includes('Upper partial')) {
-        code = 'D5213';
-        description = 'Upper partial denture - cast metal framework';
-      } else if (placementText.includes('Lower partial')) {
-        code = 'D5214';
-        description = 'Lower partial denture - cast metal framework';
-      } else if (placementText.includes('Upper immediate')) {
-        code = 'D5130';
-        description = 'Immediate denture - upper';
-      } else if (placementText.includes('Upper complete')) {
-        code = 'D5110';
-        description = 'Complete upper denture';
-      } else if (placementText.includes('Lower immediate')) {
-        code = 'D5131';
-        description = 'Immediate denture - lower';
-      } else if (placementText.includes('Lower complete')) {
-        code = 'D5120';
-        description = 'Complete lower denture';
-      } else {
-        code = 'D5999';
-        description = 'Unspecified denture procedure';
+      // Map denture types to billing codes
+      switch (placement.type) {
+        case 'Upper partial acrylic denture':
+        case 'Upper partial cast denture':
+          code = 'D5213';
+          description = 'Upper partial denture - cast metal framework';
+          break;
+        case 'Lower partial acrylic denture':
+        case 'Lower partial cast denture':
+          code = 'D5214';
+          description = 'Lower partial denture - cast metal framework';
+          break;
+        case 'Upper complete denture':
+          code = 'D5110';
+          description = 'Complete upper denture';
+          break;
+        case 'Lower complete denture':
+          code = 'D5120';
+          description = 'Complete lower denture';
+          break;
+        default:
+          code = 'D5999';
+          description = 'Unspecified denture procedure';
       }
 
       codes.push({
@@ -94,8 +87,8 @@ const DentureTreatmentScreen = ({ route }: any) => {
     if (index !== null) {
       setEditingIndex(index);
       const placement = placements[index];
-      setCurrentPlacement(placement.fitNotes);
-      setSelectedDentureType(placement.fitNotes); // Use fitNotes as the type identifier
+      setCurrentPlacement(placement.placement);
+      setSelectedDentureType(placement.type);
     } else {
       setEditingIndex(null);
       setCurrentPlacement('');
@@ -123,22 +116,23 @@ const DentureTreatmentScreen = ({ route }: any) => {
     }
 
     const newPlacement: DenturePlacement = {
-      dentureType: 'upper-full', // Default value, we'll use fitNotes for the actual type
-      options: [],
-      finalFitConfirmed: false,
-      fitNotes: currentPlacement.trim(),
+      id: uuid.v4(),
+      placement: currentPlacement.trim(),
+      type: selectedDentureType
     };
 
     if (editingIndex !== null) {
-      updateDenturePlacement(editingIndex, newPlacement);
+      const updatedPlacements = [...placements];
+      updatedPlacements[editingIndex] = newPlacement;
+      setPlacements(updatedPlacements);
     } else {
-      addDenturePlacement(newPlacement);
+      setPlacements(prev => [...prev, newPlacement]);
     }
     
     closePlacementModal();
   };
 
-  const handleRemovePlacement = (index: number) => {
+  const removePlacement = (index: number) => {
     Alert.alert(
       'Remove Placement',
       'Are you sure you want to remove this denture placement?',
@@ -147,7 +141,10 @@ const DentureTreatmentScreen = ({ route }: any) => {
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => removePlacementModal(index)
+          onPress: () => {
+            const updatedPlacements = placements.filter((_, i) => i !== index);
+            setPlacements(updatedPlacements);
+          }
         }
       ]
     );
@@ -171,7 +168,7 @@ const DentureTreatmentScreen = ({ route }: any) => {
             treatment.units = 1;
             treatment.value = 0;
             treatment.billingCodes = JSON.stringify([code]);
-            treatment.notes = `${code.placement.fitNotes}. ${generalNotes}`;
+            treatment.notes = `${code.placement.placement}. ${generalNotes}`;
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
@@ -211,7 +208,7 @@ const DentureTreatmentScreen = ({ route }: any) => {
           onPress: async () => {
             const saved = await saveTreatmentToDatabase();
             if (saved) {
-              markCompleted();
+              setCompletedAt(new Date());
               Alert.alert('Success', '✅ Denture treatment completed and saved to database!');
             }
           }
@@ -229,7 +226,11 @@ const DentureTreatmentScreen = ({ route }: any) => {
         { 
           text: 'Reset', 
           style: 'destructive', 
-          onPress: resetTreatment
+          onPress: () => {
+            setPlacements([]);
+            setGeneralNotes('');
+            setCompletedAt(null);
+          }
         }
       ]
     );
@@ -240,20 +241,11 @@ const DentureTreatmentScreen = ({ route }: any) => {
       <Text style={styles.header}>🦷 Denture Treatment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
-      {/* State persistence indicator */}
-      {(placements.length > 0 || generalNotes.trim()) && (
-        <View style={styles.persistenceIndicator}>
-          <Text style={styles.persistenceText}>
-            ✅ Progress saved: {placements.length} placements • Notes: {generalNotes ? 'Yes' : 'No'}
-          </Text>
-        </View>
-      )}
-
       {completedAt && (
         <View style={styles.completedBanner}>
           <Text style={styles.completedText}>✅ Treatment Completed</Text>
           <Text style={styles.completedDate}>
-            {new Date(completedAt).toLocaleDateString()} at {new Date(completedAt).toLocaleTimeString()}
+            {completedAt.toLocaleDateString()} at {completedAt.toLocaleTimeString()}
           </Text>
         </View>
       )}
@@ -268,16 +260,17 @@ const DentureTreatmentScreen = ({ route }: any) => {
           </Text>
         ) : (
           placements.map((placement, index) => (
-            <View key={index} style={styles.placementCard}>
+            <View key={placement.id} style={styles.placementCard}>
               <View style={styles.placementHeader}>
                 <View style={styles.placementInfo}>
-                  <Text style={styles.placementText}>{placement.fitNotes}</Text>
+                  <Text style={styles.placementText}>{placement.placement}</Text>
+                  <Text style={styles.dentureType}>{placement.type}</Text>
                 </View>
                 <View style={styles.placementActions}>
                   <Pressable onPress={() => openPlacementModal(index)} style={styles.editButton}>
                     <Text style={styles.editButtonText}>Edit</Text>
                   </Pressable>
-                  <Pressable onPress={() => handleRemovePlacement(index)} style={styles.removeButton}>
+                  <Pressable onPress={() => removePlacement(index)} style={styles.removeButton}>
                     <Text style={styles.removeButtonText}>Remove</Text>
                   </Pressable>
                 </View>
@@ -316,7 +309,7 @@ const DentureTreatmentScreen = ({ route }: any) => {
         <TextInput
           style={styles.notesInput}
           value={generalNotes}
-          onChangeText={updateGeneralNotes}
+          onChangeText={setGeneralNotes}
           placeholder="General notes about the denture treatment..."
           multiline
           numberOfLines={3}
@@ -425,20 +418,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
-  persistenceIndicator: {
-    backgroundColor: '#d4edda',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#28a745',
-  },
-  persistenceText: {
-    fontSize: 12,
-    color: '#155724',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
   completedBanner: {
     backgroundColor: '#d4edda',
     borderRadius: 8,
@@ -503,6 +482,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
     marginBottom: 4,
+  },
+  dentureType: {
+    fontSize: 14,
+    color: '#007bff',
+    fontWeight: '500',
   },
   placementActions: {
     flexDirection: 'row',

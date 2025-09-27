@@ -1,4 +1,4 @@
-// Enhanced Filling Treatment Screen with State Preservation
+// Enhanced Filling Treatment Screen with Database Save Functionality
 
 import React, { useState, useMemo } from 'react';
 import {
@@ -16,45 +16,122 @@ import { useAuth } from '../contexts/AuthContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
-import { useFillingsTreatment } from '../contexts/FillingsTreatmentContext';
-import type { 
-  Surface, 
-  FillingMaterial, 
-  CrownMaterial, 
-  PrepDepth, 
-  CanalCount 
-} from '../contexts/FillingsTreatmentContext';
 
 const SURFACES = ['M', 'O', 'D', 'B', 'L'] as const;
-const FILLING_MATERIALS = ['amalgam', 'composite', 'resin', 'glass ionomer'] as const;
+type Surface = typeof SURFACES[number];
+
+const FILLING_MATERIALS = ['amalgam', 'composite resin'] as const;
+type FillingMaterial = typeof FILLING_MATERIALS[number];
+
 const CROWN_MATERIALS = ['metal', 'porcelain', 'PFM'] as const;
+type CrownMaterial = typeof CROWN_MATERIALS[number];
+
 const PREP_DEPTHS = ['shallow', 'medium', 'deep'] as const;
+type PrepDepth = typeof PREP_DEPTHS[number];
+
 const CANAL_COUNTS = [1, 2, 3, 4] as const;
+type CanalCount = typeof CANAL_COUNTS[number];
 
 const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
 const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
 const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
 
+// Primary tooth conversion mappings
+const PRIMARY_TOOTH_MAPPINGS = {
+  // Permanent to Primary
+  '11': '51', '12': '52', '13': '53', '14': '54', '15': '55',
+  '21': '61', '22': '62', '23': '63', '24': '64', '25': '65',
+  '41': '81', '42': '82', '43': '83', '44': '84', '45': '85',
+  '31': '71', '32': '72', '33': '73', '34': '74', '35': '75',
+  // Primary to Permanent (reverse mapping)
+  '51': '11', '52': '12', '53': '13', '54': '14', '55': '15',
+  '61': '21', '62': '22', '63': '23', '64': '24', '65': '25',
+  '81': '41', '82': '42', '83': '43', '84': '44', '85': '45',
+  '71': '31', '72': '32', '73': '33', '74': '34', '75': '35',
+};
+
+// Helper function to check if a tooth can be switched to primary
+const canSwitchToPrimary = (toothId: string): boolean => {
+  const permanentTeeth = ['11', '12', '13', '14', '15', '21', '22', '23', '24', '25', 
+                          '41', '42', '43', '44', '45', '31', '32', '33', '34', '35'];
+  return permanentTeeth.includes(toothId);
+};
+
+// Helper function to check if a tooth is primary
+const isPrimaryTooth = (toothId: string): boolean => {
+  return toothId.startsWith('5') || toothId.startsWith('6') || toothId.startsWith('7') || toothId.startsWith('8');
+};
+
+interface ToothTreatment {
+  surfaces: Surface[];
+  fillingMaterial: FillingMaterial | null;
+  prepDepth: PrepDepth | null;
+  hasCracks: boolean | null;
+  crownIndicated: boolean | null;
+  crownMaterial: CrownMaterial | null;
+  rootCanalDone: boolean;
+  canalCount: CanalCount | null;
+  completed: boolean;
+}
+
+const defaultToothTreatment: ToothTreatment = {
+  surfaces: [],
+  fillingMaterial: null,
+  prepDepth: null,
+  hasCracks: null,
+  crownIndicated: null,
+  crownMaterial: null,
+  rootCanalDone: false,
+  canalCount: null,
+  completed: false,
+};
+
 const EnhancedFillingTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
-  
-  // Use context for state preservation
-  const {
-    treatmentState,
-    updateTreatment,
-    toggleSurface,
-    clearTooth,
-    updateNotes,
-    markAllCompleted,
-    resetTreatment,
-    getCompletedTreatments,
-    getTotalSurfaceCount
-  } = useFillingsTreatment();
 
+  // Initialize all teeth with default treatment state
+  const initializeTeethStates = () => {
+    const initialStates: Record<string, ToothTreatment> = {};
+    [...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].forEach(toothId => {
+      initialStates[toothId] = { ...defaultToothTreatment };
+    });
+    return initialStates;
+  };
+
+  const [treatments, setTreatments] = useState<Record<string, ToothTreatment>>(initializeTeethStates);
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [allCompleted, setAllCompleted] = useState(false);
+  const [completedAt, setCompletedAt] = useState<Date | null>(null);
+  
+  // Track which teeth are currently showing as primary
+  const [primaryTeeth, setPrimaryTeeth] = useState<Set<string>>(new Set());
+
+  // Function to get the current display tooth ID (permanent or primary)
+  const getCurrentToothId = (originalToothId: string): string => {
+    if (primaryTeeth.has(originalToothId) && PRIMARY_TOOTH_MAPPINGS[originalToothId]) {
+      return PRIMARY_TOOTH_MAPPINGS[originalToothId];
+    }
+    return originalToothId;
+  };
+
+  // Function to toggle between permanent and primary tooth
+  const toggleToothType = (originalToothId: string) => {
+    if (!canSwitchToPrimary(originalToothId)) return;
+    
+    setPrimaryTeeth(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(originalToothId)) {
+        newSet.delete(originalToothId);
+      } else {
+        newSet.add(originalToothId);
+      }
+      return newSet;
+    });
+  };
 
   // Tooth positions for dental chart
   const toothOffsets: Record<string, { x: number; y: number }> = {
@@ -87,15 +164,43 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
     };
   };
 
+  const toggleSurface = (toothId: string, surface: Surface) => {
+    setTreatments(prev => {
+      const treatment = prev[toothId];
+      const newSurfaces = treatment.surfaces.includes(surface)
+        ? treatment.surfaces.filter(s => s !== surface)
+        : [...treatment.surfaces, surface].sort();
+      
+      return {
+        ...prev,
+        [toothId]: { ...treatment, surfaces: newSurfaces }
+      };
+    });
+  };
+
+  const updateTreatment = (toothId: string, updates: Partial<ToothTreatment>) => {
+    setTreatments(prev => ({
+      ...prev,
+      [toothId]: { ...prev[toothId], ...updates }
+    }));
+  };
+
+  const clearTooth = (toothId: string) => {
+    setTreatments(prev => ({
+      ...prev,
+      [toothId]: { ...defaultToothTreatment }
+    }));
+  };
+
   const getToothStyle = (toothId: string) => {
-    const treatment = treatmentState.treatments[toothId];
+    const treatment = treatments[toothId];
     if (treatment.completed) return styles.toothCompleted;
     if (treatment.surfaces.length > 0 || treatment.rootCanalDone) return styles.toothTreated;
     return styles.toothNormal;
   };
 
   const getToothStatusText = (toothId: string) => {
-    const treatment = treatmentState.treatments[toothId];
+    const treatment = treatments[toothId];
     const indicators = [];
     
     if (treatment.surfaces.length > 0) {
@@ -103,9 +208,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
       if (treatment.fillingMaterial) {
         const materialAbbrev = {
           'amalgam': 'A',
-          'composite': 'C',
-          'resin': 'R',
-          'glass ionomer': 'GI'
+          'composite resin': 'CR'
         };
         indicators.push(materialAbbrev[treatment.fillingMaterial]);
       }
@@ -124,28 +227,55 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
   const renderTooth = (toothId: string) => {
     const position = getToothPosition(toothId);
     const statusText = getToothStatusText(toothId);
-    const treatment = treatmentState.treatments[toothId];
+    const treatment = treatments[toothId];
+    const currentToothId = getCurrentToothId(toothId);
+    const canSwitch = canSwitchToPrimary(toothId);
+    const isCurrentlyPrimary = primaryTeeth.has(toothId);
     
     return (
-      <Pressable
-        key={toothId}
-        onPress={() => { setSelectedTooth(toothId); setModalVisible(true); }}
-        style={[styles.toothCircle, getToothStyle(toothId), {
-          position: 'absolute', left: position.left, top: position.top,
-        }]}
-      >
-        <Text style={styles.toothLabel}>{toothId}</Text>
-        {statusText && (
-          <View style={styles.statusIndicator}>
-            <Text style={styles.statusText}>{statusText}</Text>
+      <View key={toothId} style={{ position: 'absolute', left: position.left, top: position.top }}>
+        <Pressable
+          onPress={() => { setSelectedTooth(toothId); setModalVisible(true); }}
+          onLongPress={() => canSwitch && toggleToothType(toothId)}
+          style={[styles.toothCircle, getToothStyle(toothId)]}
+        >
+          <Text style={[styles.toothLabel, isCurrentlyPrimary && styles.primaryToothLabel]}>
+            {currentToothId}
+          </Text>
+          {statusText && (
+            <View style={styles.statusIndicator}>
+              <Text style={styles.statusText}>{statusText}</Text>
+            </View>
+          )}
+          {treatment.completed && (
+            <View style={styles.completedFlag}>
+              <Text style={styles.completedText}>✓</Text>
+            </View>
+          )}
+        </Pressable>
+        
+        {/* Switch indicator for teeth that can toggle */}
+        {canSwitch && (
+          <View style={styles.switchIndicator}>
+            <Text style={styles.switchText}>
+              {isCurrentlyPrimary ? 'P' : 'A'}
+            </Text>
           </View>
         )}
-        {treatment.completed && (
-          <View style={styles.completedFlag}>
-            <Text style={styles.completedText}>✓</Text>
-          </View>
-        )}
-      </Pressable>
+      </View>
+    );
+  };
+
+  // Calculate summaries
+  const getCompletedTreatments = () => {
+    return Object.entries(treatments).filter(([_, treatment]) => 
+      treatment.surfaces.length > 0 || treatment.rootCanalDone
+    );
+  };
+
+  const getTotalSurfaceCount = () => {
+    return Object.values(treatments).reduce((total, treatment) => 
+      total + treatment.surfaces.length, 0
     );
   };
 
@@ -153,7 +283,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
   const billingCodes = useMemo(() => {
     const codes: Array<{ toothId: string; code: string; description: string; category: string; }> = [];
 
-    Object.entries(treatmentState.treatments).forEach(([toothId, treatment]) => {
+    Object.entries(treatments).forEach(([toothId, treatment]) => {
       if (treatment.surfaces.length > 0 && treatment.fillingMaterial) {
         const material = treatment.fillingMaterial;
         let code = '';
@@ -222,7 +352,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
     });
 
     return codes;
-  }, [treatmentState.treatments]);
+  }, [treatments]);
 
   // Database save functionality
   const saveTreatmentToDatabase = async () => {
@@ -232,7 +362,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
       const completedDate = new Date();
 
       await database.write(async () => {
-        for (const { toothId, treatment } of completedTreatments) {
+        for (const [toothId, treatment] of completedTreatments) {
           // Create separate treatment records for each type of treatment
           const treatmentTypes = [];
           
@@ -286,7 +416,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
               treatmentRecord.units = treatmentType.units;
               treatmentRecord.value = 0;
               treatmentRecord.billingCodes = JSON.stringify(treatmentType.billingCodes);
-              treatmentRecord.notes = `${treatmentType.notes}. ${treatmentState.notes}`.trim();
+              treatmentRecord.notes = `${treatmentType.notes}. ${notes}`.trim();
               treatmentRecord.clinicianName = clinicianName;
               treatmentRecord.completedAt = completedDate;
             });
@@ -298,8 +428,8 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
         patientId,
         teethTreated: completedTreatments.length,
         totalSurfaces: getTotalSurfaceCount(),
-        rootCanals: Object.values(treatmentState.treatments).filter(t => t.rootCanalDone).length,
-        crowns: Object.values(treatmentState.treatments).filter(t => t.crownIndicated).length,
+        rootCanals: Object.values(treatments).filter(t => t.rootCanalDone).length,
+        crowns: Object.values(treatments).filter(t => t.crownIndicated).length,
         billingCodes: billingCodes.length,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
@@ -321,8 +451,8 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
       return;
     }
 
-    const rootCanals = Object.values(treatmentState.treatments).filter(t => t.rootCanalDone).length;
-    const crowns = Object.values(treatmentState.treatments).filter(t => t.crownIndicated).length;
+    const rootCanals = Object.values(treatments).filter(t => t.rootCanalDone).length;
+    const crowns = Object.values(treatments).filter(t => t.crownIndicated).length;
 
     Alert.alert(
       'Complete Treatment',
@@ -335,7 +465,8 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
             const saved = await saveTreatmentToDatabase();
             
             if (saved) {
-              markAllCompleted();
+              setAllCompleted(true);
+              setCompletedAt(new Date());
               Alert.alert('Success', '✅ Filling treatment completed and saved to database!');
             }
           }
@@ -344,7 +475,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
     );
   };
 
-  const handleReset = () => {
+  const resetTreatment = () => {
     Alert.alert(
       'Reset Treatment',
       'Reset all data?',
@@ -354,7 +485,10 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
           text: 'Reset', 
           style: 'destructive',
           onPress: () => {
-            resetTreatment();
+            setTreatments(initializeTeethStates());
+            setNotes('');
+            setAllCompleted(false);
+            setCompletedAt(null);
           }
         }
       ]
@@ -367,11 +501,11 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
         <Text style={styles.header}>Enhanced Filling Treatment</Text>
         <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
-        {treatmentState.allCompleted && treatmentState.completedAt && (
+        {allCompleted && completedAt && (
           <View style={styles.completedBanner}>
             <Text style={styles.completedBannerText}>✅ Treatment Completed</Text>
             <Text style={styles.completedDate}>
-              {treatmentState.completedAt.toLocaleDateString()} at {treatmentState.completedAt.toLocaleTimeString()}
+              {completedAt.toLocaleDateString()} at {completedAt.toLocaleTimeString()}
             </Text>
           </View>
         )}
@@ -382,17 +516,19 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
           <Text style={styles.summaryText}>
             Teeth Treated: {getCompletedTreatments().length} | 
             Surfaces: {getTotalSurfaceCount()} | 
-            Root Canals: {Object.values(treatmentState.treatments).filter(t => t.rootCanalDone).length}
+            Root Canals: {Object.values(treatments).filter(t => t.rootCanalDone).length}
           </Text>
         </View>
 
         {/* Dental Chart */}
         <View style={styles.chartCard}>
           <Text style={styles.sectionTitle}>Dental Chart</Text>
+          <Text style={styles.chartInstructions}>
+            Tap to treat • Long press switchable teeth (11-15, 21-25, 31-35, 41-45) to toggle Primary/Adult
+          </Text>
           <View style={styles.dentalChart}>
             <Text style={styles.upperArchLabel}>Upper Arch</Text>
             <Text style={styles.lowerArchLabel}>Lower Arch</Text>
-            <Text style={styles.centerInstructions}>Tap teeth to record treatment</Text>
             
             {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
               renderTooth(toothId)
@@ -423,8 +559,8 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
           <Text style={styles.sectionTitle}>Notes</Text>
           <TextInput
             style={styles.notesInput}
-            value={treatmentState.notes}
-            onChangeText={updateNotes}
+            value={notes}
+            onChangeText={setNotes}
             placeholder="Treatment notes..."
             multiline
             numberOfLines={3}
@@ -435,16 +571,16 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
         {/* Action Buttons */}
         <View style={styles.actionSection}>
           <Pressable 
-            style={[styles.completeButton, treatmentState.allCompleted && styles.completedButton]} 
+            style={[styles.completeButton, allCompleted && styles.completedButton]} 
             onPress={handleCompleteTreatment}
-            disabled={treatmentState.allCompleted}
+            disabled={allCompleted}
           >
             <Text style={styles.actionButtonText}>
-              {treatmentState.allCompleted ? '✅ Completed' : 'Complete Treatment'}
+              {allCompleted ? '✅ Completed' : 'Complete Treatment'}
             </Text>
           </Pressable>
           
-          <Pressable style={styles.resetButton} onPress={handleReset}>
+          <Pressable style={styles.resetButton} onPress={resetTreatment}>
             <Text style={styles.resetButtonText}>Reset</Text>
           </Pressable>
         </View>
@@ -455,7 +591,24 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
         <View style={styles.modalBackdrop}>
           <View style={styles.modal}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Tooth {selectedTooth}</Text>
+              <Text style={styles.modalTitle}>
+                Tooth {getCurrentToothId(selectedTooth)} 
+                {canSwitchToPrimary(selectedTooth) && (
+                  <Text style={styles.toothTypeIndicator}>
+                    {primaryTeeth.has(selectedTooth) ? ' (Primary)' : ' (Adult)'}
+                  </Text>
+                )}
+              </Text>
+              {canSwitchToPrimary(selectedTooth) && (
+                <Pressable 
+                  style={styles.switchButton}
+                  onPress={() => toggleToothType(selectedTooth)}
+                >
+                  <Text style={styles.switchButtonText}>
+                    Switch to {primaryTeeth.has(selectedTooth) ? 'Adult' : 'Primary'}
+                  </Text>
+                </Pressable>
+              )}
             </View>
 
             <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
@@ -470,13 +623,13 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                           key={surface}
                           style={[
                             styles.surfaceBtn,
-                            treatmentState.treatments[selectedTooth]?.surfaces.includes(surface) && styles.surfaceBtnActive
+                            treatments[selectedTooth]?.surfaces.includes(surface) && styles.surfaceBtnActive
                           ]}
                           onPress={() => toggleSurface(selectedTooth, surface)}
                         >
                           <Text style={[
                             styles.surfaceBtnText,
-                            treatmentState.treatments[selectedTooth]?.surfaces.includes(surface) && styles.surfaceBtnTextActive
+                            treatments[selectedTooth]?.surfaces.includes(surface) && styles.surfaceBtnTextActive
                           ]}>
                             {surface}
                           </Text>
@@ -486,7 +639,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                   </View>
 
                   {/* Material */}
-                  {treatmentState.treatments[selectedTooth]?.surfaces.length > 0 && (
+                  {treatments[selectedTooth]?.surfaces.length > 0 && (
                     <View style={styles.modalSection}>
                       <Text style={styles.modalLabel}>Filling Material:</Text>
                       <View style={styles.materialGrid}>
@@ -495,13 +648,13 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                             key={material}
                             style={[
                               styles.materialBtn,
-                              treatmentState.treatments[selectedTooth]?.fillingMaterial === material && styles.materialBtnActive
+                              treatments[selectedTooth]?.fillingMaterial === material && styles.materialBtnActive
                             ]}
                             onPress={() => updateTreatment(selectedTooth, { fillingMaterial: material })}
                           >
                             <Text style={[
                               styles.materialBtnText,
-                              treatmentState.treatments[selectedTooth]?.fillingMaterial === material && styles.materialBtnTextActive
+                              treatments[selectedTooth]?.fillingMaterial === material && styles.materialBtnTextActive
                             ]}>
                               {material}
                             </Text>
@@ -512,7 +665,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                   )}
 
                   {/* Prep Depth */}
-                  {treatmentState.treatments[selectedTooth]?.surfaces.length > 0 && (
+                  {treatments[selectedTooth]?.surfaces.length > 0 && (
                     <View style={styles.modalSection}>
                       <Text style={styles.modalLabel}>Prep Depth:</Text>
                       <View style={styles.optionRow}>
@@ -521,13 +674,13 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                             key={depth}
                             style={[
                               styles.optionBtn,
-                              treatmentState.treatments[selectedTooth]?.prepDepth === depth && styles.optionBtnActive
+                              treatments[selectedTooth]?.prepDepth === depth && styles.optionBtnActive
                             ]}
                             onPress={() => updateTreatment(selectedTooth, { prepDepth: depth })}
                           >
                             <Text style={[
                               styles.optionBtnText,
-                              treatmentState.treatments[selectedTooth]?.prepDepth === depth && styles.optionBtnTextActive
+                              treatments[selectedTooth]?.prepDepth === depth && styles.optionBtnTextActive
                             ]}>
                               {depth}
                             </Text>
@@ -544,25 +697,25 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                       <Pressable
                         style={[
                           styles.yesNoBtn,
-                          treatmentState.treatments[selectedTooth]?.hasCracks === true && styles.yesBtn
+                          treatments[selectedTooth]?.hasCracks === true && styles.yesBtn
                         ]}
                         onPress={() => updateTreatment(selectedTooth, { hasCracks: true })}
                       >
                         <Text style={[
                           styles.yesNoBtnText,
-                          treatmentState.treatments[selectedTooth]?.hasCracks === true && styles.yesBtnText
+                          treatments[selectedTooth]?.hasCracks === true && styles.yesBtnText
                         ]}>Yes</Text>
                       </Pressable>
                       <Pressable
                         style={[
                           styles.yesNoBtn,
-                          treatmentState.treatments[selectedTooth]?.hasCracks === false && styles.noBtn
+                          treatments[selectedTooth]?.hasCracks === false && styles.noBtn
                         ]}
                         onPress={() => updateTreatment(selectedTooth, { hasCracks: false })}
                       >
                         <Text style={[
                           styles.yesNoBtnText,
-                          treatmentState.treatments[selectedTooth]?.hasCracks === false && styles.noBtnText
+                          treatments[selectedTooth]?.hasCracks === false && styles.noBtnText
                         ]}>No</Text>
                       </Pressable>
                     </View>
@@ -575,22 +728,22 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                       <Pressable
                         style={[
                           styles.yesNoBtn,
-                          treatmentState.treatments[selectedTooth]?.crownIndicated === true && styles.yesBtn
+                          treatments[selectedTooth]?.crownIndicated === true && styles.yesBtn
                         ]}
                         onPress={() => updateTreatment(selectedTooth, { 
                           crownIndicated: true,
-                          crownMaterial: treatmentState.treatments[selectedTooth]?.crownMaterial || null
+                          crownMaterial: treatments[selectedTooth]?.crownMaterial || null
                         })}
                       >
                         <Text style={[
                           styles.yesNoBtnText,
-                          treatmentState.treatments[selectedTooth]?.crownIndicated === true && styles.yesBtnText
+                          treatments[selectedTooth]?.crownIndicated === true && styles.yesBtnText
                         ]}>Yes</Text>
                       </Pressable>
                       <Pressable
                         style={[
                           styles.yesNoBtn,
-                          treatmentState.treatments[selectedTooth]?.crownIndicated === false && styles.noBtn
+                          treatments[selectedTooth]?.crownIndicated === false && styles.noBtn
                         ]}
                         onPress={() => updateTreatment(selectedTooth, { 
                           crownIndicated: false, 
@@ -599,14 +752,14 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                       >
                         <Text style={[
                           styles.yesNoBtnText,
-                          treatmentState.treatments[selectedTooth]?.crownIndicated === false && styles.noBtnText
+                          treatments[selectedTooth]?.crownIndicated === false && styles.noBtnText
                         ]}>No</Text>
                       </Pressable>
                     </View>
                   </View>
 
                   {/* Crown Material */}
-                  {treatmentState.treatments[selectedTooth]?.crownIndicated && (
+                  {treatments[selectedTooth]?.crownIndicated && (
                     <View style={styles.modalSection}>
                       <Text style={styles.modalLabel}>Crown Material:</Text>
                       <View style={styles.crownMaterialRow}>
@@ -615,13 +768,13 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                             key={material}
                             style={[
                               styles.crownMaterialBtn,
-                              treatmentState.treatments[selectedTooth]?.crownMaterial === material && styles.crownMaterialBtnActive
+                              treatments[selectedTooth]?.crownMaterial === material && styles.crownMaterialBtnActive
                             ]}
                             onPress={() => updateTreatment(selectedTooth, { crownMaterial: material })}
                           >
                             <Text style={[
                               styles.crownMaterialBtnText,
-                              treatmentState.treatments[selectedTooth]?.crownMaterial === material && styles.crownMaterialBtnTextActive
+                              treatments[selectedTooth]?.crownMaterial === material && styles.crownMaterialBtnTextActive
                             ]}>
                               {material}
                             </Text>
@@ -637,23 +790,23 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                     <Pressable
                       style={[
                         styles.toggleBtn,
-                        treatmentState.treatments[selectedTooth]?.rootCanalDone && styles.toggleBtnActive
+                        treatments[selectedTooth]?.rootCanalDone && styles.toggleBtnActive
                       ]}
                       onPress={() => updateTreatment(selectedTooth, { 
-                        rootCanalDone: !treatmentState.treatments[selectedTooth]?.rootCanalDone,
-                        canalCount: !treatmentState.treatments[selectedTooth]?.rootCanalDone ? null : treatmentState.treatments[selectedTooth]?.canalCount
+                        rootCanalDone: !treatments[selectedTooth]?.rootCanalDone,
+                        canalCount: !treatments[selectedTooth]?.rootCanalDone ? null : treatments[selectedTooth]?.canalCount
                       })}
                     >
                       <Text style={[
                         styles.toggleBtnText,
-                        treatmentState.treatments[selectedTooth]?.rootCanalDone && styles.toggleBtnTextActive
+                        treatments[selectedTooth]?.rootCanalDone && styles.toggleBtnTextActive
                       ]}>
-                        {treatmentState.treatments[selectedTooth]?.rootCanalDone ? 'RCT Done' : 'No RCT'}
+                        {treatments[selectedTooth]?.rootCanalDone ? 'RCT Done' : 'No RCT'}
                       </Text>
                     </Pressable>
 
                     {/* Canal Count */}
-                    {treatmentState.treatments[selectedTooth]?.rootCanalDone && (
+                    {treatments[selectedTooth]?.rootCanalDone && (
                       <View style={styles.canalSection}>
                         <Text style={styles.modalLabel}>Canals:</Text>
                         <View style={styles.canalRow}>
@@ -662,13 +815,13 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                               key={count}
                               style={[
                                 styles.canalBtn,
-                                treatmentState.treatments[selectedTooth]?.canalCount === count && styles.canalBtnActive
+                                treatments[selectedTooth]?.canalCount === count && styles.canalBtnActive
                               ]}
                               onPress={() => updateTreatment(selectedTooth, { canalCount: count })}
                             >
                               <Text style={[
                                 styles.canalBtnText,
-                                treatmentState.treatments[selectedTooth]?.canalCount === count && styles.canalBtnTextActive
+                                treatments[selectedTooth]?.canalCount === count && styles.canalBtnTextActive
                               ]}>
                                 {count}
                               </Text>
@@ -680,18 +833,18 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                   </View>
 
                   {/* Summary */}
-                  {(treatmentState.treatments[selectedTooth]?.surfaces.length > 0 || treatmentState.treatments[selectedTooth]?.rootCanalDone) && (
+                  {(treatments[selectedTooth]?.surfaces.length > 0 || treatments[selectedTooth]?.rootCanalDone) && (
                     <View style={styles.treatmentSummary}>
                       <Text style={styles.summaryTitle}>Summary:</Text>
                       <Text style={styles.summaryFormat}>
-                        #{selectedTooth}
-                        {treatmentState.treatments[selectedTooth]?.surfaces.join('')}
-                        {treatmentState.treatments[selectedTooth]?.fillingMaterial && ` ${treatmentState.treatments[selectedTooth]?.fillingMaterial}`}
-                        {treatmentState.treatments[selectedTooth]?.rootCanalDone && treatmentState.treatments[selectedTooth]?.canalCount && 
-                          ` RCT(${treatmentState.treatments[selectedTooth]?.canalCount})`
+                        #{getCurrentToothId(selectedTooth)}
+                        {treatments[selectedTooth]?.surfaces.join('')}
+                        {treatments[selectedTooth]?.fillingMaterial && ` ${treatments[selectedTooth]?.fillingMaterial}`}
+                        {treatments[selectedTooth]?.rootCanalDone && treatments[selectedTooth]?.canalCount && 
+                          ` RCT(${treatments[selectedTooth]?.canalCount})`
                         }
-                        {treatmentState.treatments[selectedTooth]?.crownIndicated && treatmentState.treatments[selectedTooth]?.crownMaterial && 
-                          ` Crown(${treatmentState.treatments[selectedTooth]?.crownMaterial})`
+                        {treatments[selectedTooth]?.crownIndicated && treatments[selectedTooth]?.crownMaterial && 
+                          ` Crown(${treatments[selectedTooth]?.crownMaterial})`
                         }
                       </Text>
                     </View>
@@ -795,6 +948,13 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  chartInstructions: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
   dentalChart: {
     width: 360,
     height: 480,
@@ -821,15 +981,6 @@ const styles = StyleSheet.create({
     left: 150,
     width: 60,
   },
-  centerInstructions: {
-    fontSize: 11,
-    color: '#999',
-    textAlign: 'center',
-    position: 'absolute',
-    top: 220,
-    left: 110,
-    width: 140,
-  },
   toothCircle: {
     width: 30,
     height: 30,
@@ -842,6 +993,26 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
     fontSize: 10,
+  },
+  primaryToothLabel: {
+    color: '#ffd700', // Gold color for primary teeth
+    fontWeight: 'bold',
+  },
+  switchIndicator: {
+    position: 'absolute',
+    top: -8,
+    left: -8,
+    backgroundColor: '#28a745',
+    borderRadius: 6,
+    width: 12,
+    height: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  switchText: {
+    color: 'white',
+    fontSize: 8,
+    fontWeight: 'bold',
   },
   statusIndicator: {
     position: 'absolute',
@@ -1003,6 +1174,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
   },
+  toothTypeIndicator: {
+    fontSize: 14,
+    fontWeight: 'normal',
+    color: '#666',
+  },
+  switchButton: {
+    backgroundColor: '#007bff',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginTop: 8,
+  },
+  switchButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
   modalScroll: {
     flex: 1,
   },
@@ -1047,7 +1235,7 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   
-  // Material Buttons (2x2 grid for 4 materials)
+  // Material Buttons (1x2 grid for 2 materials)
   materialGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
