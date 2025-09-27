@@ -15,6 +15,16 @@ const DENTURE_TYPES = [
   'Lower complete denture'
 ];
 
+// ODA Fee Structure for Denture Treatments
+const ODA_FEES = {
+  'Upper partial acrylic denture': { code: '52301', price: 794 },
+  'Upper partial cast denture': { code: '53201', price: 1351 },
+  'Lower partial acrylic denture': { code: '52302', price: 794 },
+  'Lower partial cast denture': { code: '53202', price: 1351 },
+  'Upper complete denture': { code: '51101', price: 1142 },
+  'Lower complete denture': { code: '51102', price: 1454 },
+};
+
 interface DenturePlacement {
   id: string;
   placement: string; // e.g., "maxillary partial acrylic denture placed"
@@ -34,54 +44,36 @@ const DentureTreatmentScreen = ({ route }: any) => {
   const [currentPlacement, setCurrentPlacement] = useState('');
   const [selectedDentureType, setSelectedDentureType] = useState('');
 
-  // Generate billing codes based on denture placements
-  const billingCodes = useMemo(() => {
-    const codes: Array<{
+  // Calculate ODA codes and total cost
+  const calculateODABilling = useMemo(() => {
+    const billingCodes: Array<{
       code: string;
       description: string;
+      price: number;
       category: string;
       placement: DenturePlacement;
     }> = [];
 
+    let totalCost = 0;
+
     placements.forEach(placement => {
-      let code = '';
-      let description = '';
-
-      // Map denture types to billing codes
-      switch (placement.type) {
-        case 'Upper partial acrylic denture':
-        case 'Upper partial cast denture':
-          code = 'D5213';
-          description = 'Upper partial denture - cast metal framework';
-          break;
-        case 'Lower partial acrylic denture':
-        case 'Lower partial cast denture':
-          code = 'D5214';
-          description = 'Lower partial denture - cast metal framework';
-          break;
-        case 'Upper complete denture':
-          code = 'D5110';
-          description = 'Complete upper denture';
-          break;
-        case 'Lower complete denture':
-          code = 'D5120';
-          description = 'Complete lower denture';
-          break;
-        default:
-          code = 'D5999';
-          description = 'Unspecified denture procedure';
+      const odaInfo = ODA_FEES[placement.type as keyof typeof ODA_FEES];
+      if (odaInfo) {
+        billingCodes.push({
+          code: odaInfo.code,
+          description: placement.type,
+          price: odaInfo.price,
+          category: 'Prosthodontics',
+          placement
+        });
+        totalCost += odaInfo.price;
       }
-
-      codes.push({
-        code,
-        description,
-        category: 'Prosthodontics',
-        placement
-      });
     });
 
-    return codes;
+    return { billingCodes, totalCost };
   }, [placements]);
+
+  const { billingCodes, totalCost } = calculateODABilling;
 
   const openPlacementModal = (index: number | null = null) => {
     if (index !== null) {
@@ -116,7 +108,7 @@ const DentureTreatmentScreen = ({ route }: any) => {
     }
 
     const newPlacement: DenturePlacement = {
-      id: uuid.v4(),
+      id: uuid.v4() as string,
       placement: currentPlacement.trim(),
       type: selectedDentureType
     };
@@ -166,7 +158,7 @@ const DentureTreatmentScreen = ({ route }: any) => {
             treatment.tooth = 'N/A';
             treatment.surface = 'N/A';
             treatment.units = 1;
-            treatment.value = 0;
+            treatment.value = code.price; // Store individual denture cost
             treatment.billingCodes = JSON.stringify([code]);
             treatment.notes = `${code.placement.placement}. ${generalNotes}`;
             treatment.clinicianName = clinicianName;
@@ -181,6 +173,8 @@ const DentureTreatmentScreen = ({ route }: any) => {
         patientId,
         placementsCount: placements.length,
         codesGenerated: billingCodes.length,
+        odaCodes: billingCodes.map(code => `${code.code}: $${code.price}`),
+        totalCost: `$${totalCost}`,
         completedAt: new Date().toISOString()
       });
 
@@ -198,9 +192,11 @@ const DentureTreatmentScreen = ({ route }: any) => {
       return;
     }
 
+    const odaCodesText = billingCodes.map(code => `${code.code}: ${code.description} - $${code.price}`).join('\n• ');
+
     Alert.alert(
       'Complete Treatment',
-      `Complete denture placement for this patient?\n\nTreatment Summary:\n• Dentures Placed: ${placements.length}\n• Billing Codes: ${billingCodes.length}\n\nThis will save the treatment to the database.`,
+      `Complete denture placement for this patient?\n\nTreatment Summary:\n• Dentures Placed: ${placements.length}\n• Billing Codes: ${billingCodes.length}\n\nODA Billing Codes:\n• ${odaCodesText}\n\nTotal Cost: $${totalCost.toFixed(2)}\n\nThis will save the treatment to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -209,7 +205,10 @@ const DentureTreatmentScreen = ({ route }: any) => {
             const saved = await saveTreatmentToDatabase();
             if (saved) {
               setCompletedAt(new Date());
-              Alert.alert('Success', '✅ Denture treatment completed and saved to database!');
+              Alert.alert(
+                'Success', 
+                `✅ Denture treatment completed and saved to database!\n\nTotal ODA Billing: $${totalCost.toFixed(2)}`
+              );
             }
           }
         }
@@ -241,6 +240,15 @@ const DentureTreatmentScreen = ({ route }: any) => {
       <Text style={styles.header}>🦷 Denture Treatment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
+      {/* Treatment Summary Indicator */}
+      {placements.length > 0 && !completedAt && (
+        <View style={styles.summaryIndicator}>
+          <Text style={styles.summaryIndicatorText}>
+            ✅ {placements.length} denture{placements.length > 1 ? 's' : ''} recorded • Total: $${totalCost.toFixed(2)}
+          </Text>
+        </View>
+      )}
+
       {completedAt && (
         <View style={styles.completedBanner}>
           <Text style={styles.completedText}>✅ Treatment Completed</Text>
@@ -259,24 +267,32 @@ const DentureTreatmentScreen = ({ route }: any) => {
             No dentures placed yet. Tap "Add Denture Placement" to begin.
           </Text>
         ) : (
-          placements.map((placement, index) => (
-            <View key={placement.id} style={styles.placementCard}>
-              <View style={styles.placementHeader}>
-                <View style={styles.placementInfo}>
-                  <Text style={styles.placementText}>{placement.placement}</Text>
-                  <Text style={styles.dentureType}>{placement.type}</Text>
-                </View>
-                <View style={styles.placementActions}>
-                  <Pressable onPress={() => openPlacementModal(index)} style={styles.editButton}>
-                    <Text style={styles.editButtonText}>Edit</Text>
-                  </Pressable>
-                  <Pressable onPress={() => removePlacement(index)} style={styles.removeButton}>
-                    <Text style={styles.removeButtonText}>Remove</Text>
-                  </Pressable>
+          placements.map((placement, index) => {
+            const odaInfo = ODA_FEES[placement.type as keyof typeof ODA_FEES];
+            return (
+              <View key={placement.id} style={styles.placementCard}>
+                <View style={styles.placementHeader}>
+                  <View style={styles.placementInfo}>
+                    <Text style={styles.placementText}>{placement.placement}</Text>
+                    <Text style={styles.dentureType}>{placement.type}</Text>
+                    {odaInfo && (
+                      <Text style={styles.odaInfo}>
+                        💰 ODA Code: {odaInfo.code} - ${odaInfo.price}
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.placementActions}>
+                    <Pressable onPress={() => openPlacementModal(index)} style={styles.editButton}>
+                      <Text style={styles.editButtonText}>Edit</Text>
+                    </Pressable>
+                    <Pressable onPress={() => removePlacement(index)} style={styles.removeButton}>
+                      <Text style={styles.removeButtonText}>Remove</Text>
+                    </Pressable>
+                  </View>
                 </View>
               </View>
-            </View>
-          ))
+            );
+          })
         )}
 
         <Pressable style={styles.addButton} onPress={() => openPlacementModal()}>
@@ -284,24 +300,29 @@ const DentureTreatmentScreen = ({ route }: any) => {
         </Pressable>
       </View>
 
-      {/* Generated Billing Codes */}
-      <View style={styles.billingSection}>
-        <Text style={styles.sectionTitle}>Generated Billing Codes</Text>
-        
-        {billingCodes.length === 0 ? (
-          <Text style={styles.noCodesText}>Add denture placements to generate billing codes</Text>
-        ) : (
-          billingCodes.map((code, index) => (
-            <View key={index} style={styles.codeCard}>
-              <View style={styles.codeHeader}>
-                <Text style={styles.codeNumber}>{code.code}</Text>
-                <Text style={styles.codeCategory}>{code.category}</Text>
+      {/* ODA Billing Summary */}
+      {billingCodes.length > 0 && (
+        <View style={styles.billingSection}>
+          <Text style={styles.sectionTitle}>ODA Billing Summary</Text>
+          
+          {billingCodes.map((code, index) => (
+            <View key={index} style={styles.billingCard}>
+              <View style={styles.billingHeader}>
+                <Text style={styles.billingCode}>{code.code}</Text>
+                <Text style={styles.billingPrice}>${code.price}</Text>
               </View>
-              <Text style={styles.codeDescription}>{code.description}</Text>
+              <Text style={styles.billingDescription}>{code.description}</Text>
             </View>
-          ))
-        )}
-      </View>
+          ))}
+          
+          <View style={styles.totalSection}>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total ODA Billing:</Text>
+              <Text style={styles.totalAmount}>${totalCost.toFixed(2)}</Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* General Notes */}
       <View style={styles.notesSection}>
@@ -348,23 +369,34 @@ const DentureTreatmentScreen = ({ route }: any) => {
             {/* Denture Type Selection */}
             <Text style={styles.modalSectionTitle}>Select Denture Type</Text>
             <ScrollView style={styles.typeList} showsVerticalScrollIndicator={false}>
-              {DENTURE_TYPES.map((type, index) => (
-                <Pressable
-                  key={index}
-                  style={[
-                    styles.typeButton,
-                    selectedDentureType === type && styles.typeButtonSelected
-                  ]}
-                  onPress={() => setSelectedDentureType(type)}
-                >
-                  <Text style={[
-                    styles.typeButtonText,
-                    selectedDentureType === type && styles.typeButtonTextSelected
-                  ]}>
-                    {type}
-                  </Text>
-                </Pressable>
-              ))}
+              {DENTURE_TYPES.map((type, index) => {
+                const odaInfo = ODA_FEES[type as keyof typeof ODA_FEES];
+                return (
+                  <Pressable
+                    key={index}
+                    style={[
+                      styles.typeButton,
+                      selectedDentureType === type && styles.typeButtonSelected
+                    ]}
+                    onPress={() => setSelectedDentureType(type)}
+                  >
+                    <Text style={[
+                      styles.typeButtonText,
+                      selectedDentureType === type && styles.typeButtonTextSelected
+                    ]}>
+                      {type}
+                    </Text>
+                    {odaInfo && (
+                      <Text style={[
+                        styles.typeButtonODA,
+                        selectedDentureType === type && styles.typeButtonODASelected
+                      ]}>
+                        {odaInfo.code} - ${odaInfo.price}
+                      </Text>
+                    )}
+                  </Pressable>
+                );
+              })}
             </ScrollView>
 
             {/* Placement Description */}
@@ -378,6 +410,19 @@ const DentureTreatmentScreen = ({ route }: any) => {
               numberOfLines={2}
               textAlignVertical="top"
             />
+
+            {/* Selected Type Summary */}
+            {selectedDentureType && (
+              <View style={styles.selectionSummary}>
+                <Text style={styles.selectionSummaryTitle}>Selected:</Text>
+                <Text style={styles.selectionSummaryText}>{selectedDentureType}</Text>
+                {ODA_FEES[selectedDentureType as keyof typeof ODA_FEES] && (
+                  <Text style={styles.selectionSummaryODA}>
+                    ODA Code: {ODA_FEES[selectedDentureType as keyof typeof ODA_FEES].code} - ${ODA_FEES[selectedDentureType as keyof typeof ODA_FEES].price}
+                  </Text>
+                )}
+              </View>
+            )}
 
             {/* Modal Actions */}
             <View style={styles.modalActions}>
@@ -416,6 +461,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 20,
+    textAlign: 'center',
+  },
+  summaryIndicator: {
+    backgroundColor: '#d4edda',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#28a745',
+  },
+  summaryIndicatorText: {
+    fontSize: 12,
+    color: '#155724',
+    fontWeight: '600',
     textAlign: 'center',
   },
   completedBanner: {
@@ -487,6 +546,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#007bff',
     fontWeight: '500',
+    marginBottom: 4,
+  },
+  odaInfo: {
+    fontSize: 12,
+    color: '#856404',
+    fontWeight: '600',
+    backgroundColor: '#fff3cd',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
   },
   placementActions: {
     flexDirection: 'row',
@@ -537,43 +607,54 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  noCodesText: {
-    fontSize: 14,
-    color: '#6c757d',
-    textAlign: 'center',
-    fontStyle: 'italic',
-    padding: 20,
-  },
-  codeCard: {
+  billingCard: {
     backgroundColor: '#f8f9fa',
     borderRadius: 8,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: 8,
     borderLeftWidth: 4,
     borderLeftColor: '#007bff',
   },
-  codeHeader: {
+  billingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
   },
-  codeNumber: {
+  billingCode: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#007bff',
   },
-  codeCategory: {
-    fontSize: 12,
-    color: '#6c757d',
-    backgroundColor: '#e9ecef',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  billingPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#28a745',
   },
-  codeDescription: {
+  billingDescription: {
     fontSize: 14,
     color: '#495057',
+  },
+  totalSection: {
+    borderTopWidth: 2,
+    borderTopColor: '#e9ecef',
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  totalAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#28a745',
   },
   notesSection: {
     backgroundColor: '#fff',
@@ -651,7 +732,7 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   typeList: {
-    maxHeight: 200,
+    maxHeight: 300,
     marginBottom: 16,
   },
   typeButton: {
@@ -670,10 +751,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     textAlign: 'center',
+    marginBottom: 4,
   },
   typeButtonTextSelected: {
     color: '#fff',
     fontWeight: '600',
+  },
+  typeButtonODA: {
+    fontSize: 12,
+    color: '#6c757d',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  typeButtonODASelected: {
+    color: '#e3f2fd',
   },
   placementInput: {
     backgroundColor: '#f8f9fa',
@@ -684,7 +775,31 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     minHeight: 60,
-    marginBottom: 20,
+    marginBottom: 16,
+  },
+  selectionSummary: {
+    backgroundColor: '#e7f3ff',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#007bff',
+  },
+  selectionSummaryTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#007bff',
+    marginBottom: 4,
+  },
+  selectionSummaryText: {
+    fontSize: 14,
+    color: '#495057',
+    marginBottom: 4,
+  },
+  selectionSummaryODA: {
+    fontSize: 12,
+    color: '#856404',
+    fontWeight: '600',
   },
   modalActions: {
     flexDirection: 'row',

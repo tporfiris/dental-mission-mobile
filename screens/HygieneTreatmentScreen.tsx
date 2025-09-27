@@ -6,6 +6,24 @@ import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
 
+// ODA Fee Structure for Hygiene Treatments
+const ODA_FEES = {
+  scaling: {
+    1: { code: '11111', price: 74 },
+    2: { code: '11112', price: 142 },
+    3: { code: '11113', price: 200 },
+    4: { code: '11114', price: 261 },
+  },
+  polishing: {
+    0.5: { code: '11107', price: 29 },
+    1: { code: '11101', price: 36 },
+  },
+  fluoride: {
+    rinse: { code: '12111', price: 9 },
+    varnish: { code: '12113', price: 38 },
+  },
+};
+
 const HygieneTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
@@ -31,6 +49,64 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     completedAt,
   } = treatmentState;
 
+  // Calculate ODA codes and total cost
+  const calculateODABilling = () => {
+    const billingCodes: Array<{
+      code: string;
+      description: string;
+      price: number;
+      category: string;
+    }> = [];
+
+    let totalCost = 0;
+
+    // Scaling codes
+    if (scalingUnits > 0 && scalingUnits <= 4) {
+      const scalingInfo = ODA_FEES.scaling[scalingUnits as keyof typeof ODA_FEES.scaling];
+      if (scalingInfo) {
+        billingCodes.push({
+          code: scalingInfo.code,
+          description: `Scaling - ${scalingUnits} unit${scalingUnits > 1 ? 's' : ''}`,
+          price: scalingInfo.price,
+          category: 'Hygiene'
+        });
+        totalCost += scalingInfo.price;
+      }
+    }
+
+    // Polishing codes
+    if (polishingUnits > 0) {
+      const polishingInfo = ODA_FEES.polishing[polishingUnits as keyof typeof ODA_FEES.polishing];
+      if (polishingInfo) {
+        billingCodes.push({
+          code: polishingInfo.code,
+          description: `Polishing - ${polishingUnits} unit${polishingUnits > 1 ? 's' : ''}`,
+          price: polishingInfo.price,
+          category: 'Hygiene'
+        });
+        totalCost += polishingInfo.price;
+      }
+    }
+
+    // Fluoride codes
+    if (fluorideType !== 'none') {
+      const fluorideInfo = ODA_FEES.fluoride[fluorideType as keyof typeof ODA_FEES.fluoride];
+      if (fluorideInfo) {
+        billingCodes.push({
+          code: fluorideInfo.code,
+          description: `Fluoride ${fluorideType === 'rinse' ? 'Rinse' : 'Varnish'}`,
+          price: fluorideInfo.price,
+          category: 'Hygiene'
+        });
+        totalCost += fluorideInfo.price;
+      }
+    }
+
+    return { billingCodes, totalCost };
+  };
+
+  const { billingCodes, totalCost } = calculateODABilling();
+
   const saveTreatmentToDatabase = async () => {
     try {
       const treatmentId = uuid.v4();
@@ -42,7 +118,9 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         polishingUnits,
         fluorideType,
         prescribedMedication,
-        notes
+        notes,
+        odaCodes: billingCodes,
+        totalCost
       };
 
       await database.write(async () => {
@@ -54,8 +132,8 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           treatment.tooth = 'N/A';
           treatment.surface = 'N/A';
           treatment.units = scalingUnits + polishingUnits;
-          treatment.value = 0;
-          treatment.billingCodes = '';
+          treatment.value = totalCost; // Store total ODA cost
+          treatment.billingCodes = JSON.stringify(billingCodes); // Store ODA codes
           treatment.notes = JSON.stringify(treatmentData);
           treatment.clinicianName = clinicianName;
           treatment.completedAt = completedDate;
@@ -69,7 +147,8 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         scalingUnits,
         polishingUnits,
         fluorideType,
-        prescribedMedication,
+        odaCodes: billingCodes.map(code => `${code.code}: $${code.price}`),
+        totalCost: `$${totalCost}`,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
       });
@@ -99,9 +178,11 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     const fluorideText = fluorideType === 'none' ? 'None' : 
                         fluorideType === 'rinse' ? 'Fluoride Rinse' : 'Fluoride Varnish';
 
+    const odaCodesText = billingCodes.map(code => `${code.code}: $${code.price}`).join('\n• ');
+
     Alert.alert(
       'Complete Treatment',
-      `Complete hygiene treatment for this patient?\n\nTreatment Details:\n• Scaling Units: ${scalingUnits}\n• Polishing Units: ${polishingUnits}\n• Fluoride: ${fluorideText}\n• Medication: ${prescribedMedication || 'None'}\n\nThis will save the treatment to the database.`,
+      `Complete hygiene treatment for this patient?\n\nTreatment Details:\n• Scaling Units: ${scalingUnits}\n• Polishing Units: ${polishingUnits}\n• Fluoride: ${fluorideText}\n• Medication: ${prescribedMedication || 'None'}\n\nODA Billing Codes:\n• ${odaCodesText}\n\nTotal Cost: $${totalCost.toFixed(2)}\n\nThis will save the treatment to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -113,7 +194,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
               markCompleted();
               Alert.alert(
                 'Success', 
-                '✅ Hygiene treatment completed and saved to database!'
+                `✅ Hygiene treatment completed and saved to database!\n\nTotal ODA Billing: $${totalCost.toFixed(2)}`
               );
             }
           }
@@ -161,8 +242,6 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     </Pressable>
   );
 
-
-
   const FluorideButton = ({ type, selected, onPress, children }: { 
     type: FluorideType; 
     selected: boolean; 
@@ -190,6 +269,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           <Text style={styles.stateIndicatorText}>
             ✅ State preserved: Scaling {scalingUnits}, Polishing {polishingUnits}
             {fluorideType !== 'none' && `, Fluoride: ${fluorideType}`}
+            {totalCost > 0 && ` • Total: $${totalCost.toFixed(2)}`}
           </Text>
         </View>
       )}
@@ -241,6 +321,13 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           <Text style={styles.inputHint}>
             Select number of scaling units performed (typically 1-4)
           </Text>
+          {scalingUnits > 0 && (
+            <View style={styles.odaInfo}>
+              <Text style={styles.odaInfoText}>
+                💰 ODA Code: {ODA_FEES.scaling[scalingUnits as keyof typeof ODA_FEES.scaling]?.code} - ${ODA_FEES.scaling[scalingUnits as keyof typeof ODA_FEES.scaling]?.price}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Polishing Units */}
@@ -266,9 +353,14 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           <Text style={styles.inputHint}>
             Select polishing units performed (typically 0.5 or 1 unit)
           </Text>
+          {polishingUnits > 0 && (
+            <View style={styles.odaInfo}>
+              <Text style={styles.odaInfoText}>
+                💰 ODA Code: {ODA_FEES.polishing[polishingUnits as keyof typeof ODA_FEES.polishing]?.code} - ${ODA_FEES.polishing[polishingUnits as keyof typeof ODA_FEES.polishing]?.price}
+              </Text>
+            </View>
+          )}
         </View>
-
-
 
         {/* Fluoride Treatment */}
         <View style={styles.inputGroup}>
@@ -306,12 +398,18 @@ const HygieneTreatmentScreen = ({ route }: any) => {
               <Text style={styles.fluorideInfoText}>
                 💧 Fluoride rinse typically contains 0.2% sodium fluoride and helps prevent cavities
               </Text>
+              <Text style={styles.odaInfoText}>
+                💰 ODA Code: {ODA_FEES.fluoride.rinse.code} - ${ODA_FEES.fluoride.rinse.price}
+              </Text>
             </View>
           )}
           {fluorideType === 'varnish' && (
             <View style={styles.fluorideInfo}>
               <Text style={styles.fluorideInfoText}>
                 🎨 Fluoride varnish provides longer-lasting protection and is applied directly to teeth
+              </Text>
+              <Text style={styles.odaInfoText}>
+                💰 ODA Code: {ODA_FEES.fluoride.varnish.code} - ${ODA_FEES.fluoride.varnish.price}
               </Text>
             </View>
           )}
@@ -348,6 +446,30 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           />
         </View>
       </View>
+
+      {/* ODA Billing Summary */}
+      {billingCodes.length > 0 && (
+        <View style={styles.billingSection}>
+          <Text style={styles.sectionTitle}>ODA Billing Summary</Text>
+          
+          {billingCodes.map((code, index) => (
+            <View key={index} style={styles.billingCard}>
+              <View style={styles.billingHeader}>
+                <Text style={styles.billingCode}>{code.code}</Text>
+                <Text style={styles.billingPrice}>${code.price}</Text>
+              </View>
+              <Text style={styles.billingDescription}>{code.description}</Text>
+            </View>
+          ))}
+          
+          <View style={styles.totalSection}>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total ODA Billing:</Text>
+              <Text style={styles.totalAmount}>${totalCost.toFixed(2)}</Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Action Buttons */}
       <View style={styles.actionSection}>
@@ -479,7 +601,6 @@ const styles = StyleSheet.create({
   unitOptionTextSelected: {
     color: '#fff',
   },
-
   fluorideContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -521,6 +642,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#495057',
     fontStyle: 'italic',
+    marginBottom: 4,
+  },
+  odaInfo: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 6,
+    padding: 8,
+    marginTop: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ffc107',
+  },
+  odaInfoText: {
+    fontSize: 12,
+    color: '#856404',
+    fontWeight: '600',
   },
   inputHint: {
     fontSize: 12,
@@ -547,6 +682,66 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     minHeight: 80,
+  },
+  billingSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  billingCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#007bff',
+  },
+  billingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  billingCode: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#007bff',
+  },
+  billingPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#28a745',
+  },
+  billingDescription: {
+    fontSize: 14,
+    color: '#495057',
+  },
+  totalSection: {
+    borderTopWidth: 2,
+    borderTopColor: '#e9ecef',
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  totalAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#28a745',
   },
   actionSection: {
     gap: 12,

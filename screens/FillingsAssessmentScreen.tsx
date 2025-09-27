@@ -1,5 +1,3 @@
-// Comprehensive Dental Assessment screen with State Preservation
-
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -54,6 +52,80 @@ const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
 const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
 
+// Primary tooth conversion mappings
+const PRIMARY_TOOTH_MAPPINGS = {
+  // Permanent to Primary
+  '11': '51', '12': '52', '13': '53', '14': '54', '15': '55',
+  '21': '61', '22': '62', '23': '63', '24': '64', '25': '65',
+  '41': '81', '42': '82', '43': '83', '44': '84', '45': '85',
+  '31': '71', '32': '72', '33': '73', '34': '74', '35': '75',
+  // Primary to Permanent (reverse mapping)
+  '51': '11', '52': '12', '53': '13', '54': '14', '55': '15',
+  '61': '21', '62': '22', '63': '23', '64': '24', '65': '25',
+  '81': '41', '82': '42', '83': '43', '84': '44', '85': '45',
+  '71': '31', '72': '32', '73': '33', '74': '34', '75': '35',
+};
+
+// Helper function to check if a tooth can be switched to primary
+const canSwitchToPrimary = (toothId: string): boolean => {
+  const permanentTeeth = ['11', '12', '13', '14', '15', '21', '22', '23', '24', '25', 
+                          '41', '42', '43', '44', '45', '31', '32', '33', '34', '35'];
+  return permanentTeeth.includes(toothId);
+};
+
+// Helper function to check if a tooth is primary
+const isPrimaryTooth = (toothId: string): boolean => {
+  return toothId.startsWith('5') || toothId.startsWith('6') || toothId.startsWith('7') || toothId.startsWith('8');
+};
+
+// Helper function to load saved assessment data
+const loadSavedAssessment = async (patientId: string, setEnhancedState: any) => {
+  try {
+    const collection = database.get<FillingsAssessment>('fillings_assessments');
+    const existing = await collection
+      .query(Q.where('patient_id', Q.eq(patientId)))
+      .fetch();
+
+    if (existing.length > 0) {
+      try {
+        const savedData = JSON.parse(existing[0].data);
+        
+        if (savedData.savedWithPrimaryNumbers && savedData.originalTeethStates) {
+          // New format - data was saved with primary numbers, restore original mappings
+          console.log('📋 Loading fillings assessment with primary number format');
+          setEnhancedState((prev: any) => ({
+            ...prev,
+            teethStates: savedData.originalTeethStates,
+            primaryTeeth: new Set(savedData.primaryTeeth || [])
+          }));
+        } else if (savedData.teethStates && savedData.primaryTeeth) {
+          // Intermediate format - has primary teeth data but uses original numbering
+          console.log('📋 Loading fillings assessment with primary teeth tracking');
+          setEnhancedState((prev: any) => ({
+            ...prev,
+            teethStates: savedData.teethStates,
+            primaryTeeth: new Set(savedData.primaryTeeth)
+          }));
+        } else if (savedData.teethStates) {
+          // Legacy format - just tooth states
+          console.log('📋 Loading legacy fillings assessment format');
+          setEnhancedState((prev: any) => ({
+            ...prev,
+            teethStates: savedData.teethStates,
+            primaryTeeth: new Set()
+          }));
+        }
+        
+        console.log('✅ Loaded existing fillings assessment');
+      } catch (parseError) {
+        console.warn('⚠️ Could not parse saved fillings assessment data, using defaults');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error loading saved fillings assessment:', error);
+  }
+};
+
 interface ToothAssessment {
   // Existing fillings
   hasFillings: boolean;
@@ -103,6 +175,7 @@ interface EnhancedFillingsAssessmentState {
   selectedTooth: string | null;
   modalVisible: boolean;
   activeTab: 'fillings' | 'crowns' | 'existing_rc' | 'cavities' | 'broken' | 'rootcanal';
+  primaryTeeth: Set<string>;
 }
 
 const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
@@ -124,7 +197,8 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
       teethStates: initializeTeethStates(),
       selectedTooth: null,
       modalVisible: false,
-      activeTab: 'fillings'
+      activeTab: 'fillings',
+      primaryTeeth: new Set()
     };
   };
 
@@ -137,6 +211,11 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
     return getInitialState();
   });
 
+  // Load saved assessment data on component mount
+  useEffect(() => {
+    loadSavedAssessment(patientId, setEnhancedState);
+  }, [patientId]);
+
   // Save state to context whenever it changes
   useEffect(() => {
     setRestorationStates({
@@ -144,6 +223,33 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
       enhancedAssessment: enhancedState
     });
   }, [enhancedState]);
+
+  // Function to get the current display tooth ID (permanent or primary)
+  const getCurrentToothId = (originalToothId: string): string => {
+    if (enhancedState.primaryTeeth.has(originalToothId) && PRIMARY_TOOTH_MAPPINGS[originalToothId]) {
+      return PRIMARY_TOOTH_MAPPINGS[originalToothId];
+    }
+    return originalToothId;
+  };
+
+  // Function to toggle between permanent and primary tooth
+  const toggleToothType = (originalToothId: string) => {
+    if (!canSwitchToPrimary(originalToothId)) return;
+    
+    console.log('🔄 Toggling tooth type for:', originalToothId);
+    
+    setEnhancedState(prev => {
+      const newPrimaryTeeth = new Set(prev.primaryTeeth);
+      if (newPrimaryTeeth.has(originalToothId)) {
+        newPrimaryTeeth.delete(originalToothId);
+        console.log('➡️ Switched to permanent:', originalToothId);
+      } else {
+        newPrimaryTeeth.add(originalToothId);
+        console.log('➡️ Switched to primary:', originalToothId, '→', PRIMARY_TOOTH_MAPPINGS[originalToothId]);
+      }
+      return { ...prev, primaryTeeth: newPrimaryTeeth };
+    });
+  };
 
   // Helper function to update state
   const updateState = (updates: Partial<EnhancedFillingsAssessmentState>) => {
@@ -198,15 +304,37 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
         .fetch();
 
       console.log('🔍 Matched existing dental assessment:', existing);
+
+      // Transform tooth states to use current display tooth numbers (primary/permanent)
+      const transformedTeethStates: Record<string, ToothAssessment> = {};
+      
+      Object.entries(enhancedState.teethStates).forEach(([originalToothId, assessment]) => {
+        const currentToothId = getCurrentToothId(originalToothId);
+        transformedTeethStates[currentToothId] = assessment;
+        
+        if (currentToothId !== originalToothId) {
+          console.log(`💾 Saving tooth ${originalToothId} as primary tooth ${currentToothId}`);
+        }
+      });
   
       // Create comprehensive assessment data object
       const assessmentData = {
         ...enhancedState,
+        teethStates: transformedTeethStates, // Now uses display tooth numbers
+        primaryTeeth: Array.from(enhancedState.primaryTeeth),
+        originalTeethStates: enhancedState.teethStates, // Keep original mapping for reference
+        savedWithPrimaryNumbers: true, // Flag to indicate this data format
         timestamp: new Date().toISOString(),
         restorationStates
       };
       
       const jsonData = JSON.stringify(assessmentData);
+      
+      console.log('💾 Saving fillings assessment data:', {
+        transformedTeethStates,
+        primaryTeethCount: enhancedState.primaryTeeth.size,
+        primaryTeeth: Array.from(enhancedState.primaryTeeth)
+      });
   
       await database.write(async () => {
         if (existing.length > 0) {
@@ -216,8 +344,8 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
             record.data = jsonData;
             record.updatedAt = new Date();
           });
-          console.log('✅ Dental assessment updated');
-          Alert.alert('✅ Dental assessment updated');
+          console.log('✅ Dental assessment updated with primary teeth saved as primary numbers');
+          Alert.alert('✅ Dental assessment updated with primary teeth saved as primary numbers');
         } else {
           // Create new record
           await collection.create(record => {
@@ -227,7 +355,8 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
             record.data = jsonData;
             record.createdAt = new Date();
             record.updatedAt = new Date();
-            Alert.alert('✅ Dental assessment created')
+            console.log('✅ Dental assessment created with primary teeth saved as primary numbers');
+            Alert.alert('✅ Dental assessment created with primary teeth saved as primary numbers');
             console.log('🔧 Created dental assessment record:', {
               id,
               patient_id: patientId,
@@ -335,28 +464,51 @@ const ComprehensiveDentalAssessmentScreen = ({ route }: any) => {
   const renderTooth = (toothId: string) => {
     const position = getToothPosition(toothId);
     const statusText = getToothStatusIndicators(toothId);
+    const currentToothId = getCurrentToothId(toothId);
+    const canSwitch = canSwitchToPrimary(toothId);
+    const isCurrentlyPrimary = enhancedState.primaryTeeth.has(toothId);
     
     return (
-      <Pressable
-        key={toothId}
-        onPress={() => openToothEditor(toothId)}
-        style={[
-          styles.toothCircle,
-          getToothStyle(toothId),
-          {
-            position: 'absolute',
-            left: position.left,
-            top: position.top,
-          }
-        ]}
-      >
-        <Text style={styles.toothLabel}>{toothId}</Text>
-        {statusText && (
-          <View style={styles.statusIndicator}>
-            <Text style={styles.statusText}>{statusText}</Text>
+      <View key={toothId} style={{ position: 'absolute', left: position.left, top: position.top }}>
+        <Pressable
+          onPress={() => {
+            console.log('👆 Tap on tooth:', toothId);
+            openToothEditor(toothId);
+          }}
+          onLongPress={() => {
+            console.log('👆 Long press on tooth:', toothId, 'canSwitch:', canSwitch);
+            if (canSwitch) {
+              console.log('🔄 Calling toggleToothType for:', toothId);
+              toggleToothType(toothId);
+            } else {
+              console.log('❌ Cannot switch tooth:', toothId);
+            }
+          }}
+          delayLongPress={500}
+          style={[
+            styles.toothCircle,
+            getToothStyle(toothId),
+          ]}
+        >
+          <Text style={[styles.toothLabel, isCurrentlyPrimary && styles.primaryToothLabel]}>
+            {currentToothId}
+          </Text>
+          {statusText && (
+            <View style={styles.statusIndicator}>
+              <Text style={styles.statusText}>{statusText}</Text>
+            </View>
+          )}
+        </Pressable>
+        
+        {/* Switch indicator for teeth that can toggle */}
+        {canSwitch && (
+          <View style={styles.switchIndicator}>
+            <Text style={styles.switchText}>
+              {isCurrentlyPrimary ? 'P' : 'A'}
+            </Text>
           </View>
         )}
-      </Pressable>
+      </View>
     );
   };
 
@@ -403,6 +555,7 @@ Summary:
 
 Detailed Findings:
 ${teeth.map(([toothId, tooth]) => {
+  const currentToothId = getCurrentToothId(toothId);
   const findings = [];
   if (tooth.hasFillings && tooth.fillingSurfaces.length > 0) {
     findings.push(`${tooth.fillingType} filling on ${tooth.fillingSurfaces.join('')} surfaces`);
@@ -425,7 +578,7 @@ ${teeth.map(([toothId, tooth]) => {
     if (tooth.apicalDiagnosis) diagnoses.push(tooth.apicalDiagnosis);
     findings.push(`root canal needed (${diagnoses.join(', ')})`);
   }
-  return `• Tooth ${toothId}: ${findings.join(', ')}`;
+  return `• Tooth ${currentToothId}: ${findings.join(', ')}`;
 }).join('\n')}
     `;
     
@@ -436,6 +589,16 @@ ${teeth.map(([toothId, tooth]) => {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.header}>🦷 Comprehensive Dental Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
+
+      {/* Instructions */}
+      <Text style={styles.chartInstructions}>
+        Tap to assess teeth • Long press switchable teeth (11-15, 21-25, 31-35, 41-45) to toggle Primary/Adult
+      </Text>
+
+      {/* Debug Info */}
+      <Text style={styles.debugText}>
+        Primary teeth: {Array.from(enhancedState.primaryTeeth).join(', ') || 'None'}
+      </Text>
 
       {/* Assessment Summary */}
       <View style={styles.summaryCard}>
@@ -457,8 +620,6 @@ ${teeth.map(([toothId, tooth]) => {
             <Text style={styles.summaryValue}>{assessmentSummary.totalCavities}</Text>
             <Text style={styles.summaryLabel}>Cavities</Text>
           </View>
-        </View>
-        <View style={styles.summaryGrid}>
           <View style={styles.summaryItem}>
             <Text style={styles.summaryValue}>{assessmentSummary.totalBroken}</Text>
             <Text style={styles.summaryLabel}>Broken</Text>
@@ -488,7 +649,6 @@ ${teeth.map(([toothId, tooth]) => {
       <View style={styles.dentalChart}>
         <Text style={styles.upperArchLabel}>Upper Arch</Text>
         <Text style={styles.lowerArchLabel}>Lower Arch</Text>
-        <Text style={styles.centerInstructions}>Tap to assess{'\n'}each tooth</Text>
         
         {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
           renderTooth(toothId)
@@ -527,6 +687,22 @@ ${teeth.map(([toothId, tooth]) => {
         </View>
       </View>
 
+      {/* Primary/Adult tooth legend */}
+      <View style={styles.typeIndicatorLegend}>
+        <View style={styles.legendItem}>
+          <View style={styles.switchIndicator}>
+            <Text style={styles.switchText}>A</Text>
+          </View>
+          <Text style={styles.legendLabel}>Adult Tooth</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={styles.switchIndicator}>
+            <Text style={styles.switchText}>P</Text>
+          </View>
+          <Text style={styles.legendLabel}>Primary Tooth</Text>
+        </View>
+      </View>
+
       <Text style={styles.surfaceNote}>
         Surfaces: M=Mesial, D=Distal, L=Lingual, B=Buccal, O=Occlusal{'\n'}
         Status: F=Filling, CR=Crown, RCT=Root Canal Treatment, C=Cavity, B=Broken, RC!=Root Canal Needed
@@ -547,8 +723,23 @@ ${teeth.map(([toothId, tooth]) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              Assess Tooth {enhancedState.selectedTooth}
+              Assess Tooth {enhancedState.selectedTooth && getCurrentToothId(enhancedState.selectedTooth)}
+              {enhancedState.selectedTooth && canSwitchToPrimary(enhancedState.selectedTooth) && (
+                <Text style={styles.toothTypeIndicator}>
+                  {enhancedState.primaryTeeth.has(enhancedState.selectedTooth) ? ' (Primary)' : ' (Adult)'}
+                </Text>
+              )}
             </Text>
+            {enhancedState.selectedTooth && canSwitchToPrimary(enhancedState.selectedTooth) && (
+              <Pressable 
+                style={styles.switchButton}
+                onPress={() => toggleToothType(enhancedState.selectedTooth!)}
+              >
+                <Text style={styles.switchButtonText}>
+                  Switch to {enhancedState.primaryTeeth.has(enhancedState.selectedTooth) ? 'Adult' : 'Primary'}
+                </Text>
+              </Pressable>
+            )}
             
             {/* Tab Navigation */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScrollContainer}>
@@ -938,6 +1129,21 @@ const styles = StyleSheet.create({
     color: '#665',
     marginBottom: 16,
   },
+  chartInstructions: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 10,
+    fontStyle: 'italic',
+    paddingHorizontal: 20,
+  },
+  debugText: {
+    fontSize: 10,
+    color: '#999',
+    textAlign: 'center',
+    marginBottom: 16,
+    fontStyle: 'italic',
+  },
   summaryCard: {
     backgroundColor: '#f8f9fa',
     borderRadius: 12,
@@ -1010,15 +1216,6 @@ const styles = StyleSheet.create({
     left: 150,
     width: 60,
   },
-  centerInstructions: {
-    fontSize: 11,
-    color: '#999',
-    textAlign: 'center',
-    position: 'absolute',
-    top: 220,
-    left: 110,
-    width: 140,
-  },
   toothCircle: {
     width: 30,
     height: 30,
@@ -1031,6 +1228,26 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
     fontSize: 10,
+  },
+  primaryToothLabel: {
+    color: '#ffd700', // Gold color for primary teeth
+    fontWeight: 'bold',
+  },
+  switchIndicator: {
+    position: 'absolute',
+    top: -8,
+    left: -8,
+    backgroundColor: '#28a745',
+    borderRadius: 6,
+    width: 12,
+    height: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  switchText: {
+    color: 'white',
+    fontSize: 8,
+    fontWeight: 'bold',
   },
   statusIndicator: {
     position: 'absolute',
@@ -1088,6 +1305,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#333',
   },
+  typeIndicatorLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 20,
+  },
   surfaceNote: {
     fontSize: 12,
     color: '#665',
@@ -1126,8 +1350,26 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 8,
     color: '#333',
+  },
+  toothTypeIndicator: {
+    fontSize: 14,
+    fontWeight: 'normal',
+    color: '#666',
+  },
+  switchButton: {
+    backgroundColor: '#007bff',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    alignSelf: 'center',
+  },
+  switchButtonText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
   },
   tabScrollContainer: {
     marginBottom: 20,

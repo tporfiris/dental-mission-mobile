@@ -6,6 +6,12 @@ import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
 
+// ODA Fee Structure for Extractions
+const ODA_FEES = {
+  simple: { code: '71101', price: 218 },
+  complicated: { code: '71201', price: 314 },
+};
+
 const ExtractionsTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
@@ -37,38 +43,38 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
     modalVisible
   } = treatmentState;
 
-  // Calculate billing codes based on extractions performed
-  const billingCodes = useMemo(() => {
-    return extractions.map(extraction => {
-      const toothNum = parseInt(extraction.toothNumber);
-      const isWisdomTooth = [18, 28, 38, 48].includes(toothNum);
-      const isMolar = toothNum % 10 >= 6; // 6, 7, 8 are molars
-      
-      let code, description;
-      
-      if (extraction.complexity === 'complicated') {
-        if (isWisdomTooth) {
-          code = 'D7240';
-          description = `Removal of impacted tooth - completely bony (Tooth ${extraction.toothNumber})`;
-        } else {
-          code = 'D7210';
-          description = `Extraction, erupted tooth requiring removal of bone/sectioning (Tooth ${extraction.toothNumber})`;
-        }
-      } else {
-        code = 'D7140';
-        description = `Extraction, erupted tooth or exposed root (Tooth ${extraction.toothNumber})`;
+  // Calculate ODA billing codes and total cost
+  const billingCalculation = useMemo(() => {
+    const billingCodes: Array<{
+      code: string;
+      description: string;
+      price: number;
+      tooth: string;
+      complexity: string;
+      extractionId: string;
+    }> = [];
+
+    let totalCost = 0;
+
+    extractions.forEach(extraction => {
+      const odaInfo = ODA_FEES[extraction.complexity];
+      if (odaInfo) {
+        billingCodes.push({
+          code: odaInfo.code,
+          description: `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction - Tooth ${extraction.toothNumber}`,
+          price: odaInfo.price,
+          tooth: extraction.toothNumber,
+          complexity: extraction.complexity,
+          extractionId: extraction.id
+        });
+        totalCost += odaInfo.price;
       }
-      
-      return {
-        code,
-        description,
-        tooth: extraction.toothNumber,
-        category: 'Oral Surgery',
-        complexity: extraction.complexity,
-        extractionId: extraction.id
-      };
     });
+
+    return { billingCodes, totalCost };
   }, [extractions]);
+
+  const { billingCodes, totalCost } = billingCalculation;
 
   const handleAddExtraction = () => {
     if (!toothNumber.trim()) {
@@ -111,7 +117,11 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
     updateSelectedComplexity('simple');
     updateExtractionNotes('');
     
-    Alert.alert('Success', `Tooth ${toothNumber} extraction recorded successfully`);
+    const odaInfo = ODA_FEES[selectedComplexity];
+    Alert.alert(
+      'Success', 
+      `Tooth ${toothNumber} extraction recorded successfully\n\nODA Code: ${odaInfo.code} - $${odaInfo.price}`
+    );
   };
 
   const handleEditExtraction = (extraction: any) => {
@@ -155,6 +165,9 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         for (const extraction of extractions) {
           const treatmentId = uuid.v4();
           
+          // Find the billing code for this specific extraction
+          const code = billingCodes.find(c => c.extractionId === extraction.id);
+          
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
             treatment.patientId = patientId;
@@ -163,12 +176,8 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             treatment.tooth = extraction.toothNumber;
             treatment.surface = 'N/A';
             treatment.units = 1;
-            treatment.value = 0;
-            
-            // Find the billing code for this specific extraction
-            const code = billingCodes.find(c => c.extractionId === extraction.id);
-            treatment.billingCodes = JSON.stringify(code ? [code] : []);
-            
+            treatment.value = code ? code.price : 0; // Store ODA price
+            treatment.billingCodes = JSON.stringify(code ? [code] : []); // Store ODA code
             treatment.notes = `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction of tooth ${extraction.toothNumber}. ${extraction.notes}`.trim();
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
@@ -180,7 +189,8 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         patientId,
         extractionsCount: extractions.length,
         teeth: extractions.map(e => `${e.toothNumber}(${e.complexity})`),
-        billingCodes: billingCodes.length,
+        odaCodes: billingCodes.map(code => `${code.code}: $${code.price}`),
+        totalCost: `$${totalCost}`,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
       });
@@ -209,10 +219,11 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
 
     const simpleExtractions = extractions.filter(e => e.complexity === 'simple').length;
     const complicatedExtractions = extractions.filter(e => e.complexity === 'complicated').length;
+    const odaCodesText = billingCodes.map(code => `${code.code}: $${code.price} (Tooth ${code.tooth})`).join('\n• ');
 
     Alert.alert(
       'Complete Treatment',
-      `Complete extractions treatment for this patient?\n\nTreatment Summary:\n• Total Extractions: ${extractions.length}\n• Simple: ${simpleExtractions}\n• Complicated: ${complicatedExtractions}\n• Billing Codes Generated: ${billingCodes.length}\n\nThis will save all extractions to the database.`,
+      `Complete extractions treatment for this patient?\n\nTreatment Summary:\n• Total Extractions: ${extractions.length}\n• Simple: ${simpleExtractions}\n• Complicated: ${complicatedExtractions}\n\nODA Billing Codes:\n• ${odaCodesText}\n\nTotal Cost: $${totalCost.toFixed(2)}\n\nThis will save all extractions to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -224,12 +235,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
               markCompleted();
               Alert.alert(
                 'Success', 
-                `✅ Extractions treatment completed and saved!\n\n` +
-                `Treatment Details:\n` +
-                `• Patient ID: ${patientId}\n` +
-                `• Total Extractions: ${extractions.length}\n` +
-                `• Billing Codes: ${billingCodes.length}\n` +
-                `• Completed: ${new Date().toLocaleString()}`
+                `✅ Extractions treatment completed and saved!\n\nTotal ODA Billing: $${totalCost.toFixed(2)}\n\nTreatment Details:\n• Patient ID: ${patientId}\n• Total Extractions: ${extractions.length}\n• Billing Codes: ${billingCodes.length}\n• Completed: ${new Date().toLocaleString()}`
               );
             }
           }
@@ -318,6 +324,13 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             </View>
           </View>
 
+          {/* ODA Info for selected complexity */}
+          <View style={styles.odaInfo}>
+            <Text style={styles.odaInfoText}>
+              💰 ODA Code: {ODA_FEES[selectedComplexity].code} - ${ODA_FEES[selectedComplexity].price}
+            </Text>
+          </View>
+
           <View style={styles.formColumn}>
             <Text style={styles.formLabel}>Notes (stitches, antibiotics, etc.):</Text>
             <TextInput
@@ -348,68 +361,80 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             No extractions recorded yet
           </Text>
         ) : (
-          extractions.map((extraction) => (
-            <View key={extraction.id} style={styles.extractionCard}>
-              <View style={styles.extractionHeader}>
-                <Text style={styles.toothNumberText}>Tooth {extraction.toothNumber}</Text>
-                <View style={styles.extractionActions}>
-                  <Text style={[
-                    styles.complexityBadge,
-                    extraction.complexity === 'simple' ? styles.simpleBadge : styles.complicatedBadge
-                  ]}>
-                    {extraction.complexity === 'simple' ? 'Simple' : 'Complicated'}
-                  </Text>
-                  {!completedAt && (
-                    <View style={styles.actionButtons}>
-                      <Pressable
-                        style={styles.editButton}
-                        onPress={() => handleEditExtraction(extraction)}
-                      >
-                        <Text style={styles.editButtonText}>✏️</Text>
-                      </Pressable>
-                      <Pressable
-                        style={styles.deleteButton}
-                        onPress={() => handleRemoveExtraction(extraction.id)}
-                      >
-                        <Text style={styles.deleteButtonText}>🗑️</Text>
-                      </Pressable>
-                    </View>
-                  )}
+          extractions.map((extraction) => {
+            const odaInfo = ODA_FEES[extraction.complexity];
+            return (
+              <View key={extraction.id} style={styles.extractionCard}>
+                <View style={styles.extractionHeader}>
+                  <Text style={styles.toothNumberText}>Tooth {extraction.toothNumber}</Text>
+                  <View style={styles.extractionActions}>
+                    <Text style={[
+                      styles.complexityBadge,
+                      extraction.complexity === 'simple' ? styles.simpleBadge : styles.complicatedBadge
+                    ]}>
+                      {extraction.complexity === 'simple' ? 'Simple' : 'Complicated'}
+                    </Text>
+                    {!completedAt && (
+                      <View style={styles.actionButtons}>
+                        <Pressable
+                          style={styles.editButton}
+                          onPress={() => handleEditExtraction(extraction)}
+                        >
+                          <Text style={styles.editButtonText}>✏️</Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.deleteButton}
+                          onPress={() => handleRemoveExtraction(extraction.id)}
+                        >
+                          <Text style={styles.deleteButtonText}>🗑️</Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
                 </View>
+                
+                <View style={styles.odaRow}>
+                  <Text style={styles.odaCode}>ODA: {odaInfo.code}</Text>
+                  <Text style={styles.odaPrice}>${odaInfo.price}</Text>
+                </View>
+                
+                {extraction.notes && (
+                  <Text style={styles.extractionNotes}>
+                    Notes: {extraction.notes}
+                  </Text>
+                )}
               </View>
-              {extraction.notes && (
-                <Text style={styles.extractionNotes}>
-                  Notes: {extraction.notes}
-                </Text>
-              )}
-            </View>
-          ))
+            );
+          })
         )}
       </View>
 
-      {/* Generated Billing Codes */}
-      <View style={styles.billingSection}>
-        <Text style={styles.sectionTitle}>Generated Billing Codes</Text>
-        
-        {billingCodes.length === 0 ? (
-          <Text style={styles.noCodesText}>
-            Record extractions to generate billing codes
-          </Text>
-        ) : (
-          billingCodes.map((code, index) => (
-            <View key={index} style={styles.codeCard}>
-              <View style={styles.codeHeader}>
-                <Text style={styles.codeNumber}>{code.code}</Text>
-                <Text style={styles.codeCategory}>{code.category}</Text>
+      {/* ODA Billing Summary */}
+      {billingCodes.length > 0 && (
+        <View style={styles.billingSection}>
+          <Text style={styles.sectionTitle}>ODA Billing Summary</Text>
+          
+          {billingCodes.map((code, index) => (
+            <View key={index} style={styles.billingCard}>
+              <View style={styles.billingHeader}>
+                <Text style={styles.billingCode}>{code.code}</Text>
+                <Text style={styles.billingPrice}>${code.price}</Text>
               </View>
-              <Text style={styles.codeDescription}>{code.description}</Text>
-              <Text style={styles.codeDetails}>
-                Tooth: {code.tooth} • Type: {code.complexity}
+              <Text style={styles.billingDescription}>{code.description}</Text>
+              <Text style={styles.billingDetails}>
+                Complexity: {code.complexity} • Tooth: {code.tooth}
               </Text>
             </View>
-          ))
-        )}
-      </View>
+          ))}
+          
+          <View style={styles.totalSection}>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total ODA Billing:</Text>
+              <Text style={styles.totalAmount}>${totalCost.toFixed(2)}</Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Action Buttons */}
       <View style={styles.actionSection}>
@@ -478,6 +503,8 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
     onUpdate(updatedExtraction);
   };
 
+  const currentOdaInfo = ODA_FEES[complexity];
+
   return (
     <View>
       <View style={styles.formRow}>
@@ -514,6 +541,12 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
         </View>
       </View>
 
+      <View style={styles.odaInfo}>
+        <Text style={styles.odaInfoText}>
+          💰 ODA Code: {currentOdaInfo.code} - ${currentOdaInfo.price}
+        </Text>
+      </View>
+
       <View style={styles.formColumn}>
         <Text style={styles.formLabel}>Notes:</Text>
         <TextInput
@@ -541,7 +574,6 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
 
 export default ExtractionsTreatmentScreen;
 
-// Styles remain the same as the original file
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -645,6 +677,20 @@ const styles = StyleSheet.create({
   },
   complexityButtonTextSelected: {
     color: '#fff',
+  },
+  odaInfo: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ffc107',
+  },
+  odaInfoText: {
+    fontSize: 12,
+    color: '#856404',
+    fontWeight: '600',
+    textAlign: 'center',
   },
   notesInput: {
     backgroundColor: '#fff',
@@ -752,6 +798,25 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: 14,
   },
+  odaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  odaCode: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007bff',
+  },
+  odaPrice: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#28a745',
+  },
   extractionNotes: {
     fontSize: 14,
     color: '#495057',
@@ -768,49 +833,60 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  noCodesText: {
-    fontSize: 14,
-    color: '#6c757d',
-    textAlign: 'center',
-    fontStyle: 'italic',
-    padding: 20,
-  },
-  codeCard: {
+  billingCard: {
     backgroundColor: '#f8f9fa',
     borderRadius: 8,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: 8,
     borderLeftWidth: 4,
     borderLeftColor: '#dc3545',
   },
-  codeHeader: {
+  billingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 4,
   },
-  codeNumber: {
+  billingCode: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#dc3545',
   },
-  codeCategory: {
-    fontSize: 12,
-    color: '#6c757d',
-    backgroundColor: '#e9ecef',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  billingPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#28a745',
   },
-  codeDescription: {
+  billingDescription: {
     fontSize: 14,
     color: '#495057',
     marginBottom: 4,
   },
-  codeDetails: {
+  billingDetails: {
     fontSize: 12,
     color: '#6c757d',
     fontWeight: '500',
+  },
+  totalSection: {
+    borderTopWidth: 2,
+    borderTopColor: '#e9ecef',
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  totalAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#28a745',
   },
   actionSection: {
     gap: 12,

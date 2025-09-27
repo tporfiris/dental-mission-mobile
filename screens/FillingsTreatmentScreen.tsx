@@ -1,4 +1,4 @@
-// Enhanced Filling Treatment Screen with Database Save Functionality
+// Enhanced Filling Treatment Screen with ODA Fee Structure
 
 import React, { useState, useMemo } from 'react';
 import {
@@ -17,6 +17,141 @@ import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
 
+// ODA Fee Structure for Filling Treatments
+const ODA_FEES = {
+  amalgam: {
+    primary: {
+      1: { code: '21121', price: 205 },
+      2: { code: '21122', price: 256 },
+      3: { code: '21123', price: 308 },
+      4: { code: '21124', price: 379 },
+      5: { code: '21125', price: 400 },
+    },
+    permanent: {
+      anterior: { // 11-15, 21-25, 31-35, 41-45
+        1: { code: '21231', price: 205 },
+        2: { code: '21232', price: 256 },
+        3: { code: '21233', price: 308 },
+        4: { code: '21234', price: 379 },
+        5: { code: '21235', price: 400 },
+      },
+      posterior: { // 16-18, 26-28, 36-38, 46-48
+        1: { code: '21241', price: 246 },
+        2: { code: '21242', price: 308 },
+        3: { code: '21243', price: 369 },
+        4: { code: '21244', price: 451 },
+        5: { code: '21245', price: 477 },
+      },
+    },
+  },
+  compositeResin: {
+    primary: {
+      anterior: { // 51-53, 61-63, 71-73, 81-83
+        1: { code: '23411', price: 205 },
+        2: { code: '23412', price: 256 },
+        3: { code: '23413', price: 308 },
+        4: { code: '23414', price: 379 },
+        5: { code: '23415', price: 400 },
+      },
+      posterior: { // 54-55, 64-65, 74-75, 84-85
+        1: { code: '23511', price: 226 },
+        2: { code: '23512', price: 283 },
+        3: { code: '23513', price: 339 },
+        4: { code: '23514', price: 414 },
+        5: { code: '23515', price: 435 },
+      },
+    },
+    permanent: {
+      anteriorIncisors: { // 11-13, 21-23, 31-33, 41-43
+        1: { code: '23111', price: 205 },
+        2: { code: '23112', price: 256 },
+        3: { code: '23113', price: 308 },
+        4: { code: '23114', price: 379 },
+        5: { code: '23115', price: 400 },
+      },
+      premolars: { // 14-15, 24-25, 34-35, 44-45
+        1: { code: '23311', price: 226 },
+        2: { code: '23312', price: 283 },
+        3: { code: '23313', price: 339 },
+        4: { code: '23314', price: 414 },
+        5: { code: '23315', price: 435 },
+      },
+      molars: { // 16-18, 26-28, 36-38, 46-48
+        1: { code: '23321', price: 246 },
+        2: { code: '23322', price: 308 },
+        3: { code: '23323', price: 369 },
+        4: { code: '23324', price: 451 },
+        5: { code: '23325', price: 477 },
+      },
+    },
+  },
+  crown: {
+    primary: {
+      metal: { code: '22211', price: 285 },
+    },
+    permanent: {
+      metal: { code: '27301', price: 1099 },
+      porcelain: { code: '27201', price: 1099 },
+      PFM: { code: '27211', price: 1099 },
+    },
+  },
+  rootCanal: {
+    primary: {
+      1: { code: '33401', price: 261 },
+      2: { code: '33402', price: 350 },
+      3: { code: '33403', price: 350 },
+    },
+    permanent: {
+      1: { code: '33111', price: 732 },
+      2: { code: '33121', price: 906 },
+      3: { code: '33131', price: 1209 },
+      4: { code: '33141', price: 1412 },
+    },
+  },
+};
+
+// Helper functions
+const getToothCategory = (toothId: string, isPrimary: boolean) => {
+  if (isPrimary) {
+    const primaryNumber = parseInt(toothId);
+    if ([51, 52, 53, 61, 62, 63, 71, 72, 73, 81, 82, 83].includes(primaryNumber)) {
+      return 'anterior';
+    }
+    return 'posterior';
+  } else {
+    const toothNumber = parseInt(toothId);
+    const lastDigit = toothNumber % 10;
+    
+    if ([1, 2, 3].includes(lastDigit)) {
+      return 'anteriorIncisors';
+    } else if ([4, 5].includes(lastDigit)) {
+      return 'premolars';
+    } else if ([6, 7, 8].includes(lastDigit)) {
+      return 'molars';
+    }
+  }
+  return 'anteriorIncisors';
+};
+
+const getAmalgamToothCategory = (toothId: string) => {
+  const toothNumber = parseInt(toothId);
+  const lastDigit = toothNumber % 10;
+  
+  if ([1, 2, 3, 4, 5].includes(lastDigit)) {
+    return 'anterior';
+  } else if ([6, 7, 8].includes(lastDigit)) {
+    return 'posterior';
+  }
+  return 'anterior';
+};
+
+const canSwitchToPrimary = (toothId: string): boolean => {
+  const permanentTeeth = ['11', '12', '13', '14', '15', '21', '22', '23', '24', '25', 
+                          '41', '42', '43', '44', '45', '31', '32', '33', '34', '35'];
+  return permanentTeeth.includes(toothId);
+};
+
+// Constants and Types
 const SURFACES = ['M', 'O', 'D', 'B', 'L'] as const;
 type Surface = typeof SURFACES[number];
 
@@ -39,28 +174,14 @@ const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
 
 // Primary tooth conversion mappings
 const PRIMARY_TOOTH_MAPPINGS = {
-  // Permanent to Primary
   '11': '51', '12': '52', '13': '53', '14': '54', '15': '55',
   '21': '61', '22': '62', '23': '63', '24': '64', '25': '65',
   '41': '81', '42': '82', '43': '83', '44': '84', '45': '85',
   '31': '71', '32': '72', '33': '73', '34': '74', '35': '75',
-  // Primary to Permanent (reverse mapping)
   '51': '11', '52': '12', '53': '13', '54': '14', '55': '15',
   '61': '21', '62': '22', '63': '23', '64': '24', '65': '25',
   '81': '41', '82': '42', '83': '43', '84': '44', '85': '45',
   '71': '31', '72': '32', '73': '33', '74': '34', '75': '35',
-};
-
-// Helper function to check if a tooth can be switched to primary
-const canSwitchToPrimary = (toothId: string): boolean => {
-  const permanentTeeth = ['11', '12', '13', '14', '15', '21', '22', '23', '24', '25', 
-                          '41', '42', '43', '44', '45', '31', '32', '33', '34', '35'];
-  return permanentTeeth.includes(toothId);
-};
-
-// Helper function to check if a tooth is primary
-const isPrimaryTooth = (toothId: string): boolean => {
-  return toothId.startsWith('5') || toothId.startsWith('6') || toothId.startsWith('7') || toothId.startsWith('8');
 };
 
 interface ToothTreatment {
@@ -87,7 +208,7 @@ const defaultToothTreatment: ToothTreatment = {
   completed: false,
 };
 
-const EnhancedFillingTreatmentScreen = ({ route }: any) => {
+const FillingsTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
 
@@ -100,17 +221,16 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
     return initialStates;
   };
 
+  // State variables
   const [treatments, setTreatments] = useState<Record<string, ToothTreatment>>(initializeTeethStates);
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [notes, setNotes] = useState('');
   const [allCompleted, setAllCompleted] = useState(false);
   const [completedAt, setCompletedAt] = useState<Date | null>(null);
-  
-  // Track which teeth are currently showing as primary
   const [primaryTeeth, setPrimaryTeeth] = useState<Set<string>>(new Set());
 
-  // Function to get the current display tooth ID (permanent or primary)
+  // Helper functions for tooth management
   const getCurrentToothId = (originalToothId: string): string => {
     if (primaryTeeth.has(originalToothId) && PRIMARY_TOOTH_MAPPINGS[originalToothId]) {
       return PRIMARY_TOOTH_MAPPINGS[originalToothId];
@@ -118,7 +238,6 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
     return originalToothId;
   };
 
-  // Function to toggle between permanent and primary tooth
   const toggleToothType = (originalToothId: string) => {
     if (!canSwitchToPrimary(originalToothId)) return;
     
@@ -132,6 +251,167 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
       return newSet;
     });
   };
+
+  // Treatment management functions
+  const toggleSurface = (toothId: string, surface: Surface) => {
+    setTreatments(prev => {
+      const treatment = prev[toothId];
+      const newSurfaces = treatment.surfaces.includes(surface)
+        ? treatment.surfaces.filter(s => s !== surface)
+        : [...treatment.surfaces, surface].sort();
+      
+      return {
+        ...prev,
+        [toothId]: { ...treatment, surfaces: newSurfaces }
+      };
+    });
+  };
+
+  const updateTreatment = (toothId: string, updates: Partial<ToothTreatment>) => {
+    setTreatments(prev => ({
+      ...prev,
+      [toothId]: { ...prev[toothId], ...updates }
+    }));
+  };
+
+  const clearTooth = (toothId: string) => {
+    setTreatments(prev => ({
+      ...prev,
+      [toothId]: { ...defaultToothTreatment }
+    }));
+  };
+
+  // Summary calculation functions
+  const getCompletedTreatments = () => {
+    return Object.entries(treatments).filter(([_, treatment]) => 
+      treatment.surfaces.length > 0 || treatment.rootCanalDone
+    );
+  };
+
+  const getTotalSurfaceCount = () => {
+    return Object.values(treatments).reduce((total, treatment) => 
+      total + treatment.surfaces.length, 0
+    );
+  };
+
+  // Calculate ODA billing codes and total cost
+  const calculateODABilling = () => {
+    const billingCodes: Array<{
+      toothId: string;
+      code: string;
+      description: string;
+      category: string;
+      price: number;
+    }> = [];
+
+    let totalCost = 0;
+
+    Object.entries(treatments).forEach(([toothId, treatment]) => {
+      const isPrimary = primaryTeeth.has(toothId);
+      const displayToothId = getCurrentToothId(toothId);
+      
+      // Filling codes
+      if (treatment.surfaces.length > 0 && treatment.fillingMaterial) {
+        const surfaceCount = Math.min(treatment.surfaces.length, 5);
+        const material = treatment.fillingMaterial;
+        
+        let feeInfo = null;
+        let description = '';
+        
+        if (material === 'amalgam') {
+          if (isPrimary) {
+            feeInfo = ODA_FEES.amalgam.primary[surfaceCount as keyof typeof ODA_FEES.amalgam.primary];
+            description = `Amalgam filling - ${surfaceCount} surface${surfaceCount > 1 ? 's' : ''} (Primary tooth ${displayToothId})`;
+          } else {
+            const category = getAmalgamToothCategory(toothId);
+            const categoryFees = ODA_FEES.amalgam.permanent[category as keyof typeof ODA_FEES.amalgam.permanent];
+            feeInfo = categoryFees[surfaceCount as keyof typeof categoryFees];
+            description = `Amalgam filling - ${surfaceCount} surface${surfaceCount > 1 ? 's' : ''} (Tooth ${displayToothId})`;
+          }
+        } else if (material === 'composite resin') {
+          if (isPrimary) {
+            const category = getToothCategory(displayToothId, true);
+            const categoryFees = ODA_FEES.compositeResin.primary[category as keyof typeof ODA_FEES.compositeResin.primary];
+            feeInfo = categoryFees[surfaceCount as keyof typeof categoryFees];
+            description = `Composite resin filling - ${surfaceCount} surface${surfaceCount > 1 ? 's' : ''} (Primary tooth ${displayToothId})`;
+          } else {
+            const category = getToothCategory(toothId, false);
+            const categoryFees = ODA_FEES.compositeResin.permanent[category as keyof typeof ODA_FEES.compositeResin.permanent];
+            feeInfo = categoryFees[surfaceCount as keyof typeof categoryFees];
+            description = `Composite resin filling - ${surfaceCount} surface${surfaceCount > 1 ? 's' : ''} (Tooth ${displayToothId})`;
+          }
+        }
+        
+        if (feeInfo) {
+          billingCodes.push({ 
+            toothId: displayToothId, 
+            code: feeInfo.code, 
+            description, 
+            category: 'Restorative',
+            price: feeInfo.price
+          });
+          totalCost += feeInfo.price;
+        }
+      }
+
+      // Root canal codes
+      if (treatment.rootCanalDone && treatment.canalCount) {
+        let feeInfo = null;
+        let description = '';
+        
+        if (isPrimary) {
+          const canalCount = Math.min(treatment.canalCount, 3);
+          feeInfo = ODA_FEES.rootCanal.primary[canalCount as keyof typeof ODA_FEES.rootCanal.primary];
+          description = `Root canal therapy - ${canalCount} canal${canalCount > 1 ? 's' : ''} (Primary tooth ${displayToothId})`;
+        } else {
+          feeInfo = ODA_FEES.rootCanal.permanent[treatment.canalCount as keyof typeof ODA_FEES.rootCanal.permanent];
+          description = `Root canal therapy - ${treatment.canalCount} canal${treatment.canalCount > 1 ? 's' : ''} (Tooth ${displayToothId})`;
+        }
+        
+        if (feeInfo) {
+          billingCodes.push({
+            toothId: displayToothId,
+            code: feeInfo.code,
+            description,
+            category: 'Endodontics',
+            price: feeInfo.price
+          });
+          totalCost += feeInfo.price;
+        }
+      }
+
+      // Crown codes
+      if (treatment.crownIndicated && treatment.crownMaterial) {
+        let feeInfo = null;
+        let description = '';
+        
+        if (isPrimary) {
+          feeInfo = ODA_FEES.crown.primary.metal;
+          description = `Metal crown (Primary tooth ${displayToothId})`;
+        } else {
+          feeInfo = ODA_FEES.crown.permanent[treatment.crownMaterial as keyof typeof ODA_FEES.crown.permanent];
+          description = `${treatment.crownMaterial.charAt(0).toUpperCase() + treatment.crownMaterial.slice(1)} crown (Tooth ${displayToothId})`;
+        }
+        
+        if (feeInfo) {
+          billingCodes.push({ 
+            toothId: displayToothId, 
+            code: feeInfo.code, 
+            description, 
+            category: 'Prosthodontics',
+            price: feeInfo.price
+          });
+          totalCost += feeInfo.price;
+        }
+      }
+    });
+
+    return { billingCodes, totalCost };
+  };
+
+  const { billingCodes, totalCost } = calculateODABilling();
+
+  // FillingsTreatmentScreen.tsx - PART 5 (Dental Chart & Tooth Rendering)
 
   // Tooth positions for dental chart
   const toothOffsets: Record<string, { x: number; y: number }> = {
@@ -162,34 +442,6 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
       left: chartCenter.x + offset.x - 15,
       top: chartCenter.y + offset.y - 15
     };
-  };
-
-  const toggleSurface = (toothId: string, surface: Surface) => {
-    setTreatments(prev => {
-      const treatment = prev[toothId];
-      const newSurfaces = treatment.surfaces.includes(surface)
-        ? treatment.surfaces.filter(s => s !== surface)
-        : [...treatment.surfaces, surface].sort();
-      
-      return {
-        ...prev,
-        [toothId]: { ...treatment, surfaces: newSurfaces }
-      };
-    });
-  };
-
-  const updateTreatment = (toothId: string, updates: Partial<ToothTreatment>) => {
-    setTreatments(prev => ({
-      ...prev,
-      [toothId]: { ...prev[toothId], ...updates }
-    }));
-  };
-
-  const clearTooth = (toothId: string) => {
-    setTreatments(prev => ({
-      ...prev,
-      [toothId]: { ...defaultToothTreatment }
-    }));
   };
 
   const getToothStyle = (toothId: string) => {
@@ -254,7 +506,6 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
           )}
         </Pressable>
         
-        {/* Switch indicator for teeth that can toggle */}
         {canSwitch && (
           <View style={styles.switchIndicator}>
             <Text style={styles.switchText}>
@@ -266,94 +517,6 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
     );
   };
 
-  // Calculate summaries
-  const getCompletedTreatments = () => {
-    return Object.entries(treatments).filter(([_, treatment]) => 
-      treatment.surfaces.length > 0 || treatment.rootCanalDone
-    );
-  };
-
-  const getTotalSurfaceCount = () => {
-    return Object.values(treatments).reduce((total, treatment) => 
-      total + treatment.surfaces.length, 0
-    );
-  };
-
-  // Generate billing codes
-  const billingCodes = useMemo(() => {
-    const codes: Array<{ toothId: string; code: string; description: string; category: string; }> = [];
-
-    Object.entries(treatments).forEach(([toothId, treatment]) => {
-      if (treatment.surfaces.length > 0 && treatment.fillingMaterial) {
-        const material = treatment.fillingMaterial;
-        let code = '';
-        let description = '';
-
-        switch (treatment.surfaces.length) {
-          case 1:
-            code = material === 'amalgam' ? 'D2140' : 'D2330';
-            description = `${material} - one surface`;
-            break;
-          case 2:
-            code = material === 'amalgam' ? 'D2150' : 'D2331';
-            description = `${material} - two surfaces`;
-            break;
-          case 3:
-            code = material === 'amalgam' ? 'D2160' : 'D2332';
-            description = `${material} - three surfaces`;
-            break;
-          default:
-            code = material === 'amalgam' ? 'D2161' : 'D2335';
-            description = `${material} - four or more surfaces`;
-        }
-
-        codes.push({ toothId, code, description, category: 'Restorative' });
-      }
-
-      if (treatment.rootCanalDone && treatment.canalCount) {
-        const toothNum = parseInt(toothId);
-        const isAnterior = [1, 2, 3].includes(toothNum % 10);
-        const isPremolar = [4, 5].includes(toothNum % 10);
-        
-        let code = '';
-        if (isAnterior) code = 'D3310';
-        else if (isPremolar) code = 'D3320';
-        else code = 'D3330';
-
-        codes.push({
-          toothId,
-          code,
-          description: `Root canal therapy (${treatment.canalCount} canals)`,
-          category: 'Endodontics'
-        });
-      }
-
-      if (treatment.crownIndicated && treatment.crownMaterial) {
-        let code = '';
-        let description = '';
-        
-        switch (treatment.crownMaterial) {
-          case 'metal':
-            code = 'D2790';
-            description = 'Crown - full cast high noble metal';
-            break;
-          case 'porcelain':
-            code = 'D2740';
-            description = 'Crown - porcelain/ceramic';
-            break;
-          case 'PFM':
-            code = 'D2750';
-            description = 'Crown - porcelain fused to high noble metal';
-            break;
-        }
-
-        codes.push({ toothId, code, description, category: 'Prosthodontics' });
-      }
-    });
-
-    return codes;
-  }, [treatments]);
-
   // Database save functionality
   const saveTreatmentToDatabase = async () => {
     try {
@@ -362,74 +525,29 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
       const completedDate = new Date();
 
       await database.write(async () => {
-        for (const [toothId, treatment] of completedTreatments) {
-          // Create separate treatment records for each type of treatment
-          const treatmentTypes = [];
-          
-          // Filling/Restoration treatment
-          if (treatment.surfaces.length > 0 && treatment.fillingMaterial) {
-            treatmentTypes.push({
-              type: 'filling',
-              tooth: toothId,
-              surface: treatment.surfaces.join(''),
-              units: treatment.surfaces.length,
-              notes: `${treatment.fillingMaterial} filling on ${treatment.surfaces.join('')} surfaces${treatment.prepDepth ? `, ${treatment.prepDepth} prep` : ''}${treatment.hasCracks ? ', cracks present' : ''}`,
-              billingCodes: billingCodes.filter(c => c.toothId === toothId && c.category === 'Restorative')
-            });
-          }
-
-          // Root canal treatment
-          if (treatment.rootCanalDone && treatment.canalCount) {
-            treatmentTypes.push({
-              type: 'endodontic',
-              tooth: toothId,
-              surface: 'N/A',
-              units: 1,
-              notes: `Root canal therapy - ${treatment.canalCount} canals`,
-              billingCodes: billingCodes.filter(c => c.toothId === toothId && c.category === 'Endodontics')
-            });
-          }
-
-          // Crown treatment
-          if (treatment.crownIndicated && treatment.crownMaterial) {
-            treatmentTypes.push({
-              type: 'crown',
-              tooth: toothId,
-              surface: 'N/A',
-              units: 1,
-              notes: `${treatment.crownMaterial} crown indicated/placed`,
-              billingCodes: billingCodes.filter(c => c.toothId === toothId && c.category === 'Prosthodontics')
-            });
-          }
-
-          // Save each treatment type as a separate record
-          for (const treatmentType of treatmentTypes) {
-            const treatmentId = uuid.v4();
-            
-            await database.get<Treatment>('treatments').create(treatmentRecord => {
-              treatmentRecord._raw.id = treatmentId;
-              treatmentRecord.patientId = patientId;
-              treatmentRecord.visitId = '';
-              treatmentRecord.type = treatmentType.type;
-              treatmentRecord.tooth = treatmentType.tooth;
-              treatmentRecord.surface = treatmentType.surface;
-              treatmentRecord.units = treatmentType.units;
-              treatmentRecord.value = 0;
-              treatmentRecord.billingCodes = JSON.stringify(treatmentType.billingCodes);
-              treatmentRecord.notes = `${treatmentType.notes}. ${notes}`.trim();
-              treatmentRecord.clinicianName = clinicianName;
-              treatmentRecord.completedAt = completedDate;
-            });
-          }
-        }
+        const treatmentId = uuid.v4();
+        
+        await database.get<Treatment>('treatments').create(treatment => {
+          treatment._raw.id = treatmentId;
+          treatment.patientId = patientId;
+          treatment.visitId = '';
+          treatment.type = 'filling';
+          treatment.tooth = 'Multiple';
+          treatment.surface = 'Various';
+          treatment.units = getTotalSurfaceCount();
+          treatment.value = totalCost;
+          treatment.billingCodes = JSON.stringify(billingCodes);
+          treatment.notes = `Filling treatment completed. ${notes}`.trim();
+          treatment.clinicianName = clinicianName;
+          treatment.completedAt = completedDate;
+        });
       });
 
       console.log('✅ Filling treatments saved to database:', {
         patientId,
         teethTreated: completedTreatments.length,
         totalSurfaces: getTotalSurfaceCount(),
-        rootCanals: Object.values(treatments).filter(t => t.rootCanalDone).length,
-        crowns: Object.values(treatments).filter(t => t.crownIndicated).length,
+        totalCost,
         billingCodes: billingCodes.length,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
@@ -456,7 +574,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
 
     Alert.alert(
       'Complete Treatment',
-      `Complete treatment for this patient?\n\nTreatment Summary:\n• Teeth Treated: ${completedTreatments.length}\n• Total Surfaces: ${getTotalSurfaceCount()}\n• Root Canals: ${rootCanals}\n• Crowns: ${crowns}\n• Billing Codes: ${billingCodes.length}\n\nThis will save all treatments to the database.`,
+      `Complete treatment for this patient?\n\nTreatment Summary:\n• Teeth Treated: ${completedTreatments.length}\n• Total Surfaces: ${getTotalSurfaceCount()}\n• Root Canals: ${rootCanals}\n• Crowns: ${crowns}\n• ODA Billing Codes: ${billingCodes.length}\n\nTotal ODA Cost: $${totalCost.toFixed(2)}\n\nThis will save all treatments to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -467,7 +585,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
             if (saved) {
               setAllCompleted(true);
               setCompletedAt(new Date());
-              Alert.alert('Success', '✅ Filling treatment completed and saved to database!');
+              Alert.alert('Success', `✅ Filling treatment completed and saved to database!\n\nTotal ODA Billing: $${totalCost.toFixed(2)}`);
             }
           }
         }
@@ -489,16 +607,19 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
             setNotes('');
             setAllCompleted(false);
             setCompletedAt(null);
+            setPrimaryTeeth(new Set());
           }
         }
       ]
     );
   };
 
+  // FillingsTreatmentScreen.tsx - PART 6 (Main JSX Render)
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
-        <Text style={styles.header}>Enhanced Filling Treatment</Text>
+        <Text style={styles.header}>Filling Treatment</Text>
         <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
         {allCompleted && completedAt && (
@@ -517,6 +638,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
             Teeth Treated: {getCompletedTreatments().length} | 
             Surfaces: {getTotalSurfaceCount()} | 
             Root Canals: {Object.values(treatments).filter(t => t.rootCanalDone).length}
+            {totalCost > 0 && ` | Total Cost: $${totalCost.toFixed(2)}`}
           </Text>
         </View>
 
@@ -536,21 +658,29 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
           </View>
         </View>
 
-        {/* Billing Codes */}
+        {/* ODA Billing Codes */}
         {billingCodes.length > 0 && (
           <View style={styles.billingSection}>
-            <Text style={styles.sectionTitle}>Billing Codes ({billingCodes.length})</Text>
+            <Text style={styles.sectionTitle}>ODA Billing Codes ({billingCodes.length})</Text>
             {billingCodes.map((code, index) => (
               <View key={index} style={styles.codeCard}>
                 <View style={styles.codeHeader}>
                   <Text style={styles.codeNumber}>
                     {code.code} - Tooth {code.toothId}
                   </Text>
-                  <Text style={styles.codeCategory}>{code.category}</Text>
+                  <Text style={styles.codePrice}>${code.price}</Text>
                 </View>
                 <Text style={styles.codeDescription}>{code.description}</Text>
+                <Text style={styles.codeCategory}>{code.category}</Text>
               </View>
             ))}
+            
+            <View style={styles.totalSection}>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Total ODA Billing:</Text>
+                <Text style={styles.totalAmount}>${totalCost.toFixed(2)}</Text>
+              </View>
+            </View>
           </View>
         )}
 
@@ -586,7 +716,9 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
         </View>
       </ScrollView>
 
-      {/* Simple Modal */}
+      // FillingsTreatmentScreen.tsx - PART 7 (Treatment Modal)
+
+      {/* Treatment Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modal}>
@@ -602,7 +734,7 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
               {canSwitchToPrimary(selectedTooth) && (
                 <Pressable 
                   style={styles.switchButton}
-                  onPress={() => toggleToothType(selectedTooth)}
+                  onPress={() => selectedTooth && toggleToothType(selectedTooth)}
                 >
                   <Text style={styles.switchButtonText}>
                     Switch to {primaryTeeth.has(selectedTooth) ? 'Adult' : 'Primary'}
@@ -762,8 +894,15 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
                   {treatments[selectedTooth]?.crownIndicated && (
                     <View style={styles.modalSection}>
                       <Text style={styles.modalLabel}>Crown Material:</Text>
+                      {primaryTeeth.has(selectedTooth) && (
+                        <View style={styles.primaryToothNotice}>
+                          <Text style={styles.primaryToothNoticeText}>
+                            ℹ️ Primary teeth: Only metal crowns available
+                          </Text>
+                        </View>
+                      )}
                       <View style={styles.crownMaterialRow}>
-                        {CROWN_MATERIALS.map(material => (
+                        {(primaryTeeth.has(selectedTooth) ? ['metal'] : CROWN_MATERIALS).map(material => (
                           <Pressable
                             key={material}
                             style={[
@@ -874,7 +1013,9 @@ const EnhancedFillingTreatmentScreen = ({ route }: any) => {
   );
 };
 
-export default EnhancedFillingTreatmentScreen;
+export default FillingsTreatmentScreen;
+
+// FillingsTreatmentScreen.tsx - PART 8 (StyleSheet)
 
 const styles = StyleSheet.create({
   container: {
@@ -995,7 +1136,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   primaryToothLabel: {
-    color: '#ffd700', // Gold color for primary teeth
+    color: '#ffd700',
     fontWeight: 'bold',
   },
   switchIndicator: {
@@ -1082,18 +1223,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: '#007bff',
+    flex: 1,
   },
-  codeCategory: {
-    fontSize: 12,
-    color: '#6c757d',
-    backgroundColor: '#e9ecef',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+  codePrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#28a745',
   },
   codeDescription: {
     fontSize: 13,
     color: '#495057',
+    marginBottom: 2,
+  },
+  codeCategory: {
+    fontSize: 11,
+    color: '#6c757d',
+    backgroundColor: '#e9ecef',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+    alignSelf: 'flex-start',
+  },
+  totalSection: {
+    borderTopWidth: 2,
+    borderTopColor: '#e9ecef',
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  totalAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#28a745',
   },
   notesSection: {
     backgroundColor: '#fff',
@@ -1206,8 +1376,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: '#333',
   },
-  
-  // Surface Buttons
   surfaceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1234,8 +1402,6 @@ const styles = StyleSheet.create({
   surfaceBtnTextActive: {
     color: 'white',
   },
-  
-  // Material Buttons (1x2 grid for 2 materials)
   materialGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1264,8 +1430,6 @@ const styles = StyleSheet.create({
   materialBtnTextActive: {
     color: 'white',
   },
-  
-  // Option Buttons
   optionRow: {
     flexDirection: 'row',
     gap: 10,
@@ -1291,8 +1455,6 @@ const styles = StyleSheet.create({
   optionBtnTextActive: {
     color: 'white',
   },
-  
-  // Yes/No Buttons
   yesNoRow: {
     flexDirection: 'row',
     gap: 10,
@@ -1325,8 +1487,6 @@ const styles = StyleSheet.create({
   noBtnText: {
     color: 'white',
   },
-  
-  // Crown Material Buttons
   crownMaterialRow: {
     flexDirection: 'row',
     gap: 8,
@@ -1353,8 +1513,19 @@ const styles = StyleSheet.create({
   crownMaterialBtnTextActive: {
     color: 'white',
   },
-  
-  // Toggle Button
+  primaryToothNotice: {
+    backgroundColor: '#e1f5fe',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#29b6f6',
+  },
+  primaryToothNoticeText: {
+    fontSize: 12,
+    color: '#0277bd',
+    fontWeight: '500',
+  },
   toggleBtn: {
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
@@ -1376,8 +1547,6 @@ const styles = StyleSheet.create({
   toggleBtnTextActive: {
     color: 'white',
   },
-  
-  // Canal Section
   canalSection: {
     marginTop: 10,
     paddingTop: 10,
@@ -1410,8 +1579,6 @@ const styles = StyleSheet.create({
   canalBtnTextActive: {
     color: 'white',
   },
-  
-  // Treatment Summary
   treatmentSummary: {
     backgroundColor: '#e7f3ff',
     borderRadius: 8,
@@ -1429,8 +1596,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#007bff',
   },
-  
-  // Modal Footer
   modalFooter: {
     flexDirection: 'row',
     padding: 20,

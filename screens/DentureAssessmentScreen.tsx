@@ -33,9 +33,9 @@ const DENTURE_LABELS = {
   'upper-partial-cast': 'Upper Partial Cast Denture',
   'lower-partial-acrylic': 'Lower Partial Acrylic Denture',
   'lower-partial-cast': 'Lower Partial Cast Denture',
-  'upper-immediate-complete': 'Upper Immediate Complete Denture',
+  // 'upper-immediate-complete': 'Upper Immediate Complete Denture',
   'upper-complete': 'Upper Complete Denture',
-  'lower-immediate-complete': 'Lower Immediate Complete Denture',
+  // 'lower-immediate-complete': 'Lower Immediate Complete Denture',
   'lower-complete': 'Lower Complete Denture',
 };
 

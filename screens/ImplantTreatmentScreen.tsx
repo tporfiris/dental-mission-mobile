@@ -6,6 +6,16 @@ import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
 
+// ODA Fee Structure for Implant Treatments
+const ODA_FEES = {
+  implant: {
+    single: { code: '79931', price: 1412 },
+  },
+  crown: {
+    implant: { code: '27205', price: 1151 },
+  },
+};
+
 interface ImplantRecord {
   id: string;
   toothNumber: string;
@@ -44,6 +54,49 @@ const ImplantTreatmentScreen = ({ route }: any) => {
   const [crownType, setCrownType] = useState<'screw-retained' | 'cemented'>('screw-retained');
   const [crownNotes, setCrownNotes] = useState('');
   const [editingCrownId, setEditingCrownId] = useState<string | null>(null);
+
+  // Calculate ODA codes and total cost
+  const calculateODABilling = () => {
+    const billingCodes: Array<{
+      code: string;
+      description: string;
+      price: number;
+      category: string;
+      toothNumber: string;
+    }> = [];
+
+    let totalCost = 0;
+
+    // Single implant codes
+    implantRecords.forEach(record => {
+      const implantInfo = ODA_FEES.implant.single;
+      billingCodes.push({
+        code: implantInfo.code,
+        description: `Single Implant - Tooth ${record.toothNumber}`,
+        price: implantInfo.price,
+        category: 'Implant',
+        toothNumber: record.toothNumber
+      });
+      totalCost += implantInfo.price;
+    });
+
+    // Implant crown codes
+    crownRecords.forEach(record => {
+      const crownInfo = ODA_FEES.crown.implant;
+      billingCodes.push({
+        code: crownInfo.code,
+        description: `Implant Crown (${record.crownType}) - Tooth ${record.toothNumber}`,
+        price: crownInfo.price,
+        category: 'Implant Crown',
+        toothNumber: record.toothNumber
+      });
+      totalCost += crownInfo.price;
+    });
+
+    return { billingCodes, totalCost };
+  };
+
+  const { billingCodes, totalCost } = calculateODABilling();
 
   const openNewImplantModal = () => {
     setEditingId(null);
@@ -169,6 +222,9 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         // Save implant records
         for (const record of implantRecords) {
           const treatmentId = uuid.v4();
+          const implantBilling = billingCodes.filter(code => 
+            code.category === 'Implant' && code.toothNumber === record.toothNumber
+          );
           
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
@@ -178,8 +234,8 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             treatment.tooth = record.toothNumber;
             treatment.surface = 'N/A';
             treatment.units = 1;
-            treatment.value = 0;
-            treatment.billingCodes = JSON.stringify([]);
+            treatment.value = ODA_FEES.implant.single.price; // Store ODA cost
+            treatment.billingCodes = JSON.stringify(implantBilling); // Store ODA codes
             treatment.notes = `Single implant placed at tooth ${record.toothNumber}. ${record.notes}`;
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
@@ -189,6 +245,9 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         // Save crown records
         for (const record of crownRecords) {
           const treatmentId = uuid.v4();
+          const crownBilling = billingCodes.filter(code => 
+            code.category === 'Implant Crown' && code.toothNumber === record.toothNumber
+          );
           
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
@@ -198,8 +257,8 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             treatment.tooth = record.toothNumber;
             treatment.surface = 'N/A';
             treatment.units = 1;
-            treatment.value = 0;
-            treatment.billingCodes = JSON.stringify([]);
+            treatment.value = ODA_FEES.crown.implant.price; // Store ODA cost
+            treatment.billingCodes = JSON.stringify(crownBilling); // Store ODA codes
             treatment.notes = `${record.crownType === 'screw-retained' ? 'Screw-retained' : 'Cemented'} implant crown placed at tooth ${record.toothNumber}. ${record.notes}`;
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
@@ -212,6 +271,8 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         implantRecords: implantRecords.length,
         crownRecords: crownRecords.length,
         totalRecords: implantRecords.length + crownRecords.length,
+        odaCodes: billingCodes.map(code => `${code.code}: $${code.price}`),
+        totalCost: `$${totalCost}`,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
       });
@@ -238,9 +299,11 @@ const ImplantTreatmentScreen = ({ route }: any) => {
       return;
     }
 
+    const odaCodesText = billingCodes.map(code => `${code.code}: $${code.price} (${code.description})`).join('\n• ');
+
     Alert.alert(
       'Complete Treatment',
-      `Complete implant treatment for this patient?\n\nTreatment Summary:\n• Single Implants: ${implantRecords.length}\n• Implant Crowns: ${crownRecords.length}\n\nThis will save the treatment to the database.`,
+      `Complete implant treatment for this patient?\n\nTreatment Summary:\n• Single Implants: ${implantRecords.length}\n• Implant Crowns: ${crownRecords.length}\n\nODA Billing Codes:\n• ${odaCodesText}\n\nTotal Cost: $${totalCost.toFixed(2)}\n\nThis will save the treatment to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { 
@@ -253,7 +316,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
               setCompletedAt(new Date());
               Alert.alert(
                 'Success', 
-                '✅ Implant treatment completed and saved to database!'
+                `✅ Implant treatment completed and saved to database!\n\nTotal ODA Billing: $${totalCost.toFixed(2)}`
               );
             }
           }
@@ -288,6 +351,15 @@ const ImplantTreatmentScreen = ({ route }: any) => {
       <Text style={styles.header}>🦷 Implant Treatment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
+      {/* Cost Summary Indicator */}
+      {(implantRecords.length > 0 || crownRecords.length > 0) && !treatmentCompleted && (
+        <View style={styles.costIndicator}>
+          <Text style={styles.costIndicatorText}>
+            💰 Current Total: ${totalCost.toFixed(2)} • Implants: {implantRecords.length} • Crowns: {crownRecords.length}
+          </Text>
+        </View>
+      )}
+
       {treatmentCompleted && completedAt && (
         <View style={styles.completedBanner}>
           <Text style={styles.completedText}>✅ Treatment Completed</Text>
@@ -305,6 +377,12 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             <Text style={styles.addButtonText}>+ Add Implant</Text>
           </Pressable>
         </View>
+        
+        <View style={styles.odaInfo}>
+          <Text style={styles.odaInfoText}>
+            💰 ODA Code: {ODA_FEES.implant.single.code} - ${ODA_FEES.implant.single.price} per implant
+          </Text>
+        </View>
 
         {implantRecords.length === 0 ? (
           <Text style={styles.noRecordsText}>
@@ -318,6 +396,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
                   Single Implant - Tooth {record.toothNumber}
                 </Text>
                 <View style={styles.recordActions}>
+                  <Text style={styles.recordPrice}>${ODA_FEES.implant.single.price}</Text>
                   <Pressable 
                     style={styles.editButton} 
                     onPress={() => openEditImplantModal(record)}
@@ -353,6 +432,12 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             <Text style={styles.addButtonText}>+ Add Crown</Text>
           </Pressable>
         </View>
+        
+        <View style={styles.odaInfo}>
+          <Text style={styles.odaInfoText}>
+            💰 ODA Code: {ODA_FEES.crown.implant.code} - ${ODA_FEES.crown.implant.price} per crown
+          </Text>
+        </View>
 
         {crownRecords.length === 0 ? (
           <Text style={styles.noRecordsText}>
@@ -366,6 +451,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
                   {record.crownType === 'screw-retained' ? 'Screw-Retained' : 'Cemented'} Crown - Tooth {record.toothNumber}
                 </Text>
                 <View style={styles.recordActions}>
+                  <Text style={styles.recordPrice}>${ODA_FEES.crown.implant.price}</Text>
                   <Pressable 
                     style={styles.editButton} 
                     onPress={() => openEditCrownModal(record)}
@@ -407,6 +493,31 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         />
       </View>
 
+      {/* ODA Billing Summary */}
+      {billingCodes.length > 0 && (
+        <View style={styles.billingSection}>
+          <Text style={styles.sectionTitle}>ODA Billing Summary</Text>
+          
+          {billingCodes.map((code, index) => (
+            <View key={index} style={styles.billingCard}>
+              <View style={styles.billingHeader}>
+                <Text style={styles.billingCode}>{code.code}</Text>
+                <Text style={styles.billingPrice}>${code.price}</Text>
+              </View>
+              <Text style={styles.billingDescription}>{code.description}</Text>
+              <Text style={styles.billingCategory}>{code.category}</Text>
+            </View>
+          ))}
+          
+          <View style={styles.totalSection}>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total ODA Billing:</Text>
+              <Text style={styles.totalAmount}>${totalCost.toFixed(2)}</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Treatment Summary */}
       <View style={styles.summarySection}>
         <Text style={styles.sectionTitle}>Treatment Summary</Text>
@@ -422,6 +533,10 @@ const ImplantTreatmentScreen = ({ route }: any) => {
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Total Procedures:</Text>
             <Text style={styles.summaryValue}>{implantRecords.length + crownRecords.length}</Text>
+          </View>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Total ODA Cost:</Text>
+            <Text style={styles.summaryValue}>${totalCost.toFixed(2)}</Text>
           </View>
         </View>
       </View>
@@ -459,6 +574,12 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             <Text style={styles.modalTitle}>
               {editingId ? 'Edit Implant' : 'Add Single Implant'}
             </Text>
+            
+            <View style={styles.modalOdaInfo}>
+              <Text style={styles.modalOdaText}>
+                💰 ODA Code: {ODA_FEES.implant.single.code} - ${ODA_FEES.implant.single.price}
+              </Text>
+            </View>
 
             {/* Tooth Number Input */}
             <View style={styles.inputGroup}>
@@ -519,6 +640,12 @@ const ImplantTreatmentScreen = ({ route }: any) => {
             <Text style={styles.modalTitle}>
               {editingCrownId ? 'Edit Crown' : 'Add Implant Crown'}
             </Text>
+            
+            <View style={styles.modalOdaInfo}>
+              <Text style={styles.modalOdaText}>
+                💰 ODA Code: {ODA_FEES.crown.implant.code} - ${ODA_FEES.crown.implant.price}
+              </Text>
+            </View>
 
             {/* Tooth Number Input */}
             <View style={styles.inputGroup}>
@@ -626,6 +753,20 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+  costIndicator: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ffc107',
+  },
+  costIndicatorText: {
+    fontSize: 14,
+    color: '#856404',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   completedBanner: {
     backgroundColor: '#d4edda',
     borderRadius: 8,
@@ -677,6 +818,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  odaInfo: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ffc107',
+  },
+  odaInfoText: {
+    fontSize: 12,
+    color: '#856404',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   noRecordsText: {
     fontSize: 14,
     color: '#6c757d',
@@ -714,7 +869,13 @@ const styles = StyleSheet.create({
   },
   recordActions: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+  },
+  recordPrice: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#28a745',
   },
   editButton: {
     backgroundColor: '#28a745',
@@ -770,6 +931,76 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
     minHeight: 80,
+  },
+  billingSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  billingCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#007bff',
+  },
+  billingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  billingCode: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#007bff',
+  },
+  billingPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#28a745',
+  },
+  billingDescription: {
+    fontSize: 14,
+    color: '#495057',
+    marginBottom: 2,
+  },
+  billingCategory: {
+    fontSize: 12,
+    color: '#6c757d',
+    backgroundColor: '#e9ecef',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  totalSection: {
+    borderTopWidth: 2,
+    borderTopColor: '#e9ecef',
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  totalAmount: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#28a745',
   },
   summarySection: {
     backgroundColor: '#e7f3ff',
@@ -841,8 +1072,22 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
     color: '#333',
+  },
+  modalOdaInfo: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: '#ffc107',
+  },
+  modalOdaText: {
+    fontSize: 12,
+    color: '#856404',
+    fontWeight: '600',
+    textAlign: 'center',
   },
   inputGroup: {
     marginBottom: 20,
