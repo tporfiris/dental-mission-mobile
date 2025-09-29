@@ -274,7 +274,7 @@ PODS:
     - Yoga
   - ExpoAsset (11.1.7):
     - ExpoModulesCore
-  - ExpoAudio (0.4.8):
+  - ExpoAudio (0.4.9):
     - ExpoModulesCore
   - ExpoCamera (16.1.10):
     - ExpoModulesCore
@@ -2621,7 +2621,7 @@ SPEC CHECKSUMS:
   expo-dev-menu: 9a65836a93397539ec700e6ec99de8199ad8c4ca
   expo-dev-menu-interface: 609c35ae8b97479cdd4c9e23c8cf6adc44beea0e
   ExpoAsset: ef06e880126c375f580d4923fdd1cdf4ee6ee7d6
-  ExpoAudio: a910693605f0285e08a776ce847f50114010ee9e
+  ExpoAudio: d98f922b17a945cd33f8462d086278dbd810c537
   ExpoCamera: 7edf99216d92e40b991d4e7ed69eba9527c94cda
   ExpoFileSystem: 7f92f7be2f5c5ed40a7c9efc8fa30821181d9d63
   ExpoFont: cf508bc2e6b70871e05386d71cab927c8524cc8e

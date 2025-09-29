@@ -24,6 +24,9 @@ import FillingsTreatmentScreen from '../screens/FillingsTreatmentScreen';
 import DentureTreatmentScreen from '../screens/DentureTreatmentScreen';
 import ImplantTreatmentScreen from '../screens/ImplantTreatmentScreen';
 
+// Voice Recordings Screen
+import VoiceRecordingsScreen from '../screens/VoiceRecordingsScreen';
+
 // Admin Dashboard Screen
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import PatientListScreen from '../screens/PatientListScreen';
@@ -44,6 +47,14 @@ export default function AppNavigator() {
             name="Home" 
             component={HomeScreen}
             options={{ title: 'Dental Mission Home' }}
+          />
+          <Stack.Screen 
+            name="VoiceRecordings" 
+            component={VoiceRecordingsScreen}
+            options={{ 
+              title: 'Voice Recordings',
+              headerBackTitleVisible: false
+            }}
           />
           <Stack.Screen 
             name="AdminDashboard" 

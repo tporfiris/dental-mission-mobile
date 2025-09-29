@@ -19,6 +19,12 @@ const HomeScreen = () => {
             <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
             <View style={styles.spacer} />
+            <Button 
+              title="🎤 Voice Recordings" 
+              onPress={() => navigation.navigate('VoiceRecordings')}
+              color="#6f42c1"
+            />
+            <View style={styles.spacer} />
           </>
         );
       case 'triage':
@@ -28,6 +34,12 @@ const HomeScreen = () => {
             <Button title="Register New Patient" onPress={() => navigation.navigate('NewPatient')} />
             <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
+            <View style={styles.spacer} />
+            <Button 
+              title="🎤 Voice Recordings" 
+              onPress={() => navigation.navigate('VoiceRecordings')}
+              color="#6f42c1"
+            />
             <View style={styles.spacer} />
           </>
         );
@@ -44,6 +56,12 @@ const HomeScreen = () => {
             <Button title="Register New Patient" onPress={() => navigation.navigate('NewPatient')} />
             <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
+            <View style={styles.spacer} />
+            <Button 
+              title="🎤 Voice Recordings" 
+              onPress={() => navigation.navigate('VoiceRecordings')}
+              color="#6f42c1"
+            />
             <View style={styles.spacer} />
           </>
         );
