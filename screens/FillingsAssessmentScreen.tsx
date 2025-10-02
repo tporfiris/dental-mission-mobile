@@ -13,6 +13,7 @@ import FillingsAssessment from '../db/models/FillingsAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useFillingsAssessment } from '../contexts/FillingsAssessmentContext';
+import VoiceRecorder from '../components/VoiceRecorder';
 
 const TOOTH_IDS = [
   '11','12','13','14','15','16','17','18',
@@ -590,6 +591,20 @@ ${teeth.map(([toothId, tooth]) => {
       <Text style={styles.header}>🦷 Comprehensive Dental Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
+      {/* Voice Recording Section */}
+      <View style={styles.voiceRecordingSection}>
+        <Text style={styles.voiceRecordingTitle}>📝 Voice Notes</Text>
+        <Text style={styles.voiceRecordingSubtitle}>
+          Record voice notes during dental assessment for later reference
+        </Text>
+        <VoiceRecorder
+          patientId={patientId}
+          category="Assessment"
+          subcategory="Fillings"
+          buttonStyle={styles.voiceRecorderButton}
+        />
+      </View>
+
       {/* Instructions */}
       <Text style={styles.chartInstructions}>
         Tap to assess teeth • Long press switchable teeth (11-15, 21-25, 31-35, 41-45) to toggle Primary/Adult
@@ -1128,6 +1143,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#665',
     marginBottom: 16,
+  },
+  voiceRecordingSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6f42c1',
+    width: '100%',
+  },
+  voiceRecordingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  voiceRecordingSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 12,
+  },
+  voiceRecorderButton: {
+    backgroundColor: '#6f42c1',
   },
   chartInstructions: {
     fontSize: 12,

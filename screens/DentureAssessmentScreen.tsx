@@ -13,6 +13,7 @@ import DentureAssessment from '../db/models/DentureAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useDentureAssessment } from '../contexts/DentureAssessmentContext';
+import VoiceRecorder from '../components/VoiceRecorder';
 
 const DENTURE_TYPES = [
   'none',
@@ -236,6 +237,20 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
       <Text style={styles.header}>🦷 Denture Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
+      {/* Voice Recording Section */}
+      <View style={styles.voiceRecordingSection}>
+        <Text style={styles.voiceRecordingTitle}>📝 Voice Notes</Text>
+        <Text style={styles.voiceRecordingSubtitle}>
+          Record voice notes during denture assessment for later reference
+        </Text>
+        <VoiceRecorder
+          patientId={patientId}
+          category="Assessment"
+          subcategory="Denture"
+          buttonStyle={styles.voiceRecorderButton}
+        />
+      </View>
+
       {/* Prerequisites Completed Banner */}
       <View style={styles.completedBanner}>
         <Text style={styles.completedText}>
@@ -321,6 +336,36 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   
+  // Voice Recording Section
+  voiceRecordingSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6f42c1',
+    width: '100%',
+  },
+  voiceRecordingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  voiceRecordingSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 12,
+  },
+  voiceRecorderButton: {
+    backgroundColor: '#6f42c1',
+  },
+  
   // Completed Banner
   completedBanner: {
     backgroundColor: '#d4edda',
@@ -356,15 +401,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-  },
-  header: {
-    backgroundColor: '#f8f9fa',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
   },
   title: {
     fontSize: 20,

@@ -12,6 +12,7 @@ import ImplantAssessment from '../db/models/ImplantAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useImplantAssessment } from '../contexts/ImplantAssessmentContext';
+import VoiceRecorder from '../components/VoiceRecorder';
 
 const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
 const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
@@ -166,6 +167,20 @@ const ImplantAssessmentScreen = ({ route }: any) => {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.header}>🦷 Implant Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
+
+      {/* Voice Recording Section */}
+      <View style={styles.voiceRecordingSection}>
+        <Text style={styles.voiceRecordingTitle}>📝 Voice Notes</Text>
+        <Text style={styles.voiceRecordingSubtitle}>
+          Record voice notes during implant assessment for later reference
+        </Text>
+        <VoiceRecorder
+          patientId={patientId}
+          category="Assessment"
+          subcategory="Implant"
+          buttonStyle={styles.voiceRecorderButton}
+        />
+      </View>
 
       {/* State Preservation Indicator */}
       {(implantState.singleImplantTeeth.length > 0 || implantState.bridgeImplantTeeth.length > 0) && (
@@ -347,6 +362,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#665',
     marginBottom: 16,
+  },
+  voiceRecordingSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6f42c1',
+    width: '100%',
+  },
+  voiceRecordingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  voiceRecordingSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 12,
+  },
+  voiceRecorderButton: {
+    backgroundColor: '#6f42c1',
   },
   stateIndicator: {
     backgroundColor: '#d4edda',

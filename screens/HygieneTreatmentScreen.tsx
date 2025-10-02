@@ -5,7 +5,6 @@ import { useHygieneTreatment, FluorideType } from '../contexts/HygieneTreatmentC
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
-import VoiceRecorder from '../components/VoiceRecorder';
 
 // ODA Fee Structure for Hygiene Treatments
 const ODA_FEES = {
@@ -264,20 +263,6 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       <Text style={styles.header}>🪥 Hygiene Treatment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
-      {/* Voice Recording Section */}
-      <View style={styles.voiceRecordingSection}>
-        <Text style={styles.voiceRecordingTitle}>📝 Voice Notes</Text>
-        <Text style={styles.voiceRecordingSubtitle}>
-          Record voice notes during treatment for later reference
-        </Text>
-        <VoiceRecorder
-          patientId={patientId}
-          category="Treatment"
-          subcategory="Hygiene"
-          buttonStyle={styles.voiceRecorderButton}
-        />
-      </View>
-
       {/* State Preservation Indicator */}
       {(scalingUnits > 0 || polishingUnits > 0 || fluorideType !== 'none' || prescribedMedication || notes) && !completedAt && (
         <View style={styles.stateIndicator}>
@@ -530,33 +515,6 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 20,
     textAlign: 'center',
-  },
-  voiceRecordingSection: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    borderLeftWidth: 4,
-    borderLeftColor: '#6f42c1',
-  },
-  voiceRecordingTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  voiceRecordingSubtitle: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 12,
-  },
-  voiceRecorderButton: {
-    backgroundColor: '#6f42c1',
   },
   stateIndicator: {
     backgroundColor: '#d4edda',
@@ -812,3 +770,5 @@ const styles = StyleSheet.create({
     color: '#dc3545',
   },
 });
+
+

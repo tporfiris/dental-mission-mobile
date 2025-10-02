@@ -7,10 +7,11 @@ import {
   ScrollView,
 } from 'react-native';
 import { database } from '../db'; // adjust path if needed
-import DentitionAssessment from '../models/DentitionAssessment';
+import DentitionAssessment from '../db/models/DentitionAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useDentitionAssessment } from '../contexts/DentitionAssessmentContext';
+import VoiceRecorder from '../components/VoiceRecorder';
 
 const TOOTH_STATES = ['present', 'crown-missing', 'roots-only', 'fully-missing'] as const;
 type ToothState = typeof TOOTH_STATES[number];
@@ -332,6 +333,20 @@ const DentitionAssessmentScreen = ({ route }: any) => {
       <Text style={styles.header}>🦷 Dentition Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
+      {/* Voice Recording Section */}
+      <View style={styles.voiceRecordingSection}>
+        <Text style={styles.voiceRecordingTitle}>📝 Voice Notes</Text>
+        <Text style={styles.voiceRecordingSubtitle}>
+          Record voice notes during dentition assessment for later reference
+        </Text>
+        <VoiceRecorder
+          patientId={patientId}
+          category="Assessment"
+          subcategory="Dentition"
+          buttonStyle={styles.voiceRecorderButton}
+        />
+      </View>
+
       {/* Instructions */}
       <Text style={styles.chartInstructions}>
         Tap to cycle tooth status • Long press switchable teeth (11-15, 21-25, 31-35, 41-45) to toggle Primary/Adult
@@ -415,6 +430,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#665',
     marginBottom: 20,
+  },
+  voiceRecordingSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6f42c1',
+    width: '100%',
+  },
+  voiceRecordingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  voiceRecordingSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 12,
+  },
+  voiceRecorderButton: {
+    backgroundColor: '#6f42c1',
   },
   chartInstructions: {
     fontSize: 12,

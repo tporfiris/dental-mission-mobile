@@ -12,6 +12,7 @@ import HygieneAssessment from '../db/models/HygieneAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useHygieneAssessment } from '../contexts/HygieneAssessmentContext';
+import VoiceRecorder from '../components/VoiceRecorder';
 
 const HYGIENE_LEVELS = ['none', 'light', 'moderate', 'heavy'] as const;
 type HygieneLevel = typeof HYGIENE_LEVELS[number];
@@ -432,6 +433,20 @@ BLEEDING ON PROBING:
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.header}>🧼 Full Mouth Hygiene Assessment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
+
+      {/* Voice Recording Section */}
+      <View style={styles.voiceRecordingSection}>
+        <Text style={styles.voiceRecordingTitle}>📝 Voice Notes</Text>
+        <Text style={styles.voiceRecordingSubtitle}>
+          Record voice notes during hygiene assessment for later reference
+        </Text>
+        <VoiceRecorder
+          patientId={patientId}
+          category="Assessment"
+          subcategory="Hygiene"
+          buttonStyle={styles.voiceRecorderButton}
+        />
+      </View>
 
       {/* Assessment Mode Toggle */}
       <View style={styles.modeToggleContainer}>
@@ -942,6 +957,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginBottom: 20,
+  },
+  voiceRecordingSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6f42c1',
+    width: '100%',
+  },
+  voiceRecordingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  voiceRecordingSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 12,
+  },
+  voiceRecorderButton: {
+    backgroundColor: '#6f42c1',
   },
   modeToggleContainer: {
     backgroundColor: '#f8f9fa',

@@ -13,6 +13,7 @@ import ExtractionsAssessment from '../db/models/ExtractionsAssessment';
 import { Q } from '@nozbe/watermelondb';
 import uuid from 'react-native-uuid';
 import { useExtractionsAssessment } from '../contexts/ExtractionsAssessmentContext';
+import VoiceRecorder from '../components/VoiceRecorder';
 
 const EXTRACTION_REASONS = ['none', 'loose', 'root-tip', 'non-restorable'] as const;
 type ExtractionReason = typeof EXTRACTION_REASONS[number];
@@ -292,6 +293,20 @@ ${extractionSummary.byReason['root-tip'].length > 0 ? '⚠️ Root tips should b
       <Text style={styles.header}>🦷 Treatment Planning - Extractions</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
+      {/* Voice Recording Section */}
+      <View style={styles.voiceRecordingSection}>
+        <Text style={styles.voiceRecordingTitle}>📝 Voice Notes</Text>
+        <Text style={styles.voiceRecordingSubtitle}>
+          Record voice notes during extraction assessment for later reference
+        </Text>
+        <VoiceRecorder
+          patientId={patientId}
+          category="Assessment"
+          subcategory="Extractions"
+          buttonStyle={styles.voiceRecorderButton}
+        />
+      </View>
+
       {/* Extraction Summary */}
       <View style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>Extraction Summary</Text>
@@ -438,6 +453,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#665',
     marginBottom: 16,
+  },
+  voiceRecordingSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6f42c1',
+    width: '100%',
+  },
+  voiceRecordingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  voiceRecordingSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 12,
+  },
+  voiceRecorderButton: {
+    backgroundColor: '#6f42c1',
   },
   summaryCard: {
     backgroundColor: '#f8f9fa',
