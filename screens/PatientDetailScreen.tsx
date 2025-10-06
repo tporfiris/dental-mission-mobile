@@ -1,4 +1,4 @@
-// screens/PatientDetailScreen.tsx
+// screens/PatientDetailScreen.tsx - Enhanced with detailed assessment and treatment info
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -34,6 +34,7 @@ interface Treatment {
   units: number;
   value: number;
   billingCodes: string;
+  notes: string;
   clinicianName: string;
   completedAt: Date;
 }
@@ -42,9 +43,398 @@ interface Assessment {
   id: string;
   patientId: string;
   assessmentType: string;
+  data: string;
   clinicianEmail: string;
   createdAt: Date;
 }
+
+// Helper function to parse assessment data with detailed tooth information
+const parseAssessmentData = (data: string, type: string) => {
+  try {
+    const parsed = JSON.parse(data);
+    
+    switch (type) {
+      case 'dentition': {
+        if (parsed.savedWithPrimaryNumbers && parsed.originalToothStates) {
+          const toothStates = parsed.originalToothStates;
+          const primaryTeeth = parsed.primaryTeeth || [];
+          
+          const PRIMARY_TOOTH_MAPPINGS: Record<string, string> = {
+            '11': '51', '12': '52', '13': '53', '14': '54', '15': '55',
+            '21': '61', '22': '62', '23': '63', '24': '64', '25': '65',
+            '41': '81', '42': '82', '43': '83', '44': '84', '45': '85',
+            '31': '71', '32': '72', '33': '73', '34': '74', '35': '75',
+          };
+          
+          const getCurrentToothId = (originalToothId: string): string => {
+            if (primaryTeeth.includes(originalToothId)) {
+              return PRIMARY_TOOTH_MAPPINGS[originalToothId] || originalToothId;
+            }
+            return originalToothId;
+          };
+          
+          const present = Object.entries(toothStates).filter(([_, s]: any) => s === 'present');
+          const crownMissing = Object.entries(toothStates).filter(([_, s]: any) => s === 'crown-missing');
+          const rootsOnly = Object.entries(toothStates).filter(([_, s]: any) => s === 'roots-only');
+          const missing = Object.entries(toothStates).filter(([_, s]: any) => s === 'fully-missing');
+          
+          const dentitionDetails = [
+            `✓ Present teeth (${present.length}): ${present.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
+            `⚠ Crown missing (${crownMissing.length}): ${crownMissing.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
+            `⚠ Roots only (${rootsOnly.length}): ${rootsOnly.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
+            `✗ Fully missing (${missing.length}): ${missing.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
+          ];
+          
+          if (primaryTeeth.length > 0) {
+            const primaryToothNumbers = primaryTeeth.map((t: string) => getCurrentToothId(t));
+            dentitionDetails.push(`🦷 Primary teeth (${primaryTeeth.length}): ${primaryToothNumbers.join(', ')}`);
+          }
+          
+          return {
+            summary: `${present.length} present, ${missing.length} missing, ${crownMissing.length} crown missing`,
+            details: dentitionDetails
+          };
+        }
+        return { summary: 'Dentition assessed', details: ['Legacy format - basic data available'] };
+      }
+        
+      case 'hygiene': {
+        if (parsed.enhancedAssessment) {
+          const assessment = parsed.enhancedAssessment;
+          const hygieneDetails = [];
+          
+          if (assessment.calculusLevel && assessment.calculusLevel !== 'none') {
+            let calculusDetail = `🦠 Calculus: ${assessment.calculusLevel}`;
+            if (assessment.calculusDistribution === 'localized' && assessment.calculusQuadrants?.length > 0) {
+              calculusDetail += ` (localized in ${assessment.calculusQuadrants.join(', ')})`;
+            } else if (assessment.calculusDistribution === 'generalized') {
+              calculusDetail += ' (generalized throughout mouth)';
+            }
+            hygieneDetails.push(calculusDetail);
+          } else {
+            hygieneDetails.push('🦠 Calculus: none');
+          }
+          
+          if (assessment.plaqueLevel && assessment.plaqueLevel !== 'none') {
+            let plaqueDetail = `🧽 Plaque: ${assessment.plaqueLevel}`;
+            if (assessment.plaqueDistribution === 'localized' && assessment.plaqueQuadrants?.length > 0) {
+              plaqueDetail += ` (localized in ${assessment.plaqueQuadrants.join(', ')})`;
+            } else if (assessment.plaqueDistribution === 'generalized') {
+              plaqueDetail += ' (generalized throughout mouth)';
+            }
+            hygieneDetails.push(plaqueDetail);
+          } else {
+            hygieneDetails.push('🧽 Plaque: none');
+          }
+          
+          if (assessment.probingDepths) {
+            const depths = Object.entries(assessment.probingDepths);
+            const avgDepth = depths.reduce((sum: number, [_, d]: any) => sum + d, 0) / depths.length;
+            const deepPockets = depths.filter(([_, d]: any) => d >= 5);
+            hygieneDetails.push(`📏 Average probing depth: ${avgDepth.toFixed(1)}mm`);
+            if (deepPockets.length > 0) {
+              hygieneDetails.push(`⚠ Deep pockets (≥5mm) at teeth: ${deepPockets.map(([t]) => t).join(', ')}`);
+            }
+          }
+          
+          if (assessment.bleedingOnProbing) {
+            const bleeding = Object.entries(assessment.bleedingOnProbing).filter(([_, b]: any) => b);
+            const bleedingPercent = (bleeding.length / 32 * 100).toFixed(1);
+            hygieneDetails.push(`🩸 Bleeding on probing: ${bleeding.length} sites (${bleedingPercent}%)`);
+            if (bleeding.length > 0 && bleeding.length <= 10) {
+              hygieneDetails.push(`   Teeth with bleeding: ${bleeding.map(([t]) => t).join(', ')}`);
+            }
+          }
+          
+          if (assessment.aapStage || assessment.aapGrade) {
+            const aapDetails = [];
+            if (assessment.aapStage) aapDetails.push(`Stage ${assessment.aapStage}`);
+            if (assessment.aapGrade) aapDetails.push(`Grade ${assessment.aapGrade}`);
+            hygieneDetails.push(`📋 AAP Classification: ${aapDetails.join(', ')}`);
+          }
+          
+          return {
+            summary: `Calculus: ${assessment.calculusLevel || 'none'}, Plaque: ${assessment.plaqueLevel || 'none'}`,
+            details: hygieneDetails
+          };
+        }
+        return { summary: 'Hygiene assessed', details: ['Assessment data available'] };
+      }
+        
+      case 'extractions': {
+        const extractionStates = parsed.extractionStates || parsed;
+        const extractions = Object.entries(extractionStates).filter(([_, s]: any) => s !== 'none');
+        
+        const loose = extractions.filter(([_, s]: any) => s === 'loose');
+        const rootTip = extractions.filter(([_, s]: any) => s === 'root-tip');
+        const nonRestorable = extractions.filter(([_, s]: any) => s === 'non-restorable');
+        
+        const extractionDetails = [
+          `📊 Total extractions needed: ${extractions.length}`,
+          `🔧 Loose teeth (${loose.length}): ${loose.length > 0 ? loose.map(([t]) => t).join(', ') : 'None'}`,
+          `🦴 Root tips (${rootTip.length}): ${rootTip.length > 0 ? rootTip.map(([t]) => t).join(', ') : 'None'}`,
+          `❌ Non-restorable (${nonRestorable.length}): ${nonRestorable.length > 0 ? nonRestorable.map(([t]) => t).join(', ') : 'None'}`,
+        ];
+        
+        return {
+          summary: `${extractions.length} teeth marked for extraction`,
+          details: extractionDetails
+        };
+      }
+        
+      case 'fillings': {
+        if (parsed.savedWithPrimaryNumbers && parsed.originalTeethStates) {
+          const teethStates = parsed.originalTeethStates;
+          const primaryTeeth = parsed.primaryTeeth || [];
+          
+          const PRIMARY_TOOTH_MAPPINGS: Record<string, string> = {
+            '11': '51', '12': '52', '13': '53', '14': '54', '15': '55',
+            '21': '61', '22': '62', '23': '63', '24': '64', '25': '65',
+            '41': '81', '42': '82', '43': '83', '44': '84', '45': '85',
+            '31': '71', '32': '72', '33': '73', '34': '74', '35': '75',
+          };
+          
+          const getCurrentToothId = (originalToothId: string): string => {
+            if (primaryTeeth.includes(originalToothId)) {
+              return PRIMARY_TOOTH_MAPPINGS[originalToothId] || originalToothId;
+            }
+            return originalToothId;
+          };
+          
+          const fillingsDetails = [];
+          
+          const teethWithFindings = Object.entries(teethStates).filter(([_, state]: any) => 
+            (state.hasFillings && state.fillingSurfaces?.length > 0) ||
+            state.hasCrowns ||
+            state.hasExistingRootCanal ||
+            (state.hasCavities && state.cavitySurfaces?.length > 0) ||
+            (state.isBroken && state.brokenSurfaces?.length > 0) ||
+            state.needsRootCanal
+          );
+          
+          if (teethWithFindings.length === 0) {
+            fillingsDetails.push('✓ No restorative issues found');
+          } else {
+            fillingsDetails.push(`📊 ${teethWithFindings.length} teeth with findings:\n`);
+            
+            teethWithFindings.forEach(([toothId, state]: any) => {
+              const displayToothId = getCurrentToothId(toothId);
+              const toothDetails = [`🦷 Tooth ${displayToothId}:`];
+              
+              if (state.hasFillings && state.fillingSurfaces?.length > 0) {
+                const material = state.fillingType || 'unknown';
+                const surfaces = state.fillingSurfaces.join('');
+                toothDetails.push(`   • Has existing filling: Yes (${material}, surfaces: ${surfaces})`);
+              } else {
+                toothDetails.push(`   • Has existing filling: No`);
+              }
+              
+              if (state.hasCrowns) {
+                const material = state.crownMaterial || 'unknown';
+                toothDetails.push(`   • Has existing crown: Yes (${material})`);
+              } else {
+                toothDetails.push(`   • Has existing crown: No`);
+              }
+              
+              if (state.hasExistingRootCanal) {
+                toothDetails.push(`   • Has existing root canal: Yes`);
+              } else {
+                toothDetails.push(`   • Has existing root canal: No`);
+              }
+              
+              if (state.hasCavities && state.cavitySurfaces?.length > 0) {
+                const surfaces = state.cavitySurfaces.join('');
+                toothDetails.push(`   • Cavities: Yes (locations: ${surfaces})`);
+              } else {
+                toothDetails.push(`   • Cavities: No`);
+              }
+              
+              if (state.isBroken && state.brokenSurfaces?.length > 0) {
+                const surfaces = state.brokenSurfaces.join('');
+                toothDetails.push(`   • Broken/cracked: Yes (surfaces: ${surfaces})`);
+              }
+              
+              if (state.needsRootCanal) {
+                const diagnoses = [];
+                if (state.pulpDiagnosis) diagnoses.push(state.pulpDiagnosis);
+                if (state.apicalDiagnosis) diagnoses.push(state.apicalDiagnosis);
+                const diagnosisText = diagnoses.length > 0 ? ` (${diagnoses.join(', ')})` : '';
+                toothDetails.push(`   • Root canal needed: Yes${diagnosisText}`);
+              }
+              
+              fillingsDetails.push(toothDetails.join('\n'));
+            });
+          }
+          
+          if (primaryTeeth.length > 0) {
+            const primaryToothNumbers = primaryTeeth.map((t: string) => getCurrentToothId(t));
+            fillingsDetails.push(`\n🦷 Primary teeth recorded (${primaryTeeth.length}): ${primaryToothNumbers.join(', ')}`);
+          }
+          
+          const fillingsCount = Object.values(teethStates).filter((t: any) => 
+            t.hasFillings && t.fillingSurfaces?.length > 0
+          ).length;
+          const cavitiesCount = Object.values(teethStates).filter((t: any) => 
+            t.hasCavities && t.cavitySurfaces?.length > 0
+          ).length;
+          const rctNeededCount = Object.values(teethStates).filter((t: any) => t.needsRootCanal).length;
+          
+          return {
+            summary: `${fillingsCount} fillings, ${cavitiesCount} cavities, ${rctNeededCount} need RCT`,
+            details: fillingsDetails
+          };
+        }
+        return { summary: 'Dental assessment completed', details: ['Restoration data available'] };
+      }
+        
+      case 'denture': {
+        const dentureType = parsed.selectedDentureType;
+        const relineOptions = parsed.dentureOptions || {};
+        const dentureDetails = [];
+        
+        if (dentureType && dentureType !== 'none') {
+          dentureDetails.push(`🦷 Denture recommended: ${dentureType}`);
+        } else {
+          dentureDetails.push('✓ No denture needed');
+        }
+        
+        const relineServices = Object.entries(relineOptions).filter(([_, v]) => v);
+        if (relineServices.length > 0) {
+          const relineTypes = relineServices.map(([service]) => {
+            return service.split('-').map(word => 
+              word.charAt(0).toUpperCase() + word.slice(1)
+            ).join(' ');
+          });
+          dentureDetails.push(`🔧 Reline services (${relineServices.length}): ${relineTypes.join(', ')}`);
+        } else {
+          dentureDetails.push('🔧 Reline services: None');
+        }
+        
+        if (parsed.notes) {
+          dentureDetails.push(`📝 Notes: ${parsed.notes}`);
+        }
+        
+        return {
+          summary: dentureType === 'none' ? 'No denture needed' : `${dentureType} recommended`,
+          details: dentureDetails
+        };
+      }
+        
+      case 'implant': {
+        const singleImplants = parsed.singleImplantTeeth || [];
+        const bridgeImplants = parsed.bridgeImplantTeeth || [];
+        const boneGrafting = parsed.boneGraftingPlanned;
+        const timing = parsed.timingMode;
+        
+        const implantDetails = [];
+        
+        if (singleImplants.length > 0) {
+          implantDetails.push(`🔩 Single implants planned (${singleImplants.length}): ${singleImplants.join(', ')}`);
+        } else {
+          implantDetails.push(`🔩 Single implants planned (0): None`);
+        }
+        
+        if (bridgeImplants.length > 0) {
+          implantDetails.push(`🌉 Bridge implants planned (${bridgeImplants.length}): ${bridgeImplants.join(', ')}`);
+        } else {
+          implantDetails.push(`🌉 Bridge implants planned (0): None`);
+        }
+        
+        if (boneGrafting) {
+          implantDetails.push('🦴 Bone grafting: Planned');
+        } else {
+          implantDetails.push('🦴 Bone grafting: Not needed');
+        }
+        
+        if (timing) {
+          implantDetails.push(`⏱️ Timing: ${timing.charAt(0).toUpperCase() + timing.slice(1)} placement`);
+        }
+        
+        const totalImplants = singleImplants.length + bridgeImplants.length;
+        return {
+          summary: `${totalImplants} total implants planned (${singleImplants.length} single, ${bridgeImplants.length} bridge)`,
+          details: implantDetails
+        };
+      }
+        
+      default:
+        return { summary: 'Assessment completed', details: ['Data available'] };
+    }
+  } catch (error) {
+    console.error('Error parsing assessment data:', error);
+    return { summary: 'Assessment completed', details: ['Unable to parse details'] };
+  }
+};
+
+// Helper function to parse treatment notes and get detailed info
+const parseTreatmentDetails = (treatment: Treatment) => {
+  const treatmentDetails = [];
+  
+  let billingCodes = [];
+  try {
+    billingCodes = JSON.parse(treatment.billingCodes);
+  } catch (e) {
+    // Handle legacy format
+  }
+  
+  switch (treatment.type) {
+    case 'hygiene':
+      try {
+        const hygieneData = JSON.parse(treatment.notes);
+        if (hygieneData.scalingUnits) {
+          treatmentDetails.push(`Scaling: ${hygieneData.scalingUnits} units`);
+        }
+        if (hygieneData.polishingUnits) {
+          treatmentDetails.push(`Polishing: ${hygieneData.polishingUnits} units`);
+        }
+        if (hygieneData.fluorideType && hygieneData.fluorideType !== 'none') {
+          treatmentDetails.push(`Fluoride: ${hygieneData.fluorideType}`);
+        }
+        if (hygieneData.prescribedMedication) {
+          treatmentDetails.push(`Medication: ${hygieneData.prescribedMedication}`);
+        }
+      } catch (e) {
+        treatmentDetails.push(`Units: ${treatment.units}`);
+      }
+      break;
+      
+    case 'extraction':
+      treatmentDetails.push(`Tooth: ${treatment.tooth}`);
+      if (billingCodes.length > 0 && billingCodes[0].complexity) {
+        treatmentDetails.push(`Type: ${billingCodes[0].complexity}`);
+      }
+      break;
+      
+    case 'filling':
+      treatmentDetails.push(`Tooth: ${treatment.tooth}`);
+      treatmentDetails.push(`Surface: ${treatment.surface}`);
+      treatmentDetails.push(`Units: ${treatment.units}`);
+      break;
+      
+    case 'denture':
+      if (billingCodes.length > 0) {
+        treatmentDetails.push(`Type: ${billingCodes[0].description || 'Denture placement'}`);
+      }
+      break;
+      
+    case 'implant':
+    case 'implant-crown':
+      treatmentDetails.push(`Tooth: ${treatment.tooth}`);
+      if (billingCodes.length > 0) {
+        treatmentDetails.push(`Type: ${billingCodes[0].category || treatment.type}`);
+      }
+      break;
+      
+    default:
+      treatmentDetails.push(`Tooth: ${treatment.tooth}`);
+      if (treatment.surface !== 'N/A') {
+        treatmentDetails.push(`Surface: ${treatment.surface}`);
+      }
+      treatmentDetails.push(`Units: ${treatment.units}`);
+  }
+  
+  return treatmentDetails;
+};
 
 const PatientDetailScreen = ({ route, navigation }: any) => {
   const { patient, treatments, assessments } = route.params as {
@@ -54,24 +444,22 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
   };
 
   const [activeTab, setActiveTab] = useState<'overview' | 'assessments' | 'treatments'>('overview');
+  const [expandedAssessment, setExpandedAssessment] = useState<string | null>(null);
+  const [expandedTreatment, setExpandedTreatment] = useState<string | null>(null);
 
-  // Calculate patient statistics
   const patientStats = useMemo(() => {
     const totalValue = treatments.reduce((sum, t) => sum + (t.value * t.units), 0);
     
-    // Group treatments by type
     const treatmentsByType = treatments.reduce((acc, t) => {
       acc[t.type] = (acc[t.type] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    // Group assessments by type
     const assessmentsByType = assessments.reduce((acc, a) => {
       acc[a.assessmentType] = (acc[a.assessmentType] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    // Get latest activity
     const latestTreatment = treatments.length > 0 
       ? treatments.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())[0]
       : null;
@@ -91,10 +479,9 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
     };
   }, [treatments, assessments]);
 
-  // Export patient data
   const exportPatientData = async () => {
     try {
-      const patientInfo = `
+      let patientInfo = `
 Patient Report: ${patient.firstName} ${patient.lastName}
 
 PATIENT INFORMATION:
@@ -109,22 +496,42 @@ Total Assessments: ${assessments.length}
 Total Treatments: ${treatments.length}
 Total Treatment Value: $${patientStats.totalValue.toFixed(2)}
 
-ASSESSMENTS:
-${assessments.map(a => 
-  `- ${a.assessmentType} (${a.createdAt.toLocaleDateString()}) by ${a.clinicianEmail}`
-).join('\n')}
+DETAILED ASSESSMENTS:
+`;
 
-TREATMENTS:
-${treatments.map(t => 
-  `- ${t.type} on tooth ${t.tooth} (${t.completedAt.toLocaleDateString()}) - $${(t.value * t.units).toFixed(2)} by ${t.clinicianName}`
-).join('\n')}
+      assessments.forEach(a => {
+        const parsedData = parseAssessmentData(a.data, a.assessmentType);
+        patientInfo += `
+${a.assessmentType.toUpperCase()} ASSESSMENT (${a.createdAt.toLocaleDateString()}):
+By: ${a.clinicianEmail}
+Summary: ${parsedData.summary}
+${parsedData.details.map(d => `  - ${d}`).join('\n')}
+`;
+      });
+
+      patientInfo += `
+
+DETAILED TREATMENTS:
+`;
+
+      treatments.forEach(t => {
+        const treatmentDetailsList = parseTreatmentDetails(t);
+        patientInfo += `
+${t.type.toUpperCase()} TREATMENT (${t.completedAt.toLocaleDateString()}):
+Performed by: ${t.clinicianName}
+Value: $${(t.value * t.units).toFixed(2)}
+${treatmentDetailsList.map(d => `  - ${d}`).join('\n')}
+`;
+      });
+
+      patientInfo += `
 
 Generated on: ${new Date().toLocaleString()}
-      `;
+`;
 
       await Share.share({
         message: patientInfo,
-        title: `Patient Report - ${patient.firstName} ${patient.lastName}`
+        title: `Detailed Patient Report - ${patient.firstName} ${patient.lastName}`
       });
     } catch (error) {
       console.error('Export error:', error);
@@ -132,9 +539,16 @@ Generated on: ${new Date().toLocaleString()}
     }
   };
 
+  const toggleAssessmentExpansion = (id: string) => {
+    setExpandedAssessment(expandedAssessment === id ? null : id);
+  };
+
+  const toggleTreatmentExpansion = (id: string) => {
+    setExpandedTreatment(expandedTreatment === id ? null : id);
+  };
+
   const renderOverview = () => (
     <View style={styles.tabContent}>
-      {/* Patient Info Card */}
       <View style={styles.infoCard}>
         <View style={styles.patientHeader}>
           <View style={styles.photoContainer}>
@@ -163,7 +577,6 @@ Generated on: ${new Date().toLocaleString()}
         </View>
       </View>
 
-      {/* Statistics Grid */}
       <View style={styles.statsGrid}>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{assessments.length}</Text>
@@ -186,7 +599,6 @@ Generated on: ${new Date().toLocaleString()}
         </View>
       </View>
 
-      {/* Treatment Breakdown */}
       {Object.keys(patientStats.treatmentsByType).length > 0 && (
         <View style={styles.breakdownCard}>
           <Text style={styles.breakdownTitle}>🦷 Treatment Breakdown</Text>
@@ -201,7 +613,6 @@ Generated on: ${new Date().toLocaleString()}
         </View>
       )}
 
-      {/* Assessment Breakdown */}
       {Object.keys(patientStats.assessmentsByType).length > 0 && (
         <View style={styles.breakdownCard}>
           <Text style={styles.breakdownTitle}>📋 Assessment Breakdown</Text>
@@ -227,24 +638,46 @@ Generated on: ${new Date().toLocaleString()}
       ) : (
         assessments
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-          .map((assessment) => (
-            <View key={assessment.id} style={styles.itemCard}>
-              <View style={styles.itemHeader}>
-                <Text style={styles.itemType}>
-                  📋 {assessment.assessmentType.charAt(0).toUpperCase() + assessment.assessmentType.slice(1)} Assessment
-                </Text>
-                <Text style={styles.itemDate}>
-                  {assessment.createdAt.toLocaleDateString()}
-                </Text>
-              </View>
-              <Text style={styles.itemClinician}>
-                Performed by: {assessment.clinicianEmail}
-              </Text>
-              <Text style={styles.itemTime}>
-                {assessment.createdAt.toLocaleTimeString()}
-              </Text>
-            </View>
-          ))
+          .map((assessment) => {
+            const parsedData = parseAssessmentData(assessment.data, assessment.assessmentType);
+            const isExpanded = expandedAssessment === assessment.id;
+            
+            return (
+              <TouchableOpacity
+                key={assessment.id}
+                style={styles.itemCard}
+                onPress={() => toggleAssessmentExpansion(assessment.id)}
+              >
+                <View style={styles.itemHeader}>
+                  <View style={styles.itemHeaderLeft}>
+                    <Text style={styles.itemType}>
+                      📋 {assessment.assessmentType.charAt(0).toUpperCase() + assessment.assessmentType.slice(1)} Assessment
+                    </Text>
+                    <Text style={styles.itemSummary}>{parsedData.summary}</Text>
+                  </View>
+                  <Text style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</Text>
+                </View>
+                
+                <View style={styles.itemMetadata}>
+                  <Text style={styles.itemClinician}>
+                    By: {assessment.clinicianEmail}
+                  </Text>
+                  <Text style={styles.itemDate}>
+                    {assessment.createdAt.toLocaleDateString()} at {assessment.createdAt.toLocaleTimeString()}
+                  </Text>
+                </View>
+                
+                {isExpanded && (
+                  <View style={styles.expandedDetails}>
+                    <Text style={styles.detailsTitle}>Assessment Details:</Text>
+                    {parsedData.details.map((detail, index) => (
+                      <Text key={index} style={styles.detailItem}>• {detail}</Text>
+                    ))}
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })
       )}
     </View>
   );
@@ -259,47 +692,76 @@ Generated on: ${new Date().toLocaleString()}
         treatments
           .sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())
           .map((treatment) => {
+            const treatmentDetailsList = parseTreatmentDetails(treatment);
+            const isExpanded = expandedTreatment === treatment.id;
+            
             let billingCodes = [];
             try {
               billingCodes = JSON.parse(treatment.billingCodes);
             } catch (e) {
-              // Handle legacy format or parsing errors
+              // Handle legacy format
             }
 
             return (
-              <View key={treatment.id} style={styles.itemCard}>
+              <TouchableOpacity
+                key={treatment.id}
+                style={styles.itemCard}
+                onPress={() => toggleTreatmentExpansion(treatment.id)}
+              >
                 <View style={styles.itemHeader}>
-                  <Text style={styles.itemType}>
-                    🦷 {treatment.type.charAt(0).toUpperCase() + treatment.type.slice(1)} Treatment
-                  </Text>
-                  <Text style={styles.itemValue}>
-                    ${(treatment.value * treatment.units).toFixed(2)}
-                  </Text>
+                  <View style={styles.itemHeaderLeft}>
+                    <Text style={styles.itemType}>
+                      🦷 {treatment.type.charAt(0).toUpperCase() + treatment.type.slice(1)} Treatment
+                    </Text>
+                    <Text style={styles.treatmentSummary}>
+                      {treatmentDetailsList.slice(0, 2).join(' • ')}
+                    </Text>
+                  </View>
+                  <View style={styles.itemHeaderRight}>
+                    <Text style={styles.itemValue}>
+                      ${(treatment.value * treatment.units).toFixed(2)}
+                    </Text>
+                    <Text style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</Text>
+                  </View>
                 </View>
                 
-                <View style={styles.treatmentDetails}>
-                  <Text style={styles.treatmentInfo}>
-                    Tooth: {treatment.tooth} • Surface: {treatment.surface} • Units: {treatment.units}
-                  </Text>
+                <View style={styles.itemMetadata}>
                   <Text style={styles.itemClinician}>
-                    Performed by: {treatment.clinicianName}
+                    By: {treatment.clinicianName}
                   </Text>
                   <Text style={styles.itemDate}>
                     {treatment.completedAt.toLocaleDateString()} at {treatment.completedAt.toLocaleTimeString()}
                   </Text>
                 </View>
 
-                {billingCodes.length > 0 && (
-                  <View style={styles.billingCodes}>
-                    <Text style={styles.billingTitle}>Billing Codes:</Text>
-                    {billingCodes.map((code: any, index: number) => (
-                      <Text key={index} style={styles.billingCode}>
-                        {typeof code === 'string' ? code : code.code || 'Unknown'}
-                      </Text>
+                {isExpanded && (
+                  <View style={styles.expandedDetails}>
+                    <Text style={styles.detailsTitle}>Treatment Details:</Text>
+                    {treatmentDetailsList.map((detail, index) => (
+                      <Text key={index} style={styles.detailItem}>• {detail}</Text>
                     ))}
+                    
+                    {billingCodes.length > 0 && (
+                      <View style={styles.billingCodes}>
+                        <Text style={styles.billingTitle}>Billing Codes:</Text>
+                        {billingCodes.map((code: any, index: number) => (
+                          <View key={index} style={styles.billingCodeItem}>
+                            <Text style={styles.billingCode}>
+                              {typeof code === 'string' ? code : code.code || 'N/A'}
+                            </Text>
+                            {code.price && (
+                              <Text style={styles.billingPrice}>${code.price}</Text>
+                            )}
+                            {code.description && (
+                              <Text style={styles.billingDescription}>{code.description}</Text>
+                            )}
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             );
           })
       )}
@@ -308,7 +770,6 @@ Generated on: ${new Date().toLocaleString()}
 
   return (
     <View style={styles.container}>
-      {/* Header with Export Button */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Patient Details</Text>
@@ -318,12 +779,11 @@ Generated on: ${new Date().toLocaleString()}
         </View>
       </View>
 
-      {/* Tab Navigation */}
       <View style={styles.tabNavigation}>
         {[
           { key: 'overview', label: '📊 Overview' },
-          { key: 'assessments', label: '📋 Assessments' },
-          { key: 'treatments', label: '🦷 Treatments' }
+          { key: 'assessments', label: `📋 Assessments (${assessments.length})` },
+          { key: 'treatments', label: `🦷 Treatments (${treatments.length})` }
         ].map(tab => (
           <TouchableOpacity
             key={tab.key}
@@ -343,7 +803,6 @@ Generated on: ${new Date().toLocaleString()}
         ))}
       </View>
 
-      {/* Tab Content */}
       <ScrollView style={styles.scrollContainer}>
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'assessments' && renderAssessments()}
@@ -402,7 +861,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#007bff',
   },
   tabButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '500',
     color: '#666',
   },
@@ -485,7 +944,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    width: (width - 44) / 2, // Two cards per row with margins
+    width: (width - 44) / 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -566,16 +1025,42 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 8,
   },
+  itemHeaderLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  itemHeaderRight: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: 8,
+  },
   itemType: {
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-    flex: 1,
+    marginBottom: 4,
+  },
+  itemSummary: {
+    fontSize: 14,
+    color: '#007bff',
+    fontWeight: '500',
+  },
+  treatmentSummary: {
+    fontSize: 13,
+    color: '#666',
+  },
+  expandIcon: {
+    fontSize: 14,
+    color: '#999',
+    fontWeight: 'bold',
+  },
+  itemMetadata: {
+    marginBottom: 8,
   },
   itemDate: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
-    fontWeight: '500',
+    marginBottom: 2,
   },
   itemValue: {
     fontSize: 16,
@@ -583,42 +1068,63 @@ const styles = StyleSheet.create({
     color: '#28a745',
   },
   itemClinician: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  itemTime: {
-    fontSize: 12,
-    color: '#999',
-  },
-  treatmentDetails: {
-    marginBottom: 8,
-  },
-  treatmentInfo: {
-    fontSize: 14,
-    color: '#495057',
-    marginBottom: 4,
-  },
-  billingCodes: {
+  expandedDetails: {
     borderTopWidth: 1,
     borderTopColor: '#f8f9fa',
-    paddingTop: 8,
+    paddingTop: 12,
+    marginTop: 8,
+  },
+  detailsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  detailItem: {
+    fontSize: 13,
+    color: '#495057',
+    marginBottom: 4,
+    paddingLeft: 8,
+  },
+  billingCodes: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f8f9fa',
   },
   billingTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#666',
-    marginBottom: 4,
+    marginBottom: 8,
+  },
+  billingCodeItem: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 6,
+    padding: 8,
+    marginBottom: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#007bff',
   },
   billingCode: {
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '600',
     color: '#007bff',
-    backgroundColor: '#f8f9fa',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginRight: 4,
-    marginBottom: 4,
+    marginBottom: 2,
+  },
+  billingPrice: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#28a745',
+    marginBottom: 2,
+  },
+  billingDescription: {
+    fontSize: 12,
+    color: '#666',
   },
 });
 

@@ -1,4 +1,4 @@
-// screens/PatientListScreen.tsx
+// screens/PatientListScreen.tsx - Enhanced with assessment/treatment previews
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -43,6 +43,7 @@ interface Treatment {
   units: number;
   value: number;
   billingCodes: string;
+  notes: string;
   clinicianName: string;
   completedAt: Date;
 }
@@ -51,6 +52,7 @@ interface Assessment {
   id: string;
   patientId: string;
   assessmentType: string;
+  data: string;
   clinicianEmail: string;
   createdAt: Date;
 }
@@ -74,6 +76,120 @@ const PatientListScreen = ({ navigation }: any) => {
     }
     if (typeof timestamp === 'number') return new Date(timestamp);
     return new Date();
+  };
+
+  // Get detailed quick summary for assessment with tooth numbers
+  const getAssessmentSummary = (assessment: Assessment): string => {
+    try {
+      const data = JSON.parse(assessment.data);
+      
+      switch (assessment.assessmentType) {
+        case 'dentition':
+          if (data.originalToothStates) {
+            const missing = Object.entries(data.originalToothStates).filter(([_, s]: any) => s === 'fully-missing');
+            const crownMissing = Object.entries(data.originalToothStates).filter(([_, s]: any) => s === 'crown-missing');
+            if (missing.length > 0) {
+              const teeth = missing.slice(0, 3).map(([t]) => t).join(', ');
+              const more = missing.length > 3 ? `, +${missing.length - 3} more` : '';
+              return `Missing: ${teeth}${more}`;
+            }
+            if (crownMissing.length > 0) {
+              return `${crownMissing.length} crown missing`;
+            }
+            return 'All teeth present';
+          }
+          return 'Dentition assessed';
+          
+        case 'hygiene':
+          if (data.enhancedAssessment) {
+            const calculus = data.enhancedAssessment.calculusLevel || 'none';
+            const plaque = data.enhancedAssessment.plaqueLevel || 'none';
+            const aap = data.enhancedAssessment.aapStage ? ` (AAP ${data.enhancedAssessment.aapStage})` : '';
+            return `${calculus} calculus, ${plaque} plaque${aap}`;
+          }
+          return 'Hygiene assessed';
+          
+        case 'extractions':
+          const extractions = Object.entries(data.extractionStates || data).filter(([_, s]: any) => s !== 'none');
+          if (extractions.length > 0) {
+            const teeth = extractions.slice(0, 4).map(([t]) => t).join(', ');
+            const more = extractions.length > 4 ? `, +${extractions.length - 4}` : '';
+            return `Extract: ${teeth}${more}`;
+          }
+          return 'No extractions needed';
+          
+        case 'fillings':
+          if (data.originalTeethStates) {
+            const cavities = Object.entries(data.originalTeethStates).filter(([_, t]: any) => 
+              t.hasCavities && t.cavitySurfaces && t.cavitySurfaces.length > 0
+            );
+            const rct = Object.entries(data.originalTeethStates).filter(([_, t]: any) => t.needsRootCanal);
+            
+            if (cavities.length > 0 || rct.length > 0) {
+              const parts = [];
+              if (cavities.length > 0) {
+                const teeth = cavities.slice(0, 3).map(([t, s]: any) => `${t}(${s.cavitySurfaces.join('')})`).join(', ');
+                const more = cavities.length > 3 ? `, +${cavities.length - 3}` : '';
+                parts.push(`Cavities: ${teeth}${more}`);
+              }
+              if (rct.length > 0) {
+                parts.push(`${rct.length} RCT needed`);
+              }
+              return parts.join(' • ');
+            }
+            return 'No cavities found';
+          }
+          return 'Restorative assessed';
+          
+        case 'denture':
+          const type = data.selectedDentureType;
+          if (type && type !== 'none') {
+            return type.replace(/-/g, ' ');
+          }
+          return 'No denture needed';
+          
+        case 'implant':
+          const single = data.singleImplantTeeth || [];
+          const bridge = data.bridgeImplantTeeth || [];
+          if (single.length > 0 || bridge.length > 0) {
+            const parts = [];
+            if (single.length > 0) {
+              const teeth = single.slice(0, 3).join(', ');
+              const more = single.length > 3 ? `, +${single.length - 3}` : '';
+              parts.push(`Single: ${teeth}${more}`);
+            }
+            if (bridge.length > 0) {
+              parts.push(`Bridge: ${bridge.length} teeth`);
+            }
+            return parts.join(' • ');
+          }
+          return 'No implants planned';
+          
+        default:
+          return 'Assessed';
+      }
+    } catch (e) {
+      return 'Assessed';
+    }
+  };
+
+  // Get quick summary for treatment
+  const getTreatmentSummary = (treatment: Treatment): string => {
+    switch (treatment.type) {
+      case 'hygiene':
+        return `${treatment.units} units`;
+      case 'extraction':
+        return `Tooth ${treatment.tooth}`;
+      case 'filling':
+        return `Tooth ${treatment.tooth} (${treatment.surface})`;
+      case 'denture':
+        return 'Denture placed';
+      case 'implant':
+      case 'implant-crown':
+        return `Tooth ${treatment.tooth}`;
+      default:
+        return `${treatment.units} units`;
+    }
   };
 
   // Load data from Firestore
@@ -111,6 +227,7 @@ const PatientListScreen = ({ navigation }: any) => {
           units: data.units || 1,
           value: data.value || 0,
           billingCodes: data.billingCodes || '[]',
+          notes: data.notes || '',
           clinicianName: data.clinicianName || 'Unknown',
           completedAt: safeToDate(data.completedAt || data.createdAt || data.syncedAt)
         };
@@ -124,6 +241,7 @@ const PatientListScreen = ({ navigation }: any) => {
           id: doc.id,
           patientId: data.patientId || '',
           assessmentType: data.assessmentType || 'unknown',
+          data: data.data || '{}',
           clinicianEmail: data.clinicianEmail || 'Unknown',
           createdAt: safeToDate(data.createdAt || data.syncedAt)
         };
@@ -180,19 +298,29 @@ const PatientListScreen = ({ navigation }: any) => {
     );
   }, [patients, searchQuery]);
 
-  // Get patient statistics
+  // Get patient statistics with recent activity details
   const getPatientStats = (patientId: string) => {
     const patientTreatments = treatments.filter(t => t.patientId === patientId);
     const patientAssessments = assessments.filter(a => a.patientId === patientId);
     const totalValue = patientTreatments.reduce((sum, t) => sum + (t.value * t.units), 0);
     
+    // Get most recent assessment and treatment with details
+    const latestAssessment = patientAssessments.length > 0 
+      ? patientAssessments.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
+      : null;
+      
+    const latestTreatment = patientTreatments.length > 0 
+      ? patientTreatments.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())[0]
+      : null;
+    
     return {
       treatmentCount: patientTreatments.length,
       assessmentCount: patientAssessments.length,
       totalValue,
-      lastTreatment: patientTreatments.length > 0 
-        ? patientTreatments.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())[0].completedAt
-        : null
+      latestTreatment,
+      latestAssessment,
+      latestAssessmentSummary: latestAssessment ? getAssessmentSummary(latestAssessment) : null,
+      latestTreatmentSummary: latestTreatment ? getTreatmentSummary(latestTreatment) : null,
     };
   };
 
@@ -305,27 +433,53 @@ const PatientListScreen = ({ navigation }: any) => {
                   <View style={styles.patientStats}>
                     <View style={styles.statItem}>
                       <Text style={styles.statValue}>{stats.assessmentCount}</Text>
-                      <Text style={styles.statLabel}>Assessments</Text>
+                      <Text style={styles.statLabel}>Assess</Text>
                     </View>
                     <View style={styles.statItem}>
                       <Text style={styles.statValue}>{stats.treatmentCount}</Text>
-                      <Text style={styles.statLabel}>Treatments</Text>
+                      <Text style={styles.statLabel}>Treat</Text>
                     </View>
                     <View style={styles.statItem}>
                       <Text style={styles.statValue}>${stats.totalValue.toFixed(0)}</Text>
-                      <Text style={styles.statLabel}>Total Value</Text>
+                      <Text style={styles.statLabel}>Value</Text>
                     </View>
                   </View>
                 </View>
 
-                {/* Last Activity */}
-                {stats.lastTreatment && (
-                  <View style={styles.lastActivity}>
-                    <Text style={styles.lastActivityText}>
-                      Last treatment: {stats.lastTreatment.toLocaleDateString()}
-                    </Text>
-                  </View>
-                )}
+                {/* Recent Activity Details */}
+                <View style={styles.recentActivity}>
+                  {stats.latestAssessment && (
+                    <View style={styles.activityItem}>
+                      <Text style={styles.activityType}>
+                        📋 {stats.latestAssessment.assessmentType.charAt(0).toUpperCase() + stats.latestAssessment.assessmentType.slice(1)}
+                      </Text>
+                      <Text style={styles.activitySummary}>
+                        {stats.latestAssessmentSummary}
+                      </Text>
+                      <Text style={styles.activityDate}>
+                        {stats.latestAssessment.createdAt.toLocaleDateString()}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {stats.latestTreatment && (
+                    <View style={styles.activityItem}>
+                      <Text style={styles.activityType}>
+                        🦷 {stats.latestTreatment.type.charAt(0).toUpperCase() + stats.latestTreatment.type.slice(1)}
+                      </Text>
+                      <Text style={styles.activitySummary}>
+                        {stats.latestTreatmentSummary} • ${(stats.latestTreatment.value * stats.latestTreatment.units).toFixed(0)}
+                      </Text>
+                      <Text style={styles.activityDate}>
+                        {stats.latestTreatment.completedAt.toLocaleDateString()}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {!stats.latestAssessment && !stats.latestTreatment && (
+                    <Text style={styles.noActivityText}>No assessments or treatments yet</Text>
+                  )}
+                </View>
 
                 {/* Arrow indicator */}
                 <View style={styles.arrowIndicator}>
@@ -472,7 +626,7 @@ const styles = StyleSheet.create({
   },
   patientInfo: {
     flex: 1,
-    marginRight: 16,
+    marginRight: 12,
   },
   patientName: {
     fontSize: 18,
@@ -481,20 +635,21 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   patientDetails: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
     marginBottom: 2,
   },
   patientDate: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#999',
   },
   patientStats: {
     alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: 12,
   },
   statItem: {
     alignItems: 'center',
-    marginBottom: 4,
   },
   statValue: {
     fontSize: 16,
@@ -506,22 +661,41 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
   },
-  lastActivity: {
+  recentActivity: {
     borderTopWidth: 1,
     borderTopColor: '#f8f9fa',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
   },
-  lastActivityText: {
+  activityItem: {
+    marginBottom: 8,
+  },
+  activityType: {
     fontSize: 12,
-    color: '#666',
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  activitySummary: {
+    fontSize: 12,
+    color: '#007bff',
+    marginBottom: 2,
+  },
+  activityDate: {
+    fontSize: 11,
+    color: '#999',
+  },
+  noActivityText: {
+    fontSize: 12,
+    color: '#999',
     fontStyle: 'italic',
+    textAlign: 'center',
   },
   arrowIndicator: {
     position: 'absolute',
     right: 16,
-    top: '50%',
-    marginTop: -12,
+    top: '35%',
   },
   arrow: {
     fontSize: 24,
