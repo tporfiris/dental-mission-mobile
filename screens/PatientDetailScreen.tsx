@@ -12,6 +12,8 @@ import {
   Dimensions
 } from 'react-native';
 
+
+
 const { width } = Dimensions.get('window');
 
 interface Patient {
@@ -99,62 +101,146 @@ const parseAssessmentData = (data: string, type: string) => {
       }
         
       case 'hygiene': {
-        if (parsed.enhancedAssessment) {
-          const assessment = parsed.enhancedAssessment;
+        // The data is stored at root level, not under enhancedAssessment
+        // Check if this is the new format (has calculusLevel, plaqueLevel, etc.)
+        if (parsed.calculusLevel !== undefined || parsed.plaqueLevel !== undefined || parsed.probingDepths !== undefined) {
+          const assessment = parsed;
           const hygieneDetails = [];
           
-          if (assessment.calculusLevel && assessment.calculusLevel !== 'none') {
-            let calculusDetail = `🦠 Calculus: ${assessment.calculusLevel}`;
-            if (assessment.calculusDistribution === 'localized' && assessment.calculusQuadrants?.length > 0) {
-              calculusDetail += ` (localized in ${assessment.calculusQuadrants.join(', ')})`;
-            } else if (assessment.calculusDistribution === 'generalized') {
-              calculusDetail += ' (generalized throughout mouth)';
+          // CALCULUS ASSESSMENT
+          const calculusLevel = assessment.calculusLevel || 'none';
+          const CALCULUS_LABELS: Record<string, string> = {
+            'none': 'No Calculus',
+            'light': 'Light Calculus',
+            'moderate': 'Moderate Calculus',
+            'heavy': 'Heavy Calculus'
+          };
+          
+          hygieneDetails.push(`\n🦠 CALCULUS ASSESSMENT:`);
+          hygieneDetails.push(`   Level: ${CALCULUS_LABELS[calculusLevel] || calculusLevel}`);
+          
+          if (calculusLevel !== 'none') {
+            const distribution = assessment.calculusDistribution || 'none';
+            hygieneDetails.push(`   Distribution: ${distribution === 'generalized' ? 'Generalized (throughout mouth)' : 'Localized'}`);
+            
+            if (distribution === 'localized' && assessment.calculusQuadrants?.length > 0) {
+              const QUADRANT_LABELS: Record<string, string> = {
+                'upper-right': 'Upper Right',
+                'upper-left': 'Upper Left',
+                'lower-left': 'Lower Left',
+                'lower-right': 'Lower Right'
+              };
+              const quadrants = assessment.calculusQuadrants.map((q: string) => QUADRANT_LABELS[q] || q);
+              hygieneDetails.push(`   Affected quadrants: ${quadrants.join(', ')}`);
             }
-            hygieneDetails.push(calculusDetail);
-          } else {
-            hygieneDetails.push('🦠 Calculus: none');
           }
           
-          if (assessment.plaqueLevel && assessment.plaqueLevel !== 'none') {
-            let plaqueDetail = `🧽 Plaque: ${assessment.plaqueLevel}`;
-            if (assessment.plaqueDistribution === 'localized' && assessment.plaqueQuadrants?.length > 0) {
-              plaqueDetail += ` (localized in ${assessment.plaqueQuadrants.join(', ')})`;
-            } else if (assessment.plaqueDistribution === 'generalized') {
-              plaqueDetail += ' (generalized throughout mouth)';
+          // PLAQUE ASSESSMENT
+          const plaqueLevel = assessment.plaqueLevel || 'none';
+          const PLAQUE_LABELS: Record<string, string> = {
+            'none': 'No Plaque',
+            'light': 'Light Plaque',
+            'moderate': 'Moderate Plaque',
+            'heavy': 'Heavy Plaque'
+          };
+          
+          hygieneDetails.push(`\n🧽 PLAQUE ASSESSMENT:`);
+          hygieneDetails.push(`   Level: ${PLAQUE_LABELS[plaqueLevel] || plaqueLevel}`);
+          
+          if (plaqueLevel !== 'none') {
+            const distribution = assessment.plaqueDistribution || 'none';
+            hygieneDetails.push(`   Distribution: ${distribution === 'generalized' ? 'Generalized (throughout mouth)' : 'Localized'}`);
+            
+            if (distribution === 'localized' && assessment.plaqueQuadrants?.length > 0) {
+              const QUADRANT_LABELS: Record<string, string> = {
+                'upper-right': 'Upper Right',
+                'upper-left': 'Upper Left',
+                'lower-left': 'Lower Left',
+                'lower-right': 'Lower Right'
+              };
+              const quadrants = assessment.plaqueQuadrants.map((q: string) => QUADRANT_LABELS[q] || q);
+              hygieneDetails.push(`   Affected quadrants: ${quadrants.join(', ')}`);
             }
-            hygieneDetails.push(plaqueDetail);
-          } else {
-            hygieneDetails.push('🧽 Plaque: none');
           }
           
-          if (assessment.probingDepths) {
+          // PROBING DEPTHS & BLEEDING
+          if (assessment.probingDepths && assessment.bleedingOnProbing) {
             const depths = Object.entries(assessment.probingDepths);
+            const bleeding = assessment.bleedingOnProbing;
+            
+            // Calculate statistics
             const avgDepth = depths.reduce((sum: number, [_, d]: any) => sum + d, 0) / depths.length;
             const deepPockets = depths.filter(([_, d]: any) => d >= 5);
-            hygieneDetails.push(`📏 Average probing depth: ${avgDepth.toFixed(1)}mm`);
+            const bleedingTeeth = depths.filter(([tooth, _]: any) => bleeding[tooth]);
+            const bleedingPercent = (bleedingTeeth.length / depths.length * 100).toFixed(1);
+            
+            hygieneDetails.push(`\n📏 PROBING DEPTHS & BLEEDING:`);
+            hygieneDetails.push(`   Average probing depth: ${avgDepth.toFixed(1)}mm`);
+            hygieneDetails.push(`   Bleeding sites: ${bleedingTeeth.length} of ${depths.length} teeth (${bleedingPercent}%)`);
+            
             if (deepPockets.length > 0) {
-              hygieneDetails.push(`⚠ Deep pockets (≥5mm) at teeth: ${deepPockets.map(([t]) => t).join(', ')}`);
+              hygieneDetails.push(`   ⚠ Deep pockets (≥5mm): ${deepPockets.length} teeth`);
+            }
+            
+            // Group teeth by severity for better readability
+            const healthy = depths.filter(([_, d]: any) => d <= 3);
+            const mild = depths.filter(([_, d]: any) => d === 4);
+            const moderate = depths.filter(([_, d]: any) => d >= 5 && d <= 6);
+            const severe = depths.filter(([_, d]: any) => d >= 7);
+            
+            hygieneDetails.push(`\n   Breakdown by severity:`);
+            hygieneDetails.push(`   • Healthy (≤3mm): ${healthy.length} teeth`);
+            hygieneDetails.push(`   • Mild (4mm): ${mild.length} teeth`);
+            hygieneDetails.push(`   • Moderate (5-6mm): ${moderate.length} teeth`);
+            hygieneDetails.push(`   • Severe (≥7mm): ${severe.length} teeth`);
+            
+            // Show detailed tooth-by-tooth data for problem areas
+            const problemTeeth = depths.filter(([tooth, d]: any) => d >= 5 || bleeding[tooth]);
+            
+            if (problemTeeth.length > 0 && problemTeeth.length <= 20) {
+              hygieneDetails.push(`\n   Individual tooth data (problem areas):`);
+              
+              problemTeeth.forEach(([tooth, depth]: any) => {
+                const isDeep = depth >= 5;
+                const isBleeding = bleeding[tooth];
+                const indicators = [];
+                if (isDeep) indicators.push(`${depth}mm pocket`);
+                if (isBleeding) indicators.push('bleeding');
+                hygieneDetails.push(`   • Tooth ${tooth}: ${indicators.join(', ')}`);
+              });
+            } else if (problemTeeth.length > 20) {
+              hygieneDetails.push(`\n   ${problemTeeth.length} teeth with pockets ≥5mm or bleeding`);
+              hygieneDetails.push(`   (Too many to list individually - see full assessment)`);
             }
           }
           
-          if (assessment.bleedingOnProbing) {
-            const bleeding = Object.entries(assessment.bleedingOnProbing).filter(([_, b]: any) => b);
-            const bleedingPercent = (bleeding.length / 32 * 100).toFixed(1);
-            hygieneDetails.push(`🩸 Bleeding on probing: ${bleeding.length} sites (${bleedingPercent}%)`);
-            if (bleeding.length > 0 && bleeding.length <= 10) {
-              hygieneDetails.push(`   Teeth with bleeding: ${bleeding.map(([t]) => t).join(', ')}`);
-            }
-          }
-          
+          // AAP CLASSIFICATION
           if (assessment.aapStage || assessment.aapGrade) {
-            const aapDetails = [];
-            if (assessment.aapStage) aapDetails.push(`Stage ${assessment.aapStage}`);
-            if (assessment.aapGrade) aapDetails.push(`Grade ${assessment.aapGrade}`);
-            hygieneDetails.push(`📋 AAP Classification: ${aapDetails.join(', ')}`);
+            const AAP_STAGE_LABELS: Record<string, string> = {
+              '1': 'Stage I - Initial Periodontitis',
+              '2': 'Stage II - Moderate Periodontitis',
+              '3': 'Stage III - Severe Periodontitis',
+              '4': 'Stage IV - Advanced Periodontitis'
+            };
+            
+            const AAP_GRADE_LABELS: Record<string, string> = {
+              'A': 'Grade A - Slow Rate of Progression',
+              'B': 'Grade B - Moderate Rate of Progression',
+              'C': 'Grade C - Rapid Rate of Progression',
+              'D': 'Grade D - Necrotizing Periodontal Disease'
+            };
+            
+            hygieneDetails.push(`\n📋 AAP PERIODONTAL CLASSIFICATION:`);
+            if (assessment.aapStage) {
+              hygieneDetails.push(`   ${AAP_STAGE_LABELS[assessment.aapStage] || `Stage ${assessment.aapStage}`}`);
+            }
+            if (assessment.aapGrade) {
+              hygieneDetails.push(`   ${AAP_GRADE_LABELS[assessment.aapGrade] || `Grade ${assessment.aapGrade}`}`);
+            }
           }
           
           return {
-            summary: `Calculus: ${assessment.calculusLevel || 'none'}, Plaque: ${assessment.plaqueLevel || 'none'}`,
+            summary: `Calculus: ${calculusLevel}, Plaque: ${plaqueLevel}${assessment.aapStage ? `, AAP Stage ${assessment.aapStage}` : ''}`,
             details: hygieneDetails
           };
         }
