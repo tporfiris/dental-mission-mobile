@@ -162,55 +162,61 @@ const parseAssessmentData = (data: string, type: string) => {
               hygieneDetails.push(`   Affected quadrants: ${quadrants.join(', ')}`);
             }
           }
+                    
           
-          // PROBING DEPTHS & BLEEDING
-          if (assessment.probingDepths && assessment.bleedingOnProbing) {
+          // PROBING DEPTHS
+          if (assessment.probingDepths) {
             const depths = Object.entries(assessment.probingDepths);
-            const bleeding = assessment.bleedingOnProbing;
             
-            // Calculate statistics
-            const avgDepth = depths.reduce((sum: number, [_, d]: any) => sum + d, 0) / depths.length;
-            const deepPockets = depths.filter(([_, d]: any) => d >= 5);
-            const bleedingTeeth = depths.filter(([tooth, _]: any) => bleeding[tooth]);
-            const bleedingPercent = (bleedingTeeth.length / depths.length * 100).toFixed(1);
+            // Group teeth by depth range
+            const depthGroups: Record<string, string[]> = {
+              '7+': [],
+              '5-6': [],
+              '4': [],
+              '≤3': []
+            };
             
-            hygieneDetails.push(`\n📏 PROBING DEPTHS & BLEEDING:`);
-            hygieneDetails.push(`   Average probing depth: ${avgDepth.toFixed(1)}mm`);
-            hygieneDetails.push(`   Bleeding sites: ${bleedingTeeth.length} of ${depths.length} teeth (${bleedingPercent}%)`);
+            depths.forEach(([tooth, depth]: any) => {
+              if (depth >= 7) {
+                depthGroups['7+'].push(tooth);
+              } else if (depth >= 5) {
+                depthGroups['5-6'].push(tooth);
+              } else if (depth === 4) {
+                depthGroups['4'].push(tooth);
+              } else {
+                depthGroups['≤3'].push(tooth);
+              }
+            });
             
-            if (deepPockets.length > 0) {
-              hygieneDetails.push(`   ⚠ Deep pockets (≥5mm): ${deepPockets.length} teeth`);
+            hygieneDetails.push(`\n📏 PROBING DEPTH:`);
+            
+            // Show problem depths first (severe to mild)
+            if (depthGroups['7+'].length > 0) {
+              hygieneDetails.push(`   • Teeth ${depthGroups['7+'].join(', ')}: 7+mm (severe)`);
             }
+            if (depthGroups['5-6'].length > 0) {
+              hygieneDetails.push(`   • Teeth ${depthGroups['5-6'].join(', ')}: 5-6mm (moderate)`);
+            }
+            if (depthGroups['4'].length > 0) {
+              hygieneDetails.push(`   • Teeth ${depthGroups['4'].join(', ')}: 4mm (mild)`);
+            }
+            if (depthGroups['≤3'].length > 0) {
+              hygieneDetails.push(`   • Teeth ${depthGroups['≤3'].join(', ')}: ≤3mm (healthy)`);
+            }
+          }
+
+          // BLEEDING
+          if (assessment.bleedingOnProbing) {
+            const bleeding = assessment.bleedingOnProbing;
+            const bleedingTeeth = Object.entries(bleeding)
+              .filter(([_, bleeds]: any) => bleeds)
+              .map(([tooth, _]: any) => tooth);
             
-            // Group teeth by severity for better readability
-            const healthy = depths.filter(([_, d]: any) => d <= 3);
-            const mild = depths.filter(([_, d]: any) => d === 4);
-            const moderate = depths.filter(([_, d]: any) => d >= 5 && d <= 6);
-            const severe = depths.filter(([_, d]: any) => d >= 7);
-            
-            hygieneDetails.push(`\n   Breakdown by severity:`);
-            hygieneDetails.push(`   • Healthy (≤3mm): ${healthy.length} teeth`);
-            hygieneDetails.push(`   • Mild (4mm): ${mild.length} teeth`);
-            hygieneDetails.push(`   • Moderate (5-6mm): ${moderate.length} teeth`);
-            hygieneDetails.push(`   • Severe (≥7mm): ${severe.length} teeth`);
-            
-            // Show detailed tooth-by-tooth data for problem areas
-            const problemTeeth = depths.filter(([tooth, d]: any) => d >= 5 || bleeding[tooth]);
-            
-            if (problemTeeth.length > 0 && problemTeeth.length <= 20) {
-              hygieneDetails.push(`\n   Individual tooth data (problem areas):`);
-              
-              problemTeeth.forEach(([tooth, depth]: any) => {
-                const isDeep = depth >= 5;
-                const isBleeding = bleeding[tooth];
-                const indicators = [];
-                if (isDeep) indicators.push(`${depth}mm pocket`);
-                if (isBleeding) indicators.push('bleeding');
-                hygieneDetails.push(`   • Tooth ${tooth}: ${indicators.join(', ')}`);
-              });
-            } else if (problemTeeth.length > 20) {
-              hygieneDetails.push(`\n   ${problemTeeth.length} teeth with pockets ≥5mm or bleeding`);
-              hygieneDetails.push(`   (Too many to list individually - see full assessment)`);
+            hygieneDetails.push(`\n🩸 BLEEDING:`);
+            if (bleedingTeeth.length > 0) {
+              hygieneDetails.push(`   • Bleeding? Yes - teeth ${bleedingTeeth.join(', ')}`);
+            } else {
+              hygieneDetails.push(`   • Bleeding? No`);
             }
           }
           
