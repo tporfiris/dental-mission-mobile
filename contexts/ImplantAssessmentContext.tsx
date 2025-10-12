@@ -1,4 +1,8 @@
+// contexts/ImplantAssessmentContext.tsx
 import React, { createContext, useContext, useState } from 'react';
+import { database } from '../db';
+import { Q } from '@nozbe/watermelondb';
+import ImplantAssessment from '../db/models/ImplantAssessment';
 
 type ImplantMode = 'single' | 'bridge';
 type TimingMode = 'immediate' | 'delayed';
@@ -32,6 +36,10 @@ interface ImplantAssessmentContextType {
   updateTimingMode: (timing: TimingMode) => void;
   updateNotes: (notes: string) => void;
   clearCurrentSelection: () => void;
+  saveAssessment: (patientId: string) => Promise<void>;
+  loadLatestAssessment: (patientId: string) => Promise<void>;
+  loadAllAssessments: (patientId: string) => Promise<ImplantAssessment[]>;
+  resetState: () => void;
 }
 
 const ImplantAssessmentContext = createContext<ImplantAssessmentContextType>({
@@ -44,6 +52,10 @@ const ImplantAssessmentContext = createContext<ImplantAssessmentContextType>({
   updateTimingMode: () => {},
   updateNotes: () => {},
   clearCurrentSelection: () => {},
+  saveAssessment: async () => {},
+  loadLatestAssessment: async () => {},
+  loadAllAssessments: async () => [],
+  resetState: () => {},
 });
 
 export const useImplantAssessment = () => useContext(ImplantAssessmentContext);
@@ -105,6 +117,75 @@ export const ImplantAssessmentProvider: React.FC<{ children: React.ReactNode }> 
     });
   };
 
+  // ✅ ALWAYS create a new assessment - never update existing ones
+  const saveAssessment = async (patientId: string) => {
+    try {
+      await database.write(async () => {
+        await database.get<ImplantAssessment>('implant_assessments').create(assessment => {
+          assessment.patientId = patientId;
+          assessment.data = JSON.stringify(implantState);
+          assessment.createdAt = new Date();
+          assessment.updatedAt = new Date();
+        });
+      });
+      
+      console.log('✅ New implant assessment created for patient:', patientId);
+      console.log('📊 Assessment data:', implantState);
+    } catch (error) {
+      console.error('❌ Error saving implant assessment:', error);
+      throw error;
+    }
+  };
+
+  // Load the most recent assessment (for pre-filling forms)
+  const loadLatestAssessment = async (patientId: string) => {
+    try {
+      const assessments = await database
+        .get<ImplantAssessment>('implant_assessments')
+        .query(
+          Q.where('patient_id', patientId),
+          Q.sortBy('created_at', Q.desc),
+          Q.take(1)
+        )
+        .fetch();
+
+      if (assessments.length > 0) {
+        const data = JSON.parse(assessments[0].data);
+        setImplantState(data);
+        console.log('✅ Loaded latest implant assessment for patient:', patientId);
+      } else {
+        console.log('ℹ️ No previous implant assessment found for patient:', patientId);
+      }
+    } catch (error) {
+      console.error('❌ Error loading latest implant assessment:', error);
+    }
+  };
+
+  // Load ALL assessments for history/viewing
+  const loadAllAssessments = async (patientId: string) => {
+    try {
+      const assessments = await database
+        .get<ImplantAssessment>('implant_assessments')
+        .query(
+          Q.where('patient_id', patientId),
+          Q.sortBy('created_at', Q.desc)
+        )
+        .fetch();
+
+      console.log(`✅ Loaded ${assessments.length} implant assessment(s) for patient:`, patientId);
+      return assessments;
+    } catch (error) {
+      console.error('❌ Error loading all implant assessments:', error);
+      return [];
+    }
+  };
+
+  // Reset state to default
+  const resetState = () => {
+    setImplantState(defaultImplantState);
+    console.log('🔄 Implant assessment state reset to default');
+  };
+
   return (
     <ImplantAssessmentContext.Provider value={{
       implantState,
@@ -116,6 +197,10 @@ export const ImplantAssessmentProvider: React.FC<{ children: React.ReactNode }> 
       updateTimingMode,
       updateNotes,
       clearCurrentSelection,
+      saveAssessment,
+      loadLatestAssessment,
+      loadAllAssessments,
+      resetState,
     }}>
       {children}
     </ImplantAssessmentContext.Provider>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,6 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { database } from '../db';
-import ImplantAssessment from '../db/models/ImplantAssessment';
-import { Q } from '@nozbe/watermelondb';
-import uuid from 'react-native-uuid';
 import { useImplantAssessment } from '../contexts/ImplantAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
 
@@ -19,7 +15,7 @@ const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
 const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
 
-const ImplantAssessmentScreen = ({ route }: any) => {
+const ImplantAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   
   const { 
@@ -29,11 +25,27 @@ const ImplantAssessmentScreen = ({ route }: any) => {
     toggleTooth,
     updateBoneGrafting,
     updateTimingMode,
-    clearCurrentSelection
+    clearCurrentSelection,
+    saveAssessment,  // ✅ Get from context
+    loadLatestAssessment,  // ✅ Get from context
   } = useImplantAssessment();
 
   const { implantMode, boneGraftingPlanned, timingMode } = implantState;
   const selectedTeeth = getSelectedTeeth();
+
+  // ✅ Optional: Load previous assessment on mount
+  useEffect(() => {
+    const loadPrevious = async () => {
+      await loadLatestAssessment(patientId);
+    };
+    
+    
+    loadPrevious();
+    
+    // ✅ Optional: Reset state when leaving screen
+    return () => {
+    };
+  }, [patientId]);
 
   const toothOffsets: Record<string, { x: number; y: number }> = {
     '21': { x: 20, y: -120 }, '11': { x: -20, y: -120 },
@@ -54,62 +66,39 @@ const ImplantAssessmentScreen = ({ route }: any) => {
     '38': { x: 125, y: 130 }, '48': { x: -125, y: 130 },
   };
 
-  const saveAssessment = async () => {
+  // ✅ UPDATED: Use context's saveAssessment function
+  const handleSaveAssessment = async () => {
     try {
-      const collection = database.get<ImplantAssessment>('implant_assessments');
-      console.log('🔎 Looking for existing implant assessment for patient:', patientId);
-      const existing = await collection
-        .query(Q.where('patient_id', Q.eq(patientId)))
-        .fetch();
+      // Validate that at least one tooth is selected
+      if (implantState.singleImplantTeeth.length === 0 && implantState.bridgeImplantTeeth.length === 0) {
+        Alert.alert(
+          'No Teeth Selected',
+          'Please select at least one tooth for implant assessment.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
 
-      console.log('🔍 Matched existing implant assessment:', existing);
-
-      const assessmentData = {
-        implantMode,
-        singleImplantTeeth: implantState.singleImplantTeeth,
-        bridgeImplantTeeth: implantState.bridgeImplantTeeth,
-        boneGraftingPlanned,
-        timingMode,
-        timestamp: new Date().toISOString()
-      };
+      // Call the context's save function
+      await saveAssessment(patientId);
       
-      const jsonData = JSON.stringify(assessmentData);
-
-      await database.write(async () => {
-        console.log("existing implant assessments:")
-        console.log(existing)
-        console.log("existing length:")
-        console.log(existing.length)
-        if (existing.length > 0) {
-          console.log('🔍 Existing implant assessments for patient', patientId, ':', existing);
-          // Update existing record
-          await existing[0].update(record => {
-            record.data = jsonData;
-            record.updatedAt = new Date();
-          });
-          console.log('✅ Implant assessment updated');
-          Alert.alert('✅ Implant assessment updated');
-        } else {
-          // Create new record
-          await collection.create(record => {
-            const id = uuid.v4();
-            record._raw.id = id;
-            record.patientId = patientId; // must match schema!
-            record.data = jsonData;
-            record.createdAt = new Date();
-            record.updatedAt = new Date();
-            Alert.alert('✅ Implant assessment created')
-            console.log('🔧 Created implant assessment record:', {
-              id,
-              patient_id: patientId,
-              data: jsonData,
-            });
-          });
-        }
-      });
-    } catch (err) {
-      console.error('❌ Failed to save implant assessment:', err);
-      Alert.alert('❌ Failed to save implant assessment');
+      Alert.alert(
+        'Success',
+        'Implant assessment saved successfully!',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack()
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('❌ Error saving implant assessment:', error);
+      Alert.alert(
+        'Error',
+        'Failed to save implant assessment. Please try again.',
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -339,7 +328,7 @@ const ImplantAssessmentScreen = ({ route }: any) => {
         </View>
       </View>
 
-      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+      <Pressable style={styles.saveButton} onPress={handleSaveAssessment}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
     </ScrollView>

@@ -1,4 +1,4 @@
-// screens/ViewAssessmentScreen.tsx - Enhanced with formatted assessment display
+// screens/ViewAssessmentScreen.tsx - Enhanced with date grouping
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
@@ -9,6 +9,20 @@ import ExtractionsAssessment from '../db/models/ExtractionsAssessment';
 import FillingsAssessment from '../db/models/FillingsAssessment';
 import DentureAssessment from '../db/models/DentureAssessment';
 import ImplantAssessment from '../db/models/ImplantAssessment';
+
+interface Assessment {
+  id: string;
+  type: string;
+  emoji: string;
+  data: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface GroupedAssessment {
+  date: string;
+  assessments: Assessment[];
+}
 
 // Helper function to parse assessment data with detailed formatting
 const parseAssessmentData = (data: string, type: string) => {
@@ -65,7 +79,6 @@ const parseAssessmentData = (data: string, type: string) => {
           const assessment = parsed;
           const hygieneDetails = [];
           
-          // CALCULUS ASSESSMENT
           const calculusLevel = assessment.calculusLevel || 'none';
           const CALCULUS_LABELS: Record<string, string> = {
             'none': 'No Calculus',
@@ -93,7 +106,6 @@ const parseAssessmentData = (data: string, type: string) => {
             }
           }
           
-          // PLAQUE ASSESSMENT
           const plaqueLevel = assessment.plaqueLevel || 'none';
           const PLAQUE_LABELS: Record<string, string> = {
             'none': 'No Plaque',
@@ -121,11 +133,8 @@ const parseAssessmentData = (data: string, type: string) => {
             }
           }
           
-          // PROBING DEPTHS
           if (assessment.probingDepths) {
             const depths = Object.entries(assessment.probingDepths);
-            
-            // Group teeth by depth range
             const depthGroups: Record<string, string[]> = {
               '7+': [],
               '5-6': [],
@@ -147,7 +156,6 @@ const parseAssessmentData = (data: string, type: string) => {
             
             hygieneDetails.push(`\n📏 PROBING DEPTH:`);
             
-            // Show problem depths first (severe to mild)
             if (depthGroups['7+'].length > 0) {
               hygieneDetails.push(`   • Teeth ${depthGroups['7+'].join(', ')}: 7+mm (severe)`);
             }
@@ -161,8 +169,7 @@ const parseAssessmentData = (data: string, type: string) => {
               hygieneDetails.push(`   • Teeth ${depthGroups['≤3'].join(', ')}: ≤3mm (healthy)`);
             }
           }
-          
-          // BLEEDING
+
           if (assessment.bleedingOnProbing) {
             const bleeding = assessment.bleedingOnProbing;
             const bleedingTeeth = Object.entries(bleeding)
@@ -177,7 +184,6 @@ const parseAssessmentData = (data: string, type: string) => {
             }
           }
           
-          // AAP CLASSIFICATION
           if (assessment.aapStage || assessment.aapGrade) {
             const AAP_STAGE_LABELS: Record<string, string> = {
               '1': 'Stage I - Initial Periodontitis',
@@ -408,14 +414,7 @@ const ViewAssessmentScreen = ({ route }: any) => {
   const { patientId } = route.params;
   const db = useDatabase();
   const [loading, setLoading] = useState(true);
-  const [assessments, setAssessments] = useState<any>({
-    dentition: null,
-    hygiene: null,
-    extractions: null,
-    fillings: null,
-    denture: null,
-    implant: null,
-  });
+  const [groupedAssessments, setGroupedAssessments] = useState<GroupedAssessment[]>([]);
   const [expandedAssessment, setExpandedAssessment] = useState<string | null>(null);
 
   useEffect(() => {
@@ -432,16 +431,46 @@ const ViewAssessmentScreen = ({ route }: any) => {
           db.get<ImplantAssessment>('implant_assessments').query(Q.where('patient_id', Q.eq(patientId))).fetch(),
         ]);
 
-        setAssessments({
-          dentition: dentition.length > 0 ? dentition[0].data : null,
-          hygiene: hygiene.length > 0 ? hygiene[0].data : null,
-          extractions: extractions.length > 0 ? extractions[0].data : null,
-          fillings: fillings.length > 0 ? fillings[0].data : null,
-          denture: denture.length > 0 ? denture[0].data : null,
-          implant: implant.length > 0 ? implant[0].data : null,
+        // Combine all assessments with their types
+        const allAssessments: Assessment[] = [
+          ...dentition.map(a => ({ id: a.id, type: 'Dentition', emoji: '🦷', data: a.data, createdAt: a.createdAt })),
+          ...hygiene.map(a => ({ id: a.id, type: 'Hygiene', emoji: '🪥', data: a.data, createdAt: a.createdAt })),
+          ...extractions.map(a => ({ id: a.id, type: 'Extractions', emoji: '🛠️', data: a.data, createdAt: a.createdAt })),
+          ...fillings.map(a => ({ id: a.id, type: 'Fillings', emoji: '🧱', data: a.data, createdAt: a.createdAt })),
+          ...denture.map(a => ({ id: a.id, type: 'Denture', emoji: '🦷', data: a.data, createdAt: a.createdAt })),
+          ...implant.map(a => ({ id: a.id, type: 'Implant', emoji: '🧲', data: a.data, createdAt: a.createdAt })),
+        ];
+
+        // Group assessments by date
+        const grouped = allAssessments.reduce((acc, assessment) => {
+          const dateKey = assessment.createdAt.toLocaleDateString();
+          
+          const existingGroup = acc.find(g => g.date === dateKey);
+          if (existingGroup) {
+            existingGroup.assessments.push(assessment);
+          } else {
+            acc.push({
+              date: dateKey,
+              assessments: [assessment]
+            });
+          }
+          
+          return acc;
+        }, [] as GroupedAssessment[]);
+
+        // Sort groups by date (newest first) and sort assessments within each group
+        grouped.sort((a, b) => {
+          const dateA = new Date(a.assessments[0].createdAt);
+          const dateB = new Date(b.assessments[0].createdAt);
+          return dateB.getTime() - dateA.getTime();
         });
 
-        console.log('✅ Assessments loaded successfully');
+        grouped.forEach(group => {
+          group.assessments.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        });
+
+        setGroupedAssessments(grouped);
+        console.log('✅ Assessments loaded and grouped by date');
       } catch (err) {
         console.error('❌ Failed to load assessments:', err);
       } finally {
@@ -452,36 +481,28 @@ const ViewAssessmentScreen = ({ route }: any) => {
     loadAssessments();
   }, [patientId]);
 
-  const toggleExpansion = (type: string) => {
-    setExpandedAssessment(expandedAssessment === type ? null : type);
+  const toggleExpansion = (id: string) => {
+    setExpandedAssessment(expandedAssessment === id ? null : id);
   };
 
-  const renderAssessmentCard = (title: string, type: string, data: any, emoji: string) => {
-    if (!data) {
-      return (
-        <View key={type} style={styles.assessmentCard}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.assessmentTitle}>{emoji} {title}</Text>
-          </View>
-          <Text style={styles.noDataText}>No assessment data available</Text>
-        </View>
-      );
-    }
-
-    const parsedData = parseAssessmentData(data, type);
-    const isExpanded = expandedAssessment === type;
+  const renderAssessmentCard = (assessment: Assessment) => {
+    const parsedData = parseAssessmentData(assessment.data, assessment.type.toLowerCase());
+    const isExpanded = expandedAssessment === assessment.id;
 
     return (
       <TouchableOpacity 
-        key={type}
+        key={assessment.id}
         style={styles.assessmentCard}
-        onPress={() => toggleExpansion(type)}
+        onPress={() => toggleExpansion(assessment.id)}
         activeOpacity={0.7}
       >
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderLeft}>
-            <Text style={styles.assessmentTitle}>{emoji} {title}</Text>
+            <Text style={styles.assessmentTitle}>{assessment.emoji} {assessment.type} Assessment</Text>
             <Text style={styles.summaryText}>{parsedData.summary}</Text>
+            <Text style={styles.assessmentTime}>
+              {assessment.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
           </View>
           <Text style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</Text>
         </View>
@@ -508,31 +529,36 @@ const ViewAssessmentScreen = ({ route }: any) => {
     );
   }
 
-  const assessmentCount = Object.values(assessments).filter(a => a !== null).length;
+  const totalAssessmentCount = groupedAssessments.reduce((sum, group) => sum + group.assessments.length, 0);
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>📋 Patient Assessment Summary</Text>
         <Text style={styles.headerSubtitle}>
-          {assessmentCount} assessment{assessmentCount !== 1 ? 's' : ''} available
+          {totalAssessmentCount} assessment{totalAssessmentCount !== 1 ? 's' : ''} across {groupedAssessments.length} date{groupedAssessments.length !== 1 ? 's' : ''}
         </Text>
       </View>
 
-      {renderAssessmentCard('Dentition Assessment', 'dentition', assessments.dentition, '🦷')}
-      {renderAssessmentCard('Hygiene Assessment', 'hygiene', assessments.hygiene, '🪥')}
-      {renderAssessmentCard('Extractions Assessment', 'extractions', assessments.extractions, '🛠️')}
-      {renderAssessmentCard('Fillings Assessment', 'fillings', assessments.fillings, '🧱')}
-      {renderAssessmentCard('Denture Assessment', 'denture', assessments.denture, '🦷')}
-      {renderAssessmentCard('Implant Assessment', 'implant', assessments.implant, '🧲')}
-
-      {assessmentCount === 0 && (
+      {groupedAssessments.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyStateText}>
             No assessments found for this patient.{'\n'}
             Complete assessments before starting treatment.
           </Text>
         </View>
+      ) : (
+        groupedAssessments.map((group, groupIndex) => (
+          <View key={groupIndex} style={styles.dateGroup}>
+            <View style={styles.dateHeader}>
+              <Text style={styles.dateText}>📅 {group.date}</Text>
+              <Text style={styles.dateCount}>
+                {group.assessments.length} assessment{group.assessments.length !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            {group.assessments.map(assessment => renderAssessmentCard(assessment))}
+          </View>
+        ))
       )}
     </ScrollView>
   );
@@ -572,10 +598,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
+  dateGroup: {
+    marginTop: 16,
+  },
+  dateHeader: {
+    backgroundColor: '#007bff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  dateCount: {
+    fontSize: 14,
+    color: '#fff',
+    opacity: 0.9,
+  },
   assessmentCard: {
     backgroundColor: '#fff',
     marginHorizontal: 16,
-    marginTop: 16,
+    marginBottom: 12,
     borderRadius: 12,
     padding: 16,
     shadowColor: '#000',

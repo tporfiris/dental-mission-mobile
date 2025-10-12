@@ -8,10 +8,6 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { database } from '../db'; // adjust path if needed
-import DentureAssessment from '../db/models/DentureAssessment';
-import { Q } from '@nozbe/watermelondb';
-import uuid from 'react-native-uuid';
 import { useDentureAssessment } from '../contexts/DentureAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
 
@@ -135,11 +131,14 @@ const AssessmentGate = ({ onConfirm, onCancel }: { onConfirm: () => void; onCanc
 const DentureAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const [showGate, setShowGate] = useState(true);
+  
+  // ✅ Get saveAssessment from context
   const { 
     dentureState, 
     updateDentureType, 
     updateDentureOptions, 
-    updateNotes 
+    updateNotes,
+    saveAssessment,  // ✅ Added this
   } = useDentureAssessment();
 
   const { selectedDentureType, dentureOptions, notes } = dentureState;
@@ -155,61 +154,15 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const saveAssessment = async () => {
+  // ✅ Simplified save function - just call context function
+  const handleSaveAssessment = async () => {
     try {
-      const collection = database.get<DentureAssessment>('denture_assessments');
-      console.log('🔎 Looking for existing denture assessment for patient:', patientId);
-      const existing = await collection
-        .query(Q.where('patient_id', Q.eq(patientId)))
-        .fetch();
-
-      console.log('🔍 Matched existing denture assessment:', existing);
-  
-      // Create comprehensive assessment data object
-      const assessmentData = {
-        selectedDentureType,
-        dentureOptions,
-        notes,
-        timestamp: new Date().toISOString()
-      };
-      
-      const jsonData = JSON.stringify(assessmentData);
-  
-      await database.write(async () => {
-        console.log("existing denture assessments:")
-        console.log(existing)
-        console.log("existing length:")
-        console.log(existing.length)
-        if (existing.length > 0) {
-          console.log('🔍 Existing denture assessments for patient', patientId, ':', existing);
-          // Update existing record
-          await existing[0].update(record => {
-            record.data = jsonData;
-            record.updatedAt = new Date();
-          });
-          console.log('✅ Denture assessment updated');
-          Alert.alert('✅ Denture assessment updated');
-        } else {
-          // Create new record
-          await collection.create(record => {
-            const id = uuid.v4();
-            record._raw.id = id;
-            record.patientId = patientId; // must match schema!
-            record.data = jsonData;
-            record.createdAt = new Date();
-            record.updatedAt = new Date();
-            Alert.alert('✅ Denture assessment created')
-            console.log('🔧 Created denture assessment record:', {
-              id,
-              patient_id: patientId,
-              data: jsonData,
-            });
-          });
-        }
-      });
-    } catch (err) {
-      console.error('❌ Failed to save denture assessment:', err);
-      Alert.alert('❌ Failed to save denture assessment');
+      await saveAssessment(patientId);
+      Alert.alert('Success', 'Denture assessment saved!');
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error saving denture assessment:', error);
+      Alert.alert('Error', 'Failed to save assessment. Please try again.');
     }
   };
 
@@ -309,8 +262,8 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
         </View>
       </View>
 
-      {/* Save Button */}
-      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+      {/* Save Button - ✅ Updated to use new handler */}
+      <Pressable style={styles.saveButton} onPress={handleSaveAssessment}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
     </ScrollView>

@@ -5,11 +5,8 @@ import {
   StyleSheet,
   Pressable,
   ScrollView,
+  Alert,
 } from 'react-native';
-import { database } from '../db'; // adjust path if needed
-import DentitionAssessment from '../db/models/DentitionAssessment';
-import { Q } from '@nozbe/watermelondb';
-import uuid from 'react-native-uuid';
 import { useDentitionAssessment } from '../contexts/DentitionAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
 
@@ -42,52 +39,6 @@ const canSwitchToPrimary = (toothId: string): boolean => {
   return permanentTeeth.includes(toothId);
 };
 
-// Helper function to check if a tooth is primary
-const isPrimaryTooth = (toothId: string): boolean => {
-  return toothId.startsWith('5') || toothId.startsWith('6') || toothId.startsWith('7') || toothId.startsWith('8');
-};
-
-// Helper function to load saved assessment data
-const loadSavedAssessment = async (patientId: string, setToothStates: any, setPrimaryTeeth: any) => {
-  try {
-    const collection = database.get<DentitionAssessment>('dentition_assessments');
-    const existing = await collection
-      .query(Q.where('patient_id', Q.eq(patientId)))
-      .fetch();
-
-    if (existing.length > 0) {
-      try {
-        const savedData = JSON.parse(existing[0].data);
-        
-        if (savedData.savedWithPrimaryNumbers && savedData.originalToothStates) {
-          // New format - data was saved with primary numbers, restore original mappings
-          console.log('📋 Loading assessment with primary number format');
-          setToothStates(savedData.originalToothStates);
-          setPrimaryTeeth(new Set(savedData.primaryTeeth || []));
-        } else if (savedData.toothStates && savedData.primaryTeeth) {
-          // Intermediate format - has primary teeth data but uses original numbering
-          console.log('📋 Loading assessment with primary teeth tracking');
-          setToothStates(savedData.toothStates);
-          setPrimaryTeeth(new Set(savedData.primaryTeeth));
-        } else {
-          // Old format - just tooth states
-          console.log('📋 Loading legacy assessment format');
-          setToothStates(savedData);
-          setPrimaryTeeth(new Set());
-        }
-        
-        console.log('✅ Loaded existing assessment');
-      } catch (parseError) {
-        console.warn('⚠️ Could not parse saved assessment data, using defaults');
-        setToothStates(initialToothStates);
-        setPrimaryTeeth(new Set());
-      }
-    }
-  } catch (error) {
-    console.error('❌ Error loading saved assessment:', error);
-  }
-};
-
 const initialToothStates: Record<string, ToothState> = {};
 [
   ...UPPER_RIGHT, ...UPPER_LEFT,
@@ -96,17 +47,63 @@ const initialToothStates: Record<string, ToothState> = {};
   initialToothStates[id] = 'present';
 });
 
-const DentitionAssessmentScreen = ({ route }: any) => {
+const DentitionAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  const { toothStates, setToothStates } = useDentitionAssessment();
+  
+  // Get context functions
+  const { 
+    toothStates, 
+    setToothStates,
+    saveAssessment,
+    loadLatestAssessment,
+  } = useDentitionAssessment();
   
   // Track which teeth are currently showing as primary
   const [primaryTeeth, setPrimaryTeeth] = useState<Set<string>>(new Set());
 
   // Load saved assessment data on component mount
   useEffect(() => {
-    loadSavedAssessment(patientId, setToothStates, setPrimaryTeeth);
-  }, [patientId, setToothStates]);
+    const loadPrevious = async () => {
+      try {
+        const data = await loadLatestAssessment(patientId);
+        
+        if (data) {
+          if (data.savedWithPrimaryNumbers && data.originalToothStates) {
+            // New format - data was saved with primary numbers, restore original mappings
+            console.log('📋 Loading assessment with primary number format');
+            setToothStates(data.originalToothStates);
+            setPrimaryTeeth(new Set(data.primaryTeeth || []));
+          } else if (data.toothStates && data.primaryTeeth) {
+            // Intermediate format - has primary teeth data but uses original numbering
+            console.log('📋 Loading assessment with primary teeth tracking');
+            setToothStates(data.toothStates);
+            setPrimaryTeeth(new Set(data.primaryTeeth));
+          } else {
+            // Old format - just tooth states
+            console.log('📋 Loading legacy assessment format');
+            setToothStates(data);
+            setPrimaryTeeth(new Set());
+          }
+          
+          console.log('✅ Loaded existing assessment');
+        } else {
+          console.log('ℹ️ No previous assessment found, using defaults');
+          setToothStates(initialToothStates);
+          setPrimaryTeeth(new Set());
+        }
+      } catch (error) {
+        console.error('❌ Error loading assessment:', error);
+        setToothStates(initialToothStates);
+        setPrimaryTeeth(new Set());
+      }
+    };
+    
+    loadPrevious();
+    
+    // Reset on unmount
+    return () => {
+    };
+  }, [patientId]);
 
   // Function to get the current display tooth ID (permanent or primary)
   const getCurrentToothId = (originalToothId: string): string => {
@@ -182,16 +179,9 @@ const DentitionAssessmentScreen = ({ route }: any) => {
     });
   };
 
-  const saveAssessment = async () => {
+  // ✅ NEW: Use context's saveAssessment function
+  const handleSave = async () => {
     try {
-      const collection = database.get<DentitionAssessment>('dentition_assessments');
-      console.log('🔎 Looking for existing assessment for patient:', patientId);
-      const existing = await collection
-      .query(Q.where('patient_id', Q.eq(patientId)))
-      .fetch();
-
-      console.log('🔍 Matched existing assessment:', existing);
-  
       // Transform tooth states to use current display tooth numbers (primary/permanent)
       const transformedToothStates: Record<string, ToothState> = {};
       
@@ -211,50 +201,21 @@ const DentitionAssessmentScreen = ({ route }: any) => {
         originalToothStates: toothStates, // Keep original mapping for reference
         savedWithPrimaryNumbers: true // Flag to indicate this data format
       };
-      const jsonData = JSON.stringify(assessmentData);
       
       console.log('💾 Saving assessment data:', {
         transformedToothStates,
         primaryTeethCount: primaryTeeth.size,
         primaryTeeth: Array.from(primaryTeeth)
       });
-  
-      await database.write(async () => {
-        console.log("existing:")
-        console.log(existing)
-        console.log("existing length:")
-        console.log(existing.length)
-        if (existing.length > 0) {
-          console.log('🔍 Existing assessments for patient', patientId, ':', existing);
-          // Update existing record
-          await existing[0].update(record => {
-            record.data = jsonData;
-            record.updatedAt = new Date();
-          });
-          console.log('✅ Dentition assessment updated with primary teeth saved as primary numbers');
-          alert('✅ Dentition assessment updated with primary teeth saved as primary numbers');
-        } else {
-          // Create new record
-          await collection.create(record => {
-            const id = uuid.v4();
-            record._raw.id = id;
-            record.patientId = patientId;// must match schema!
-            record.data = jsonData;
-            record.createdAt = new Date();
-            record.updatedAt = new Date();
-            // record.patient.set(patientId);
-            console.log('✅ Dentition assessment created with primary teeth saved as primary numbers');
-            alert('✅ Dentition assessment created with primary teeth saved as primary numbers')
-            console.log('🔧 Created assessment record:', {
-              id,
-              patient_id: patientId,
-              data: jsonData,
-            });
-          });
-        }
-      });
-    } catch (err) {
-      console.error('❌ Failed to save dentition assessment:', err);
+
+      // Call the context's saveAssessment with the transformed data
+      await saveAssessment(patientId, assessmentData);
+      
+      Alert.alert('Success', 'Dentition assessment saved!');
+      navigation.goBack();
+    } catch (error) {
+      console.error('❌ Error saving assessment:', error);
+      Alert.alert('Error', 'Failed to save assessment. Please try again.');
     }
   };
 
@@ -286,8 +247,6 @@ const DentitionAssessmentScreen = ({ route }: any) => {
     const currentToothId = getCurrentToothId(toothId);
     const canSwitch = canSwitchToPrimary(toothId);
     const isCurrentlyPrimary = primaryTeeth.has(toothId);
-    
-    console.log(`Rendering tooth ${toothId}: canSwitch=${canSwitch}, isCurrentlyPrimary=${isCurrentlyPrimary}, currentToothId=${currentToothId}`);
     
     return (
       <View key={toothId} style={{ position: 'absolute', left: position.left, top: position.top }}>
@@ -407,7 +366,7 @@ const DentitionAssessmentScreen = ({ route }: any) => {
         </View>
       </View>
       
-      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+      <Pressable style={styles.saveButton} onPress={handleSave}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
     </ScrollView>

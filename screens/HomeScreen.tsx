@@ -17,6 +17,12 @@ const HomeScreen = () => {
             <Text style={styles.roleSection}>🦷 Clinician Tools</Text>
             <Button title="Add New Patient" onPress={() => navigation.navigate('NewPatient')} />
             <View style={styles.spacer} />
+            <Button 
+              title="🔍 Search Existing Patients" 
+              onPress={() => navigation.navigate('PatientSearch')}
+              color="#17a2b8"
+            />
+            <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
             <View style={styles.spacer} />
             <Button 
@@ -32,6 +38,12 @@ const HomeScreen = () => {
           <>
             <Text style={styles.roleSection}>📋 Triage Intake Tools</Text>
             <Button title="Register New Patient" onPress={() => navigation.navigate('NewPatient')} />
+            <View style={styles.spacer} />
+            <Button 
+              title="🔍 Search Existing Patients" 
+              onPress={() => navigation.navigate('PatientSearch')}
+              color="#17a2b8"
+            />
             <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
             <View style={styles.spacer} />
@@ -54,6 +66,12 @@ const HomeScreen = () => {
             />
             <View style={styles.spacer} />
             <Button title="Register New Patient" onPress={() => navigation.navigate('NewPatient')} />
+            <View style={styles.spacer} />
+            <Button 
+              title="🔍 Search Existing Patients" 
+              onPress={() => navigation.navigate('PatientSearch')}
+              color="#17a2b8"
+            />
             <View style={styles.spacer} />
             <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
             <View style={styles.spacer} />

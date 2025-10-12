@@ -1,3 +1,4 @@
+// navigation/AppNavigator.tsx
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
@@ -32,6 +33,10 @@ import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import PatientListScreen from '../screens/PatientListScreen';
 import PatientDetailScreen from '../screens/PatientDetailScreen';
 
+// Patient Search Screens - ADD THESE IMPORTS
+import PatientSearchScreen from '../screens/PatientSearchScreen';
+import PatientProfileScreen from '../screens/PatientProfileScreen';
+
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
@@ -48,6 +53,25 @@ export default function AppNavigator() {
             component={HomeScreen}
             options={{ title: 'Dental Mission Home' }}
           />
+          
+          {/* Patient Search Screens - ADD THESE TWO SCREENS */}
+          <Stack.Screen 
+            name="PatientSearch" 
+            component={PatientSearchScreen}
+            options={{ 
+              title: 'Search Patients',
+              headerBackTitleVisible: false
+            }}
+          />
+          <Stack.Screen 
+            name="PatientProfile" 
+            component={PatientProfileScreen}
+            options={{ 
+              title: 'Patient Profile',
+              headerBackTitleVisible: false
+            }}
+          />
+          
           <Stack.Screen 
             name="VoiceRecordings" 
             component={VoiceRecordingsScreen}

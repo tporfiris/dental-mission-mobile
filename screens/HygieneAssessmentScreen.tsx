@@ -7,10 +7,6 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
-import { database } from '../db';
-import HygieneAssessment from '../db/models/HygieneAssessment';
-import { Q } from '@nozbe/watermelondb';
-import uuid from 'react-native-uuid';
 import { useHygieneAssessment } from '../contexts/HygieneAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
 
@@ -120,9 +116,16 @@ interface EnhancedHygieneState {
   showDepthSelector: boolean;
 }
 
-const HygieneAssessmentScreen = ({ route }: any) => {
+const HygieneAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  const { hygieneStates, setHygieneStates } = useHygieneAssessment();
+  
+  // ✅ Get saveAssessment and other functions from context
+  const { 
+    hygieneStates, 
+    setHygieneStates,
+    saveAssessment,
+    loadLatestAssessment,
+  } = useHygieneAssessment();
 
   // Create a comprehensive state object that gets preserved in the context
   const getInitialState = (): EnhancedHygieneState => {
@@ -159,6 +162,19 @@ const HygieneAssessmentScreen = ({ route }: any) => {
     return getInitialState();
   });
 
+  // Load previous assessment on mount (optional - for pre-filling)
+  useEffect(() => {
+    const loadPrevious = async () => {
+      await loadLatestAssessment(patientId);
+    };
+    
+    loadPrevious();
+    
+    // Reset on unmount
+    return () => {
+    };
+  }, [patientId]);
+
   // Save state to context whenever it changes
   useEffect(() => {
     setHygieneStates({
@@ -192,46 +208,15 @@ const HygieneAssessmentScreen = ({ route }: any) => {
     '38': { x: 125, y: 130 },   '48': { x: -125, y: 130 },
   };
 
-  // Save assessment to WatermelonDB
-  const saveAssessment = async () => {
+  // ✅ UPDATED: Use context's saveAssessment function
+  const handleSaveAssessment = async () => {
     try {
-      const collection = database.get<HygieneAssessment>('hygiene_assessments');
-      console.log('🔎 Looking for existing hygiene assessment for patient:', patientId);
-      const existing = await collection
-        .query(Q.where('patient_id', Q.eq(patientId)))
-        .fetch();
-
-      const assessmentData = {
-        ...enhancedState,
-        timestamp: new Date().toISOString(),
-        hygieneStates
-      };
-      
-      const jsonData = JSON.stringify(assessmentData);
-
-      await database.write(async () => {
-        if (existing.length > 0) {
-          await existing[0].update(record => {
-            record.data = jsonData;
-            record.updatedAt = new Date();
-          });
-          console.log('✅ Hygiene assessment updated');
-          Alert.alert('✅ Hygiene assessment updated');
-        } else {
-          await collection.create(record => {
-            const id = uuid.v4();
-            record._raw.id = id;
-            record.patientId = patientId;
-            record.data = jsonData;
-            record.createdAt = new Date();
-            record.updatedAt = new Date();
-            Alert.alert('✅ Hygiene assessment created')
-          });
-        }
-      });
-    } catch (err) {
-      console.error('❌ Failed to save hygiene assessment:', err);
-      Alert.alert('❌ Failed to save hygiene assessment');
+      await saveAssessment(patientId);
+      Alert.alert('Success', 'Hygiene assessment saved successfully!');
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error saving hygiene assessment:', error);
+      Alert.alert('Error', 'Failed to save hygiene assessment. Please try again.');
     }
   };
 
@@ -929,7 +914,7 @@ BLEEDING ON PROBING:
 
       {/* Action Buttons */}
       <View style={styles.actionButtons}>
-        <Pressable style={styles.saveButton} onPress={saveAssessment}>
+        <Pressable style={styles.saveButton} onPress={handleSaveAssessment}>
           <Text style={styles.saveButtonText}>Save Assessment</Text>
         </Pressable>
         
@@ -1076,7 +1061,6 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
   },
-  // AAP Classification Styles
   aapSection: {
     marginBottom: 24,
   },
@@ -1108,12 +1092,8 @@ const styles = StyleSheet.create({
     borderColor: '#007bff',
     backgroundColor: '#f8f9ff',
   },
-  aapStageOption: {
-    // Additional styling for stage options if needed
-  },
-  aapGradeOption: {
-    // Additional styling for grade options if needed
-  },
+  aapStageOption: {},
+  aapGradeOption: {},
   aapOptionHeader: {
     marginBottom: 8,
   },

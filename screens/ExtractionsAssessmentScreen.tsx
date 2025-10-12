@@ -8,10 +8,6 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { database } from '../db'; // adjust path if needed
-import ExtractionsAssessment from '../db/models/ExtractionsAssessment';
-import { Q } from '@nozbe/watermelondb';
-import uuid from 'react-native-uuid';
 import { useExtractionsAssessment } from '../contexts/ExtractionsAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
 
@@ -37,9 +33,14 @@ const REASON_ABBREVIATIONS = {
   'non-restorable': 'NR'
 };
 
-const ExtractionTreatmentPlanningScreen = ({ route }: any) => {
+const ExtractionTreatmentPlanningScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
-  const { extractionStates, setExtractionStates } = useExtractionsAssessment();
+  const { 
+    extractionStates, 
+    setExtractionStates,
+    saveAssessment,  // ✅ Get from context
+  } = useExtractionsAssessment();
+  
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -82,53 +83,15 @@ const ExtractionTreatmentPlanningScreen = ({ route }: any) => {
     '48': { x: -125, y: 130 },  // Lower left third molar (mirrored)
   };
 
-  const saveAssessment = async () => {
+  // ✅ Use the context's saveAssessment function
+  const handleSaveAssessment = async () => {
     try {
-      const collection = database.get<ExtractionsAssessment>('extractions_assessments');
-      console.log('🔎 Looking for existing extractions assessment for patient:', patientId);
-      const existing = await collection
-        .query(Q.where('patient_id', Q.eq(patientId)))
-        .fetch();
-
-      console.log('🔍 Matched existing extractions assessment:', existing);
-  
-      const jsonData = JSON.stringify(extractionStates);
-  
-      await database.write(async () => {
-        console.log("existing extractions assessments:")
-        console.log(existing)
-        console.log("existing length:")
-        console.log(existing.length)
-        if (existing.length > 0) {
-          console.log('🔍 Existing extractions assessments for patient', patientId, ':', existing);
-          // Update existing record
-          await existing[0].update(record => {
-            record.data = jsonData;
-            record.updatedAt = new Date();
-          });
-          console.log('✅ Extractions assessment updated');
-          Alert.alert('✅ Extractions assessment updated');
-        } else {
-          // Create new record
-          await collection.create(record => {
-            const id = uuid.v4();
-            record._raw.id = id;
-            record.patientId = patientId; // must match schema!
-            record.data = jsonData;
-            record.createdAt = new Date();
-            record.updatedAt = new Date();
-            Alert.alert('✅ Extractions assessment created')
-            console.log('🔧 Created extractions assessment record:', {
-              id,
-              patient_id: patientId,
-              data: jsonData,
-            });
-          });
-        }
-      });
-    } catch (err) {
-      console.error('❌ Failed to save extractions assessment:', err);
-      Alert.alert('❌ Failed to save extractions assessment');
+      await saveAssessment(patientId);
+      Alert.alert('Success', 'Extractions assessment saved successfully!');
+      navigation.goBack();
+    } catch (error) {
+      console.error('Error saving extractions assessment:', error);
+      Alert.alert('Error', 'Failed to save extractions assessment. Please try again.');
     }
   };
 
@@ -382,8 +345,8 @@ ${extractionSummary.byReason['root-tip'].length > 0 ? '⚠️ Root tips should b
         Tap: Select extraction reason • Long press: Quick toggle non-restorable
       </Text>
 
-      {/* Save Button */}
-      <Pressable style={styles.saveButton} onPress={saveAssessment}>
+      {/* Save Button - Updated to use context function */}
+      <Pressable style={styles.saveButton} onPress={handleSaveAssessment}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
 
