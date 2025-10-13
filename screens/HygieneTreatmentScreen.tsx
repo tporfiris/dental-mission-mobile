@@ -112,7 +112,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       const treatmentId = uuid.v4();
       const completedDate = new Date();
       const clinicianName = user?.email || 'Unknown Clinician';
-
+  
       const treatmentData = {
         scalingUnits,
         polishingUnits,
@@ -122,7 +122,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         odaCodes: billingCodes,
         totalCost
       };
-
+  
       await database.write(async () => {
         await database.get<Treatment>('treatments').create(treatment => {
           treatment._raw.id = treatmentId;
@@ -131,9 +131,9 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           treatment.type = 'hygiene';
           treatment.tooth = 'N/A';
           treatment.surface = 'N/A';
-          treatment.units = scalingUnits + polishingUnits;
-          treatment.value = totalCost; // Store total ODA cost
-          treatment.billingCodes = JSON.stringify(billingCodes); // Store ODA codes
+          treatment.units = 1; // ← CHANGE THIS TO 1
+          treatment.value = totalCost; // ← Keep this as total cost
+          treatment.billingCodes = JSON.stringify(billingCodes);
           treatment.notes = JSON.stringify(treatmentData);
           treatment.clinicianName = clinicianName;
           treatment.completedAt = completedDate;

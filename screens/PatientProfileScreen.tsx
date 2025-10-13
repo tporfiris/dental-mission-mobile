@@ -45,6 +45,11 @@ interface TreatmentDetail {
   billingCodes: any[];
 }
 
+interface GroupedTreatment {
+  date: string;
+  treatments: TreatmentDetail[];
+}
+
 // Helper function to parse assessment data with detailed formatting
 const parseAssessmentData = (data: string, type: string) => {
   try {
@@ -311,7 +316,7 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
   
   const [patient, setPatient] = useState<Patient | null>(null);
   const [groupedAssessments, setGroupedAssessments] = useState<GroupedAssessment[]>([]);
-  const [treatments, setTreatments] = useState<TreatmentDetail[]>([]);
+  const [groupedTreatments, setGroupedTreatments] = useState<GroupedTreatment[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedAssessment, setExpandedAssessment] = useState<string | null>(null);
   const [expandedTreatment, setExpandedTreatment] = useState<string | null>(null);
@@ -418,11 +423,43 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
       // Load and parse treatments
       const patientTreatments = await db
         .get<Treatment>('treatments')
-        .query(Q.where('patient_id', patientId))
+        .query(
+          Q.where('patient_id', patientId),
+          Q.sortBy('completed_at', Q.desc)
+        )
         .fetch();
 
       const parsedTreatments = patientTreatments.map(t => parseTreatmentDetails(t));
-      setTreatments(parsedTreatments);
+
+      // Group treatments by date
+      const groupedTreatmentsByDate = parsedTreatments.reduce((acc, treatment) => {
+        const dateKey = treatment.completedAt.toLocaleDateString();
+        
+        const existingGroup = acc.find(g => g.date === dateKey);
+        if (existingGroup) {
+          existingGroup.treatments.push(treatment);
+        } else {
+          acc.push({
+            date: dateKey,
+            treatments: [treatment]
+          });
+        }
+        
+        return acc;
+      }, [] as GroupedTreatment[]);
+
+      // Sort groups by date (newest first) and sort treatments within each group
+      groupedTreatmentsByDate.sort((a, b) => {
+        const dateA = new Date(a.treatments[0].completedAt);
+        const dateB = new Date(b.treatments[0].completedAt);
+        return dateB.getTime() - dateA.getTime();
+      });
+
+      groupedTreatmentsByDate.forEach(group => {
+        group.treatments.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime());
+      });
+
+      setGroupedTreatments(groupedTreatmentsByDate);
     } catch (error) {
       console.error('Error loading patient data:', error);
       Alert.alert('Error', 'Failed to load patient information');
@@ -453,6 +490,7 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
   }
 
   const totalAssessmentCount = groupedAssessments.reduce((sum, group) => sum + group.assessments.length, 0);
+  const totalTreatmentCount = groupedTreatments.reduce((sum, group) => sum + group.treatments.length, 0);
 
   return (
     <ScrollView style={styles.container}>
@@ -553,74 +591,87 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
         )}
       </View>
 
-      {/* Treatment History with Details */}
+      {/* Treatment History Grouped by Date */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Treatment History</Text>
-        {treatments.length === 0 ? (
+        <Text style={styles.sectionTitle}>
+          Treatment History ({totalTreatmentCount} total)
+        </Text>
+        {groupedTreatments.length === 0 ? (
           <Text style={styles.emptyText}>No treatments recorded yet</Text>
         ) : (
-          treatments.map((treatment) => {
-            const isExpanded = expandedTreatment === treatment.id;
-            
-            return (
-              <TouchableOpacity
-                key={treatment.id}
-                style={styles.treatmentCard}
-                onPress={() => toggleTreatmentExpansion(treatment.id)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.treatmentHeader}>
-                  <View style={styles.treatmentHeaderLeft}>
-                    <Text style={styles.treatmentType}>
-                      {treatment.type.charAt(0).toUpperCase() + treatment.type.slice(1)}
-                    </Text>
-                    <Text style={styles.treatmentSummary}>{treatment.summary}</Text>
-                    <Text style={styles.treatmentClinician}>
-                      By: {treatment.clinicianName}
-                    </Text>
-                    <Text style={styles.treatmentDate}>
-                      {new Date(treatment.completedAt).toLocaleDateString()}
-                    </Text>
-                  </View>
-                  <View style={styles.treatmentHeaderRight}>
-                    <Text style={styles.treatmentValue}>
-                      ${treatment.value.toFixed(2)}
-                    </Text>
-                    <Text style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</Text>
-                  </View>
-                </View>
+          groupedTreatments.map((group, groupIndex) => (
+            <View key={groupIndex} style={styles.dateGroup}>
+              <View style={styles.treatmentDateHeader}>
+                <Text style={styles.treatmentDateText}>📅 {group.date}</Text>
+                <Text style={styles.treatmentDateCount}>
+                  {group.treatments.length} treatment{group.treatments.length !== 1 ? 's' : ''}
+                </Text>
+              </View>
+              
+              {group.treatments.map((treatment) => {
+                const isExpanded = expandedTreatment === treatment.id;
                 
-                {isExpanded && (
-                  <View style={styles.treatmentDetails}>
-                    <View style={styles.divider} />
-                    <Text style={styles.detailsTitle}>Treatment Details:</Text>
-                    {treatment.details.map((detail, idx) => (
-                      <Text key={idx} style={styles.detailText}>• {detail}</Text>
-                    ))}
+                return (
+                  <TouchableOpacity
+                    key={treatment.id}
+                    style={styles.treatmentCard}
+                    onPress={() => toggleTreatmentExpansion(treatment.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.treatmentHeader}>
+                      <View style={styles.treatmentHeaderLeft}>
+                        <Text style={styles.treatmentType}>
+                          {treatment.type.charAt(0).toUpperCase() + treatment.type.slice(1)}
+                        </Text>
+                        <Text style={styles.treatmentSummary}>{treatment.summary}</Text>
+                        <Text style={styles.treatmentClinician}>
+                          By: {treatment.clinicianName}
+                        </Text>
+                        <Text style={styles.treatmentTime}>
+                          {treatment.completedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+                      <View style={styles.treatmentHeaderRight}>
+                        <Text style={styles.treatmentValue}>
+                          ${treatment.value.toFixed(2)}
+                        </Text>
+                        <Text style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</Text>
+                      </View>
+                    </View>
                     
-                    {treatment.billingCodes.length > 0 && (
-                      <View style={styles.billingSection}>
-                        <Text style={styles.billingTitle}>Billing Codes:</Text>
-                        {treatment.billingCodes.map((code: any, idx: number) => (
-                          <View key={idx} style={styles.billingCodeItem}>
-                            <Text style={styles.billingCode}>
-                              {typeof code === 'string' ? code : code.code || 'N/A'}
-                            </Text>
-                            {code.price && (
-                              <Text style={styles.billingPrice}>${code.price}</Text>
-                            )}
-                            {code.description && (
-                              <Text style={styles.billingDescription}>{code.description}</Text>
-                            )}
-                          </View>
+                    {isExpanded && (
+                      <View style={styles.treatmentDetails}>
+                        <View style={styles.divider} />
+                        <Text style={styles.detailsTitle}>Treatment Details:</Text>
+                        {treatment.details.map((detail, idx) => (
+                          <Text key={idx} style={styles.detailText}>• {detail}</Text>
                         ))}
+                        
+                        {treatment.billingCodes.length > 0 && (
+                          <View style={styles.billingSection}>
+                            <Text style={styles.billingTitle}>Billing Codes:</Text>
+                            {treatment.billingCodes.map((code: any, idx: number) => (
+                              <View key={idx} style={styles.billingCodeItem}>
+                                <Text style={styles.billingCode}>
+                                  {typeof code === 'string' ? code : code.code || 'N/A'}
+                                </Text>
+                                {code.price && (
+                                  <Text style={styles.billingPrice}>${code.price}</Text>
+                                )}
+                                {code.description && (
+                                  <Text style={styles.billingDescription}>{code.description}</Text>
+                                )}
+                              </View>
+                            ))}
+                          </View>
+                        )}
                       </View>
                     )}
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ))
         )}
       </View>
     </ScrollView>
@@ -843,9 +894,19 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 2,
   },
-  treatmentDate: {
+  treatmentTime: {
     fontSize: 12,
     color: '#999',
+  },
+  treatmentDateHeader: {
+    backgroundColor: '#28a745',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   treatmentValue: {
     fontSize: 16,

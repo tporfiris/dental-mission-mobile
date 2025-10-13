@@ -523,7 +523,7 @@ const FillingsTreatmentScreen = ({ route }: any) => {
       const completedTreatments = getCompletedTreatments();
       const clinicianName = user?.email || 'Unknown Clinician';
       const completedDate = new Date();
-
+  
       await database.write(async () => {
         const treatmentId = uuid.v4();
         
@@ -534,25 +534,25 @@ const FillingsTreatmentScreen = ({ route }: any) => {
           treatment.type = 'filling';
           treatment.tooth = 'Multiple';
           treatment.surface = 'Various';
-          treatment.units = getTotalSurfaceCount();
-          treatment.value = totalCost;
+          treatment.units = 1; // ← CHANGE THIS FROM getTotalSurfaceCount() TO 1
+          treatment.value = totalCost; // Keep as total cost
           treatment.billingCodes = JSON.stringify(billingCodes);
           treatment.notes = `Filling treatment completed. ${notes}`.trim();
           treatment.clinicianName = clinicianName;
           treatment.completedAt = completedDate;
         });
       });
-
+  
       console.log('✅ Filling treatments saved to database:', {
         patientId,
         teethTreated: completedTreatments.length,
-        totalSurfaces: getTotalSurfaceCount(),
+        totalSurfaces: getTotalSurfaceCount(), // Still log this for debugging
         totalCost,
         billingCodes: billingCodes.length,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
       });
-
+  
       return true;
     } catch (error) {
       console.error('❌ Failed to save filling treatments:', error);

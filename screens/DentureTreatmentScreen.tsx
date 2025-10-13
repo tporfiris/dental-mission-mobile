@@ -141,6 +141,7 @@ const DentureTreatmentScreen = ({ route }: any) => {
       ]
     );
   };
+  
 
   const saveTreatmentToDatabase = async () => {
     try {
