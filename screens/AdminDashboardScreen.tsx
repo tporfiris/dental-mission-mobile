@@ -1,4 +1,4 @@
-// screens/AdminDashboardScreen.tsx
+// screens/AdminDashboardScreen.tsx - Enhanced with comprehensive Excel export
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -10,7 +10,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Share,
-  Dimensions
+  Dimensions,
+  Platform
 } from 'react-native';
 import { db } from '../firebaseConfig';
 import { 
@@ -21,6 +22,8 @@ import {
   orderBy, 
   Timestamp 
 } from 'firebase/firestore';
+import * as FileSystem from 'expo-file-system';
+import * as XLSX from 'xlsx';
 
 const { width } = Dimensions.get('window');
 
@@ -82,31 +85,26 @@ const AdminDashboardScreen = ({ navigation }: any) => {
   // Helper function to safely convert Firestore timestamps to Date
   const safeToDate = (timestamp: any): Date => {
     if (!timestamp) {
-      return new Date(); // Default to current date if no timestamp
+      return new Date();
     }
     
-    // If it's already a Date object
     if (timestamp instanceof Date) {
       return timestamp;
     }
     
-    // If it's a Firestore Timestamp with toDate method
     if (timestamp && typeof timestamp.toDate === 'function') {
       return timestamp.toDate();
     }
     
-    // If it's a string, try to parse it
     if (typeof timestamp === 'string') {
       const parsed = new Date(timestamp);
       return isNaN(parsed.getTime()) ? new Date() : parsed;
     }
     
-    // If it's a number (Unix timestamp)
     if (typeof timestamp === 'number') {
       return new Date(timestamp);
     }
     
-    // Default fallback
     return new Date();
   };
 
@@ -115,7 +113,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
     try {
       console.log('📊 Loading dashboard data from Firestore...');
 
-      // Load patients
       const patientsSnapshot = await getDocs(collection(db, 'patients'));
       const patientsData = patientsSnapshot.docs.map(doc => {
         const data = doc.data();
@@ -130,7 +127,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
         };
       });
 
-      // Load treatments
       const treatmentsSnapshot = await getDocs(collection(db, 'treatments'));
       const treatmentsData = treatmentsSnapshot.docs.map(doc => {
         const data = doc.data();
@@ -148,7 +144,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
         };
       });
 
-      // Load assessments
       const assessmentsSnapshot = await getDocs(collection(db, 'assessments'));
       const assessmentsData = assessmentsSnapshot.docs.map(doc => {
         const data = doc.data();
@@ -171,29 +166,9 @@ const AdminDashboardScreen = ({ navigation }: any) => {
         assessments: assessmentsData.length
       });
 
-      // Log sample data for debugging
-      if (patientsData.length > 0) {
-        console.log('📋 Sample patient data:', {
-          id: patientsData[0].id,
-          name: `${patientsData[0].firstName} ${patientsData[0].lastName}`,
-          location: patientsData[0].location,
-          createdAt: patientsData[0].createdAt.toISOString()
-        });
-      }
-
-      if (treatmentsData.length > 0) {
-        console.log('📋 Sample treatment data:', {
-          id: treatmentsData[0].id,
-          type: treatmentsData[0].type,
-          value: treatmentsData[0].value,
-          completedAt: treatmentsData[0].completedAt.toISOString()
-        });
-      }
-
     } catch (error) {
       console.error('❌ Error loading dashboard data:', error);
       
-      // More detailed error logging
       if (error instanceof Error) {
         console.error('Error message:', error.message);
         console.error('Error stack:', error.stack);
@@ -274,13 +249,11 @@ const AdminDashboardScreen = ({ navigation }: any) => {
     const totalProcedures = filteredData.treatments.length;
     const totalValue = filteredData.treatments.reduce((sum, t) => sum + (t.value * t.units), 0) * currencyMultiplier;
     
-    // Procedure breakdown
     const procedureBreakdown = filteredData.treatments.reduce((acc, t) => {
       acc[t.type] = (acc[t.type] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    // Location breakdown
     const locationBreakdown = filteredData.patients.reduce((acc, p) => {
       acc[p.location] = (acc[p.location] || 0) + 1;
       return acc;
@@ -296,34 +269,550 @@ const AdminDashboardScreen = ({ navigation }: any) => {
     };
   }, [filteredData, filters.currency]);
 
-  // Export data function
-  const exportData = async () => {
+  // Comprehensive Excel Export
+  const exportToExcel = async () => {
     try {
-      const csvData = [
-        'Patient ID,Patient Name,Location,Procedure Type,Tooth,Value,Date,Clinician',
-        ...filteredData.treatments.map(t => {
-          const patient = patients.find(p => p.id === t.patientId);
-          const value = (t.value * t.units * (filters.currency === 'CAD' ? 1.35 : 1)).toFixed(2);
-          return [
-            t.patientId,
-            patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown',
-            patient?.location || 'Unknown',
-            t.type,
-            t.tooth,
-            `${filters.currency} ${value}`,
-            t.completedAt.toLocaleDateString(),
-            t.clinicianName
-          ].join(',');
-        })
-      ].join('\n');
+      console.log('📊 Starting comprehensive mission data Excel export...');
 
-      await Share.share({
-        message: csvData,
-        title: `Dental Mission Data - ${new Date().toLocaleDateString()}`
+      const workbook = XLSX.utils.book_new();
+      const currencySymbol = filters.currency;
+      const currencyMultiplier = filters.currency === 'CAD' ? 1.35 : 1;
+
+      // SHEET 1: Mission Overview & Executive Summary
+      const overviewData = [
+        ['DENTAL MISSION COMPREHENSIVE REPORT'],
+        ['Generated on:', new Date().toLocaleString()],
+        ['Report Period:', filters.dateRange === 'day' ? 'Last 24 Hours' :
+                         filters.dateRange === 'week' ? 'Last 7 Days' :
+                         filters.dateRange === 'month' ? 'Last 30 Days' : 'All Time'],
+        ['Location Filter:', filters.location === 'all' ? 'All Locations' : filters.location],
+        ['Currency:', currencySymbol],
+        [''],
+        ['EXECUTIVE SUMMARY'],
+        ['Total Patients Served', kpis.totalPatients],
+        ['Total Procedures Performed', kpis.totalProcedures],
+        ['Total Treatment Value', `${currencySymbol} ${kpis.totalValue.toLocaleString()}`],
+        ['Average Value Per Patient', `${currencySymbol} ${kpis.avgValuePerPatient.toLocaleString()}`],
+        ['Average Procedures Per Patient', kpis.totalPatients > 0 ? (kpis.totalProcedures / kpis.totalPatients).toFixed(2) : '0'],
+        ['Number of Locations', Object.keys(kpis.locationBreakdown).length],
+        ['Number of Clinicians', new Set(filteredData.treatments.map(t => t.clinicianName)).size],
+        [''],
+        ['PROCEDURE BREAKDOWN'],
+        ['Procedure Type', 'Count', 'Percentage'],
+        ...Object.entries(kpis.procedureBreakdown).map(([type, count]) => [
+          type.charAt(0).toUpperCase() + type.slice(1),
+          count,
+          `${((count / kpis.totalProcedures) * 100).toFixed(1)}%`
+        ]),
+        [''],
+        ['LOCATION BREAKDOWN'],
+        ['Location', 'Patients', 'Procedures', 'Total Value'],
+        ...Object.entries(kpis.locationBreakdown).map(([location, patientCount]) => {
+          const locationTreatments = filteredData.treatments.filter(t => {
+            const patient = filteredData.patients.find(p => p.id === t.patientId);
+            return patient?.location === location;
+          });
+          const locationValue = locationTreatments.reduce((sum, t) => 
+            sum + (t.value * t.units * currencyMultiplier), 0
+          );
+          return [
+            location,
+            patientCount,
+            locationTreatments.length,
+            `${currencySymbol} ${Math.round(locationValue).toLocaleString()}`
+          ];
+        }),
+      ];
+
+      const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData);
+      overviewSheet['!cols'] = [
+        { wch: 30 },
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 20 }
+      ];
+      XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Mission Overview');
+
+      // SHEET 2: All Patients Directory
+      const patientRows = filteredData.patients
+        .sort((a, b) => a.lastName.localeCompare(b.lastName))
+        .map(p => {
+          const patientTreatments = filteredData.treatments.filter(t => t.patientId === p.id);
+          const patientAssessments = filteredData.assessments.filter(a => a.patientId === p.id);
+          const patientValue = patientTreatments.reduce((sum, t) => 
+            sum + (t.value * t.units * currencyMultiplier), 0
+          );
+          
+          return {
+            'Patient ID': p.id,
+            'Last Name': p.lastName,
+            'First Name': p.firstName,
+            'Full Name': `${p.firstName} ${p.lastName}`,
+            'Age': p.age,
+            'Gender': p.gender,
+            'Location': p.location,
+            'Registration Date': p.createdAt.toLocaleDateString(),
+            'Registration Time': p.createdAt.toLocaleTimeString(),
+            'Day of Week': p.createdAt.toLocaleDateString('en-US', { weekday: 'long' }),
+            'Total Assessments': patientAssessments.length,
+            'Total Treatments': patientTreatments.length,
+            'Total Value': `${currencySymbol} ${Math.round(patientValue).toLocaleString()}`,
+            'Assessment Types': [...new Set(patientAssessments.map(a => a.assessmentType))].join(', '),
+            'Treatment Types': [...new Set(patientTreatments.map(t => t.type))].join(', ')
+          };
+        });
+
+      if (patientRows.length > 0) {
+        const patientSheet = XLSX.utils.json_to_sheet(patientRows);
+        patientSheet['!cols'] = Array(15).fill({ wch: 18 });
+        XLSX.utils.book_append_sheet(workbook, patientSheet, 'Patients Directory');
+      }
+
+      // SHEET 3: All Treatments Detailed
+      const treatmentRows = filteredData.treatments
+        .sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())
+        .map(t => {
+          const patient = filteredData.patients.find(p => p.id === t.patientId);
+          let billingCodes = [];
+          try {
+            billingCodes = JSON.parse(t.billingCodes);
+          } catch (e) {
+            // Handle legacy format
+          }
+
+          return {
+            'Treatment ID': t.id,
+            'Patient ID': t.patientId,
+            'Patient Name': patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown',
+            'Patient Age': patient?.age || 'N/A',
+            'Patient Gender': patient?.gender || 'N/A',
+            'Patient Location': patient?.location || 'Unknown',
+            'Date': t.completedAt.toLocaleDateString(),
+            'Time': t.completedAt.toLocaleTimeString(),
+            'Day of Week': t.completedAt.toLocaleDateString('en-US', { weekday: 'long' }),
+            'Treatment Type': t.type.charAt(0).toUpperCase() + t.type.slice(1),
+            'Tooth Number': t.tooth,
+            'Surface': t.surface,
+            'Units': t.units,
+            'Unit Value': `${currencySymbol} ${(t.value * currencyMultiplier).toFixed(2)}`,
+            'Total Value': `${currencySymbol} ${(t.value * t.units * currencyMultiplier).toFixed(2)}`,
+            'Clinician': t.clinicianName,
+            'Billing Codes': billingCodes.map((c: any) => 
+              typeof c === 'string' ? c : c.code || ''
+            ).join(', '),
+            'Billing Descriptions': billingCodes.map((c: any) => 
+              typeof c === 'object' ? c.description || '' : ''
+            ).join(' | ')
+          };
+        });
+
+      if (treatmentRows.length > 0) {
+        const treatmentSheet = XLSX.utils.json_to_sheet(treatmentRows);
+        treatmentSheet['!cols'] = Array(18).fill({ wch: 18 });
+        XLSX.utils.book_append_sheet(workbook, treatmentSheet, 'All Treatments');
+      }
+
+      // SHEET 4: All Assessments
+      const assessmentRows = filteredData.assessments
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map(a => {
+          const patient = filteredData.patients.find(p => p.id === a.patientId);
+          return {
+            'Assessment ID': a.id,
+            'Patient ID': a.patientId,
+            'Patient Name': patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown',
+            'Patient Age': patient?.age || 'N/A',
+            'Patient Gender': patient?.gender || 'N/A',
+            'Patient Location': patient?.location || 'Unknown',
+            'Date': a.createdAt.toLocaleDateString(),
+            'Time': a.createdAt.toLocaleTimeString(),
+            'Day of Week': a.createdAt.toLocaleDateString('en-US', { weekday: 'long' }),
+            'Assessment Type': a.assessmentType.charAt(0).toUpperCase() + a.assessmentType.slice(1),
+            'Clinician Email': a.clinicianEmail
+          };
+        });
+
+      if (assessmentRows.length > 0) {
+        const assessmentSheet = XLSX.utils.json_to_sheet(assessmentRows);
+        assessmentSheet['!cols'] = Array(11).fill({ wch: 18 });
+        XLSX.utils.book_append_sheet(workbook, assessmentSheet, 'All Assessments');
+      }
+
+      // SHEET 5: Financial Analysis by Location
+      const locationFinancialData = [
+        ['FINANCIAL ANALYSIS BY LOCATION'],
+        ['Currency:', currencySymbol],
+        [''],
+        ['Location', 'Patients', 'Treatments', 'Total Value', 'Avg Value/Patient', 'Avg Value/Treatment', '% of Total Value'],
+      ];
+
+      const totalMissionValue = filteredData.treatments.reduce((sum, t) => 
+        sum + (t.value * t.units * currencyMultiplier), 0
+      );
+
+      Object.entries(kpis.locationBreakdown).forEach(([location, patientCount]) => {
+        const locationTreatments = filteredData.treatments.filter(t => {
+          const patient = filteredData.patients.find(p => p.id === t.patientId);
+          return patient?.location === location;
+        });
+        const locationValue = locationTreatments.reduce((sum, t) => 
+          sum + (t.value * t.units * currencyMultiplier), 0
+        );
+        const avgPerPatient = patientCount > 0 ? locationValue / patientCount : 0;
+        const avgPerTreatment = locationTreatments.length > 0 ? locationValue / locationTreatments.length : 0;
+        const percentOfTotal = totalMissionValue > 0 ? (locationValue / totalMissionValue * 100) : 0;
+
+        locationFinancialData.push([
+          location,
+          patientCount,
+          locationTreatments.length,
+          `${currencySymbol} ${Math.round(locationValue).toLocaleString()}`,
+          `${currencySymbol} ${Math.round(avgPerPatient).toLocaleString()}`,
+          `${currencySymbol} ${Math.round(avgPerTreatment).toLocaleString()}`,
+          `${percentOfTotal.toFixed(1)}%`
+        ]);
       });
+
+      locationFinancialData.push(['']);
+      locationFinancialData.push([
+        'TOTAL',
+        kpis.totalPatients,
+        kpis.totalProcedures,
+        `${currencySymbol} ${Math.round(totalMissionValue).toLocaleString()}`,
+        `${currencySymbol} ${kpis.avgValuePerPatient.toLocaleString()}`,
+        kpis.totalProcedures > 0 ? `${currencySymbol} ${Math.round(totalMissionValue / kpis.totalProcedures).toLocaleString()}` : 'N/A',
+        '100.0%'
+      ]);
+
+      const locationFinancialSheet = XLSX.utils.aoa_to_sheet(locationFinancialData);
+      locationFinancialSheet['!cols'] = [
+        { wch: 20 },
+        { wch: 12 },
+        { wch: 12 },
+        { wch: 18 },
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 18 }
+      ];
+      XLSX.utils.book_append_sheet(workbook, locationFinancialSheet, 'Financial by Location');
+
+      // SHEET 6: Financial Analysis by Procedure Type
+      const procedureFinancialData = [
+        ['FINANCIAL ANALYSIS BY PROCEDURE TYPE'],
+        ['Currency:', currencySymbol],
+        [''],
+        ['Procedure Type', 'Count', 'Total Value', 'Avg Value/Procedure', '% of Procedures', '% of Total Value'],
+      ];
+
+      Object.entries(kpis.procedureBreakdown).forEach(([type, count]) => {
+        const typeTreatments = filteredData.treatments.filter(t => t.type === type);
+        const typeValue = typeTreatments.reduce((sum, t) => 
+          sum + (t.value * t.units * currencyMultiplier), 0
+        );
+        const avgValue = count > 0 ? typeValue / count : 0;
+        const percentOfProcedures = kpis.totalProcedures > 0 ? (count / kpis.totalProcedures * 100) : 0;
+        const percentOfValue = totalMissionValue > 0 ? (typeValue / totalMissionValue * 100) : 0;
+
+        procedureFinancialData.push([
+          type.charAt(0).toUpperCase() + type.slice(1),
+          count,
+          `${currencySymbol} ${Math.round(typeValue).toLocaleString()}`,
+          `${currencySymbol} ${Math.round(avgValue).toLocaleString()}`,
+          `${percentOfProcedures.toFixed(1)}%`,
+          `${percentOfValue.toFixed(1)}%`
+        ]);
+      });
+
+      procedureFinancialData.push(['']);
+      procedureFinancialData.push([
+        'TOTAL',
+        kpis.totalProcedures,
+        `${currencySymbol} ${Math.round(totalMissionValue).toLocaleString()}`,
+        kpis.totalProcedures > 0 ? `${currencySymbol} ${Math.round(totalMissionValue / kpis.totalProcedures).toLocaleString()}` : 'N/A',
+        '100.0%',
+        '100.0%'
+      ]);
+
+      const procedureFinancialSheet = XLSX.utils.aoa_to_sheet(procedureFinancialData);
+      procedureFinancialSheet['!cols'] = [
+        { wch: 20 },
+        { wch: 12 },
+        { wch: 18 },
+        { wch: 22 },
+        { wch: 18 },
+        { wch: 18 }
+      ];
+      XLSX.utils.book_append_sheet(workbook, procedureFinancialSheet, 'Financial by Procedure');
+
+      // SHEET 7: Clinician Performance
+      const clinicianStats = new Map<string, {
+        treatmentCount: number;
+        totalValue: number;
+        treatmentTypes: Set<string>;
+        patientCount: Set<string>;
+      }>();
+
+      filteredData.treatments.forEach(t => {
+        if (!clinicianStats.has(t.clinicianName)) {
+          clinicianStats.set(t.clinicianName, {
+            treatmentCount: 0,
+            totalValue: 0,
+            treatmentTypes: new Set(),
+            patientCount: new Set()
+          });
+        }
+        const stats = clinicianStats.get(t.clinicianName)!;
+        stats.treatmentCount++;
+        stats.totalValue += t.value * t.units * currencyMultiplier;
+        stats.treatmentTypes.add(t.type);
+        stats.patientCount.add(t.patientId);
+      });
+
+      const clinicianRows = Array.from(clinicianStats.entries()).map(([name, stats]) => ({
+        'Clinician Name': name,
+        'Total Treatments': stats.treatmentCount,
+        'Patients Treated': stats.patientCount.size,
+        'Total Value': `${currencySymbol} ${Math.round(stats.totalValue).toLocaleString()}`,
+        'Avg Value/Treatment': `${currencySymbol} ${Math.round(stats.totalValue / stats.treatmentCount).toLocaleString()}`,
+        'Avg Value/Patient': `${currencySymbol} ${Math.round(stats.totalValue / stats.patientCount.size).toLocaleString()}`,
+        'Treatment Types': Array.from(stats.treatmentTypes).join(', '),
+        '% of Total Treatments': `${((stats.treatmentCount / kpis.totalProcedures) * 100).toFixed(1)}%`,
+        '% of Total Value': `${((stats.totalValue / totalMissionValue) * 100).toFixed(1)}%`
+      })).sort((a, b) => b['Total Treatments'] - a['Total Treatments']);
+
+      if (clinicianRows.length > 0) {
+        const clinicianSheet = XLSX.utils.json_to_sheet(clinicianRows);
+        clinicianSheet['!cols'] = Array(9).fill({ wch: 20 });
+        XLSX.utils.book_append_sheet(workbook, clinicianSheet, 'Clinician Performance');
+      }
+
+      // SHEET 8: Daily Activity Timeline
+      const dailyStats = new Map<string, {
+        patients: Set<string>;
+        treatments: number;
+        assessments: number;
+        value: number;
+      }>();
+
+      filteredData.patients.forEach(p => {
+        const dateKey = p.createdAt.toLocaleDateString();
+        if (!dailyStats.has(dateKey)) {
+          dailyStats.set(dateKey, {
+            patients: new Set(),
+            treatments: 0,
+            assessments: 0,
+            value: 0
+          });
+        }
+        dailyStats.get(dateKey)!.patients.add(p.id);
+      });
+
+      filteredData.treatments.forEach(t => {
+        const dateKey = t.completedAt.toLocaleDateString();
+        if (!dailyStats.has(dateKey)) {
+          dailyStats.set(dateKey, {
+            patients: new Set(),
+            treatments: 0,
+            assessments: 0,
+            value: 0
+          });
+        }
+        const stats = dailyStats.get(dateKey)!;
+        stats.treatments++;
+        stats.value += t.value * t.units * currencyMultiplier;
+      });
+
+      filteredData.assessments.forEach(a => {
+        const dateKey = a.createdAt.toLocaleDateString();
+        if (!dailyStats.has(dateKey)) {
+          dailyStats.set(dateKey, {
+            patients: new Set(),
+            treatments: 0,
+            assessments: 0,
+            value: 0
+          });
+        }
+        dailyStats.get(dateKey)!.assessments++;
+      });
+
+      const dailyRows = Array.from(dailyStats.entries())
+        .map(([date, stats]) => ({
+          'Date': date,
+          'Day of Week': new Date(date).toLocaleDateString('en-US', { weekday: 'long' }),
+          'New Patients': stats.patients.size,
+          'Treatments': stats.treatments,
+          'Assessments': stats.assessments,
+          'Total Value': `${currencySymbol} ${Math.round(stats.value).toLocaleString()}`,
+          'Avg Value/Treatment': stats.treatments > 0 ? 
+            `${currencySymbol} ${Math.round(stats.value / stats.treatments).toLocaleString()}` : 'N/A'
+        }))
+        .sort((a, b) => new Date(b.Date).getTime() - new Date(a.Date).getTime());
+
+      if (dailyRows.length > 0) {
+        const dailySheet = XLSX.utils.json_to_sheet(dailyRows);
+        dailySheet['!cols'] = [
+          { wch: 15 },
+          { wch: 15 },
+          { wch: 15 },
+          { wch: 12 },
+          { wch: 12 },
+          { wch: 18 },
+          { wch: 22 }
+        ];
+        XLSX.utils.book_append_sheet(workbook, dailySheet, 'Daily Timeline');
+      }
+
+      // SHEET 9: Demographics Analysis
+      const ageGroups = {
+        '0-12': 0,
+        '13-17': 0,
+        '18-30': 0,
+        '31-50': 0,
+        '51-70': 0,
+        '71+': 0
+      };
+
+      const genderBreakdown = {
+        'Male': 0,
+        'Female': 0,
+        'Other': 0,
+        'Unknown': 0
+      };
+
+      filteredData.patients.forEach(p => {
+        // Age groups
+        if (p.age <= 12) ageGroups['0-12']++;
+        else if (p.age <= 17) ageGroups['13-17']++;
+        else if (p.age <= 30) ageGroups['18-30']++;
+        else if (p.age <= 50) ageGroups['31-50']++;
+        else if (p.age <= 70) ageGroups['51-70']++;
+        else ageGroups['71+']++;
+
+        // Gender
+        if (p.gender.toLowerCase().includes('male') && !p.gender.toLowerCase().includes('female')) {
+          genderBreakdown['Male']++;
+        } else if (p.gender.toLowerCase().includes('female')) {
+          genderBreakdown['Female']++;
+        } else if (p.gender.toLowerCase() === 'unknown') {
+          genderBreakdown['Unknown']++;
+        } else {
+          genderBreakdown['Other']++;
+        }
+      });
+
+      const demographicsData = [
+        ['DEMOGRAPHICS ANALYSIS'],
+        ['Total Patients:', kpis.totalPatients],
+        [''],
+        ['AGE DISTRIBUTION'],
+        ['Age Group', 'Count', 'Percentage'],
+        ...Object.entries(ageGroups).map(([group, count]) => [
+          group,
+          count,
+          kpis.totalPatients > 0 ? `${((count / kpis.totalPatients) * 100).toFixed(1)}%` : '0%'
+        ]),
+        [''],
+        ['GENDER DISTRIBUTION'],
+        ['Gender', 'Count', 'Percentage'],
+        ...Object.entries(genderBreakdown).map(([gender, count]) => [
+          gender,
+          count,
+          kpis.totalPatients > 0 ? `${((count / kpis.totalPatients) * 100).toFixed(1)}%` : '0%'
+        ]),
+        [''],
+        ['AGE STATISTICS'],
+        ['Average Age', kpis.totalPatients > 0 ? 
+          (filteredData.patients.reduce((sum, p) => sum + p.age, 0) / kpis.totalPatients).toFixed(1) : 'N/A'],
+        ['Median Age', kpis.totalPatients > 0 ? 
+          filteredData.patients.sort((a, b) => a.age - b.age)[Math.floor(filteredData.patients.length / 2)]?.age || 'N/A' : 'N/A'],
+        ['Youngest Patient', kpis.totalPatients > 0 ? 
+          Math.min(...filteredData.patients.map(p => p.age)) : 'N/A'],
+        ['Oldest Patient', kpis.totalPatients > 0 ? 
+          Math.max(...filteredData.patients.map(p => p.age)) : 'N/A'],
+      ];
+
+      const demographicsSheet = XLSX.utils.aoa_to_sheet(demographicsData);
+      demographicsSheet['!cols'] = [
+        { wch: 20 },
+        { wch: 15 },
+        { wch: 15 }
+      ];
+      XLSX.utils.book_append_sheet(workbook, demographicsSheet, 'Demographics');
+
+      // Write the workbook to binary
+      const wbout = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+
+      // Create file path
+      const dateRangeStr = filters.dateRange === 'day' ? 'Daily' :
+                           filters.dateRange === 'week' ? 'Weekly' :
+                           filters.dateRange === 'month' ? 'Monthly' : 'Complete';
+      const locationStr = filters.location === 'all' ? 'AllLocations' : filters.location.replace(/\s+/g, '_');
+      const fileName = `Mission_Report_${dateRangeStr}_${locationStr}_${Date.now()}.xlsx`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      // Write file
+      await FileSystem.writeAsStringAsync(fileUri, wbout, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      console.log('✅ Comprehensive mission Excel file created:', fileUri);
+
+      // Check if we have expo-sharing available
+      try {
+        const Sharing = require('expo-sharing');
+        
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: `Dental Mission Report - ${dateRangeStr}`,
+            UTI: 'com.microsoft.excel.xlsx'
+          });
+        } else {
+          Alert.alert(
+            'File Saved',
+            `Mission report has been saved to:\n\n${fileUri}\n\nYou can find it in your file manager.`,
+            [{ text: 'OK' }]
+          );
+        }
+      } catch (sharingError) {
+        console.log('expo-sharing not available, using alternative method');
+        
+        if (Platform.OS === 'ios') {
+          await Share.share({
+            url: fileUri,
+            title: `Dental Mission Report - ${dateRangeStr}`,
+          });
+        } else if (Platform.OS === 'android') {
+          try {
+            await Share.share({
+              message: `Dental mission report for ${dateRangeStr}. File saved to: ${fileUri}`,
+              title: `Dental Mission Report - ${dateRangeStr}`,
+            });
+            
+            Alert.alert(
+              'File Saved',
+              `Mission report has been saved to:\n\n${fileUri}\n\nNote: To share the actual file, rebuild the app with expo-sharing. For now, you can access the file in your device's file manager.`,
+              [{ text: 'OK' }]
+            );
+          } catch (shareError) {
+            Alert.alert(
+              'File Saved',
+              `Mission report has been saved to:\n\n${fileUri}\n\nYou can access it through your file manager app.`,
+              [{ text: 'OK' }]
+            );
+          }
+        } else {
+          Alert.alert(
+            'Success',
+            `Comprehensive mission report saved to:\n\n${fileUri}`,
+            [{ text: 'OK' }]
+          );
+        }
+      }
+
     } catch (error) {
-      console.error('Export error:', error);
-      Alert.alert('Error', 'Failed to export data');
+      console.error('❌ Excel export error:', error);
+      Alert.alert('Error', 'Failed to export mission data to Excel. Please try again.');
     }
   };
 
@@ -533,8 +1022,8 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           <Text style={styles.patientListButtonText}>👥 View All Patients</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.exportButton} onPress={exportData}>
-          <Text style={styles.exportButtonText}>📤 Export Data</Text>
+        <TouchableOpacity style={styles.exportButton} onPress={exportToExcel}>
+          <Text style={styles.exportButtonText}>📊 Export Complete Excel Report</Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -691,7 +1180,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 12,
-    width: (width - 44) / 2, // Two cards per row with margins
+    width: (width - 44) / 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

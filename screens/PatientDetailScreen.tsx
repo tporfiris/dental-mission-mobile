@@ -1,4 +1,4 @@
-// screens/PatientDetailScreen.tsx - Enhanced with detailed assessment and treatment info
+// screens/PatientDetailScreen.tsx - Enhanced with Excel export
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -9,10 +9,11 @@ import {
   Image,
   Alert,
   Share,
-  Dimensions
+  Dimensions,
+  Platform
 } from 'react-native';
-
-
+import * as FileSystem from 'expo-file-system';
+import * as XLSX from 'xlsx';
 
 const { width } = Dimensions.get('window');
 
@@ -81,15 +82,15 @@ const parseAssessmentData = (data: string, type: string) => {
           const missing = Object.entries(toothStates).filter(([_, s]: any) => s === 'fully-missing');
           
           const dentitionDetails = [
-            `✓ Present teeth (${present.length}): ${present.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
-            `⚠ Crown missing (${crownMissing.length}): ${crownMissing.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
-            `⚠ Roots only (${rootsOnly.length}): ${rootsOnly.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
-            `✗ Fully missing (${missing.length}): ${missing.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
+            `Present teeth (${present.length}): ${present.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
+            `Crown missing (${crownMissing.length}): ${crownMissing.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
+            `Roots only (${rootsOnly.length}): ${rootsOnly.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
+            `Fully missing (${missing.length}): ${missing.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
           ];
           
           if (primaryTeeth.length > 0) {
             const primaryToothNumbers = primaryTeeth.map((t: string) => getCurrentToothId(t));
-            dentitionDetails.push(`🦷 Primary teeth (${primaryTeeth.length}): ${primaryToothNumbers.join(', ')}`);
+            dentitionDetails.push(`Primary teeth (${primaryTeeth.length}): ${primaryToothNumbers.join(', ')}`);
           }
           
           return {
@@ -101,13 +102,10 @@ const parseAssessmentData = (data: string, type: string) => {
       }
         
       case 'hygiene': {
-        // The data is stored at root level, not under enhancedAssessment
-        // Check if this is the new format (has calculusLevel, plaqueLevel, etc.)
         if (parsed.calculusLevel !== undefined || parsed.plaqueLevel !== undefined || parsed.probingDepths !== undefined) {
           const assessment = parsed;
           const hygieneDetails = [];
           
-          // CALCULUS ASSESSMENT
           const calculusLevel = assessment.calculusLevel || 'none';
           const CALCULUS_LABELS: Record<string, string> = {
             'none': 'No Calculus',
@@ -116,12 +114,12 @@ const parseAssessmentData = (data: string, type: string) => {
             'heavy': 'Heavy Calculus'
           };
           
-          hygieneDetails.push(`\n🦠 CALCULUS ASSESSMENT:`);
-          hygieneDetails.push(`   Level: ${CALCULUS_LABELS[calculusLevel] || calculusLevel}`);
+          hygieneDetails.push(`CALCULUS ASSESSMENT:`);
+          hygieneDetails.push(`Level: ${CALCULUS_LABELS[calculusLevel] || calculusLevel}`);
           
           if (calculusLevel !== 'none') {
             const distribution = assessment.calculusDistribution || 'none';
-            hygieneDetails.push(`   Distribution: ${distribution === 'generalized' ? 'Generalized (throughout mouth)' : 'Localized'}`);
+            hygieneDetails.push(`Distribution: ${distribution === 'generalized' ? 'Generalized (throughout mouth)' : 'Localized'}`);
             
             if (distribution === 'localized' && assessment.calculusQuadrants?.length > 0) {
               const QUADRANT_LABELS: Record<string, string> = {
@@ -131,11 +129,10 @@ const parseAssessmentData = (data: string, type: string) => {
                 'lower-right': 'Lower Right'
               };
               const quadrants = assessment.calculusQuadrants.map((q: string) => QUADRANT_LABELS[q] || q);
-              hygieneDetails.push(`   Affected quadrants: ${quadrants.join(', ')}`);
+              hygieneDetails.push(`Affected quadrants: ${quadrants.join(', ')}`);
             }
           }
           
-          // PLAQUE ASSESSMENT
           const plaqueLevel = assessment.plaqueLevel || 'none';
           const PLAQUE_LABELS: Record<string, string> = {
             'none': 'No Plaque',
@@ -144,12 +141,12 @@ const parseAssessmentData = (data: string, type: string) => {
             'heavy': 'Heavy Plaque'
           };
           
-          hygieneDetails.push(`\n🧽 PLAQUE ASSESSMENT:`);
-          hygieneDetails.push(`   Level: ${PLAQUE_LABELS[plaqueLevel] || plaqueLevel}`);
+          hygieneDetails.push(`PLAQUE ASSESSMENT:`);
+          hygieneDetails.push(`Level: ${PLAQUE_LABELS[plaqueLevel] || plaqueLevel}`);
           
           if (plaqueLevel !== 'none') {
             const distribution = assessment.plaqueDistribution || 'none';
-            hygieneDetails.push(`   Distribution: ${distribution === 'generalized' ? 'Generalized (throughout mouth)' : 'Localized'}`);
+            hygieneDetails.push(`Distribution: ${distribution === 'generalized' ? 'Generalized (throughout mouth)' : 'Localized'}`);
             
             if (distribution === 'localized' && assessment.plaqueQuadrants?.length > 0) {
               const QUADRANT_LABELS: Record<string, string> = {
@@ -159,16 +156,12 @@ const parseAssessmentData = (data: string, type: string) => {
                 'lower-right': 'Lower Right'
               };
               const quadrants = assessment.plaqueQuadrants.map((q: string) => QUADRANT_LABELS[q] || q);
-              hygieneDetails.push(`   Affected quadrants: ${quadrants.join(', ')}`);
+              hygieneDetails.push(`Affected quadrants: ${quadrants.join(', ')}`);
             }
           }
-                    
           
-          // PROBING DEPTHS
           if (assessment.probingDepths) {
             const depths = Object.entries(assessment.probingDepths);
-            
-            // Group teeth by depth range
             const depthGroups: Record<string, string[]> = {
               '7+': [],
               '5-6': [],
@@ -188,39 +181,36 @@ const parseAssessmentData = (data: string, type: string) => {
               }
             });
             
-            hygieneDetails.push(`\n📏 PROBING DEPTH:`);
+            hygieneDetails.push(`PROBING DEPTH:`);
             
-            // Show problem depths first (severe to mild)
             if (depthGroups['7+'].length > 0) {
-              hygieneDetails.push(`   • Teeth ${depthGroups['7+'].join(', ')}: 7+mm (severe)`);
+              hygieneDetails.push(`Teeth ${depthGroups['7+'].join(', ')}: 7+mm (severe)`);
             }
             if (depthGroups['5-6'].length > 0) {
-              hygieneDetails.push(`   • Teeth ${depthGroups['5-6'].join(', ')}: 5-6mm (moderate)`);
+              hygieneDetails.push(`Teeth ${depthGroups['5-6'].join(', ')}: 5-6mm (moderate)`);
             }
             if (depthGroups['4'].length > 0) {
-              hygieneDetails.push(`   • Teeth ${depthGroups['4'].join(', ')}: 4mm (mild)`);
+              hygieneDetails.push(`Teeth ${depthGroups['4'].join(', ')}: 4mm (mild)`);
             }
             if (depthGroups['≤3'].length > 0) {
-              hygieneDetails.push(`   • Teeth ${depthGroups['≤3'].join(', ')}: ≤3mm (healthy)`);
+              hygieneDetails.push(`Teeth ${depthGroups['≤3'].join(', ')}: ≤3mm (healthy)`);
             }
           }
 
-          // BLEEDING
           if (assessment.bleedingOnProbing) {
             const bleeding = assessment.bleedingOnProbing;
             const bleedingTeeth = Object.entries(bleeding)
               .filter(([_, bleeds]: any) => bleeds)
               .map(([tooth, _]: any) => tooth);
             
-            hygieneDetails.push(`\n🩸 BLEEDING:`);
+            hygieneDetails.push(`BLEEDING:`);
             if (bleedingTeeth.length > 0) {
-              hygieneDetails.push(`   • Bleeding? Yes - teeth ${bleedingTeeth.join(', ')}`);
+              hygieneDetails.push(`Bleeding? Yes - teeth ${bleedingTeeth.join(', ')}`);
             } else {
-              hygieneDetails.push(`   • Bleeding? No`);
+              hygieneDetails.push(`Bleeding? No`);
             }
           }
           
-          // AAP CLASSIFICATION
           if (assessment.aapStage || assessment.aapGrade) {
             const AAP_STAGE_LABELS: Record<string, string> = {
               '1': 'Stage I - Initial Periodontitis',
@@ -236,12 +226,12 @@ const parseAssessmentData = (data: string, type: string) => {
               'D': 'Grade D - Necrotizing Periodontal Disease'
             };
             
-            hygieneDetails.push(`\n📋 AAP PERIODONTAL CLASSIFICATION:`);
+            hygieneDetails.push(`AAP PERIODONTAL CLASSIFICATION:`);
             if (assessment.aapStage) {
-              hygieneDetails.push(`   ${AAP_STAGE_LABELS[assessment.aapStage] || `Stage ${assessment.aapStage}`}`);
+              hygieneDetails.push(`${AAP_STAGE_LABELS[assessment.aapStage] || `Stage ${assessment.aapStage}`}`);
             }
             if (assessment.aapGrade) {
-              hygieneDetails.push(`   ${AAP_GRADE_LABELS[assessment.aapGrade] || `Grade ${assessment.aapGrade}`}`);
+              hygieneDetails.push(`${AAP_GRADE_LABELS[assessment.aapGrade] || `Grade ${assessment.aapGrade}`}`);
             }
           }
           
@@ -262,10 +252,10 @@ const parseAssessmentData = (data: string, type: string) => {
         const nonRestorable = extractions.filter(([_, s]: any) => s === 'non-restorable');
         
         const extractionDetails = [
-          `📊 Total extractions needed: ${extractions.length}`,
-          `🔧 Loose teeth (${loose.length}): ${loose.length > 0 ? loose.map(([t]) => t).join(', ') : 'None'}`,
-          `🦴 Root tips (${rootTip.length}): ${rootTip.length > 0 ? rootTip.map(([t]) => t).join(', ') : 'None'}`,
-          `❌ Non-restorable (${nonRestorable.length}): ${nonRestorable.length > 0 ? nonRestorable.map(([t]) => t).join(', ') : 'None'}`,
+          `Total extractions needed: ${extractions.length}`,
+          `Loose teeth (${loose.length}): ${loose.length > 0 ? loose.map(([t]) => t).join(', ') : 'None'}`,
+          `Root tips (${rootTip.length}): ${rootTip.length > 0 ? rootTip.map(([t]) => t).join(', ') : 'None'}`,
+          `Non-restorable (${nonRestorable.length}): ${nonRestorable.length > 0 ? nonRestorable.map(([t]) => t).join(', ') : 'None'}`,
         ];
         
         return {
@@ -305,45 +295,37 @@ const parseAssessmentData = (data: string, type: string) => {
           );
           
           if (teethWithFindings.length === 0) {
-            fillingsDetails.push('✓ No restorative issues found');
+            fillingsDetails.push('No restorative issues found');
           } else {
-            fillingsDetails.push(`📊 ${teethWithFindings.length} teeth with findings:\n`);
+            fillingsDetails.push(`${teethWithFindings.length} teeth with findings`);
             
             teethWithFindings.forEach(([toothId, state]: any) => {
               const displayToothId = getCurrentToothId(toothId);
-              const toothDetails = [`🦷 Tooth ${displayToothId}:`];
+              const toothDetails = [`Tooth ${displayToothId}:`];
               
               if (state.hasFillings && state.fillingSurfaces?.length > 0) {
                 const material = state.fillingType || 'unknown';
                 const surfaces = state.fillingSurfaces.join('');
-                toothDetails.push(`   • Has existing filling: Yes (${material}, surfaces: ${surfaces})`);
-              } else {
-                toothDetails.push(`   • Has existing filling: No`);
+                toothDetails.push(`Has existing filling: Yes (${material}, surfaces: ${surfaces})`);
               }
               
               if (state.hasCrowns) {
                 const material = state.crownMaterial || 'unknown';
-                toothDetails.push(`   • Has existing crown: Yes (${material})`);
-              } else {
-                toothDetails.push(`   • Has existing crown: No`);
+                toothDetails.push(`Has existing crown: Yes (${material})`);
               }
               
               if (state.hasExistingRootCanal) {
-                toothDetails.push(`   • Has existing root canal: Yes`);
-              } else {
-                toothDetails.push(`   • Has existing root canal: No`);
+                toothDetails.push(`Has existing root canal: Yes`);
               }
               
               if (state.hasCavities && state.cavitySurfaces?.length > 0) {
                 const surfaces = state.cavitySurfaces.join('');
-                toothDetails.push(`   • Cavities: Yes (locations: ${surfaces})`);
-              } else {
-                toothDetails.push(`   • Cavities: No`);
+                toothDetails.push(`Cavities: Yes (locations: ${surfaces})`);
               }
               
               if (state.isBroken && state.brokenSurfaces?.length > 0) {
                 const surfaces = state.brokenSurfaces.join('');
-                toothDetails.push(`   • Broken/cracked: Yes (surfaces: ${surfaces})`);
+                toothDetails.push(`Broken/cracked: Yes (surfaces: ${surfaces})`);
               }
               
               if (state.needsRootCanal) {
@@ -351,16 +333,16 @@ const parseAssessmentData = (data: string, type: string) => {
                 if (state.pulpDiagnosis) diagnoses.push(state.pulpDiagnosis);
                 if (state.apicalDiagnosis) diagnoses.push(state.apicalDiagnosis);
                 const diagnosisText = diagnoses.length > 0 ? ` (${diagnoses.join(', ')})` : '';
-                toothDetails.push(`   • Root canal needed: Yes${diagnosisText}`);
+                toothDetails.push(`Root canal needed: Yes${diagnosisText}`);
               }
               
-              fillingsDetails.push(toothDetails.join('\n'));
+              fillingsDetails.push(toothDetails.join(' | '));
             });
           }
           
           if (primaryTeeth.length > 0) {
             const primaryToothNumbers = primaryTeeth.map((t: string) => getCurrentToothId(t));
-            fillingsDetails.push(`\n🦷 Primary teeth recorded (${primaryTeeth.length}): ${primaryToothNumbers.join(', ')}`);
+            fillingsDetails.push(`Primary teeth recorded (${primaryTeeth.length}): ${primaryToothNumbers.join(', ')}`);
           }
           
           const fillingsCount = Object.values(teethStates).filter((t: any) => 
@@ -385,9 +367,9 @@ const parseAssessmentData = (data: string, type: string) => {
         const dentureDetails = [];
         
         if (dentureType && dentureType !== 'none') {
-          dentureDetails.push(`🦷 Denture recommended: ${dentureType}`);
+          dentureDetails.push(`Denture recommended: ${dentureType}`);
         } else {
-          dentureDetails.push('✓ No denture needed');
+          dentureDetails.push('No denture needed');
         }
         
         const relineServices = Object.entries(relineOptions).filter(([_, v]) => v);
@@ -397,13 +379,13 @@ const parseAssessmentData = (data: string, type: string) => {
               word.charAt(0).toUpperCase() + word.slice(1)
             ).join(' ');
           });
-          dentureDetails.push(`🔧 Reline services (${relineServices.length}): ${relineTypes.join(', ')}`);
+          dentureDetails.push(`Reline services (${relineServices.length}): ${relineTypes.join(', ')}`);
         } else {
-          dentureDetails.push('🔧 Reline services: None');
+          dentureDetails.push('Reline services: None');
         }
         
         if (parsed.notes) {
-          dentureDetails.push(`📝 Notes: ${parsed.notes}`);
+          dentureDetails.push(`Notes: ${parsed.notes}`);
         }
         
         return {
@@ -421,25 +403,25 @@ const parseAssessmentData = (data: string, type: string) => {
         const implantDetails = [];
         
         if (singleImplants.length > 0) {
-          implantDetails.push(`🔩 Single implants planned (${singleImplants.length}): ${singleImplants.join(', ')}`);
+          implantDetails.push(`Single implants planned (${singleImplants.length}): ${singleImplants.join(', ')}`);
         } else {
-          implantDetails.push(`🔩 Single implants planned (0): None`);
+          implantDetails.push(`Single implants planned (0): None`);
         }
         
         if (bridgeImplants.length > 0) {
-          implantDetails.push(`🌉 Bridge implants planned (${bridgeImplants.length}): ${bridgeImplants.join(', ')}`);
+          implantDetails.push(`Bridge implants planned (${bridgeImplants.length}): ${bridgeImplants.join(', ')}`);
         } else {
-          implantDetails.push(`🌉 Bridge implants planned (0): None`);
+          implantDetails.push(`Bridge implants planned (0): None`);
         }
         
         if (boneGrafting) {
-          implantDetails.push('🦴 Bone grafting: Planned');
+          implantDetails.push('Bone grafting: Planned');
         } else {
-          implantDetails.push('🦴 Bone grafting: Not needed');
+          implantDetails.push('Bone grafting: Not needed');
         }
         
         if (timing) {
-          implantDetails.push(`⏱️ Timing: ${timing.charAt(0).toUpperCase() + timing.slice(1)} placement`);
+          implantDetails.push(`Timing: ${timing.charAt(0).toUpperCase() + timing.slice(1)} placement`);
         }
         
         const totalImplants = singleImplants.length + bridgeImplants.length;
@@ -571,63 +553,523 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
     };
   }, [treatments, assessments]);
 
-  const exportPatientData = async () => {
+  // Export to Excel function - COMPREHENSIVE VERSION
+  const exportToExcel = async () => {
     try {
-      let patientInfo = `
-Patient Report: ${patient.firstName} ${patient.lastName}
+      console.log('📊 Starting comprehensive Excel export...');
 
-PATIENT INFORMATION:
-Name: ${patient.firstName} ${patient.lastName}
-Age: ${patient.age}
-Gender: ${patient.gender}
-Location: ${patient.location}
-Registration Date: ${patient.createdAt.toLocaleDateString()}
+      // Create a new workbook
+      const workbook = XLSX.utils.book_new();
 
-SUMMARY:
-Total Assessments: ${assessments.length}
-Total Treatments: ${treatments.length}
-Total Treatment Value: $${patientStats.totalValue.toFixed(2)}
+      // SHEET 1: Patient Information & Summary
+      const patientInfoData = [
+        ['PATIENT COMPREHENSIVE REPORT'],
+        ['Generated on:', new Date().toLocaleString()],
+        [''],
+        ['PATIENT INFORMATION'],
+        ['Patient ID', patient.id],
+        ['First Name', patient.firstName],
+        ['Last Name', patient.lastName],
+        ['Full Name', `${patient.firstName} ${patient.lastName}`],
+        ['Age', patient.age],
+        ['Gender', patient.gender],
+        ['Location', patient.location],
+        ['Registration Date', patient.createdAt.toLocaleDateString()],
+        ['Registration Time', patient.createdAt.toLocaleTimeString()],
+        ['Photo URI', patient.photoUri || 'No photo'],
+        [''],
+        ['OVERALL SUMMARY STATISTICS'],
+        ['Total Assessments Completed', assessments.length],
+        ['Total Treatments Performed', treatments.length],
+        ['Total Treatment Value (USD)', `${patientStats.totalValue.toFixed(2)}`],
+        ['Average Value Per Treatment', treatments.length > 0 ? `${(patientStats.totalValue / treatments.length).toFixed(2)}` : '$0.00'],
+        ['Last Assessment Date', patientStats.latestAssessment ? patientStats.latestAssessment.createdAt.toLocaleDateString() : 'N/A'],
+        ['Last Treatment Date', patientStats.latestTreatment ? patientStats.latestTreatment.completedAt.toLocaleDateString() : 'N/A'],
+        [''],
+        ['ASSESSMENT BREAKDOWN BY TYPE'],
+        ...Object.entries(patientStats.assessmentsByType).map(([type, count]) => [
+          type.charAt(0).toUpperCase() + type.slice(1),
+          count
+        ]),
+        [''],
+        ['TREATMENT BREAKDOWN BY TYPE'],
+        ...Object.entries(patientStats.treatmentsByType).map(([type, count]) => {
+          const typeValue = treatments
+            .filter(t => t.type === type)
+            .reduce((sum, t) => sum + (t.value * t.units), 0);
+          return [
+            type.charAt(0).toUpperCase() + type.slice(1),
+            count,
+            `${typeValue.toFixed(2)}`
+          ];
+        }),
+      ];
 
-DETAILED ASSESSMENTS:
-`;
+      const patientInfoSheet = XLSX.utils.aoa_to_sheet(patientInfoData);
+      
+      // Set column widths for better readability
+      patientInfoSheet['!cols'] = [
+        { wch: 30 },
+        { wch: 40 },
+        { wch: 15 }
+      ];
+      
+      XLSX.utils.book_append_sheet(workbook, patientInfoSheet, 'Patient Summary');
 
-      assessments.forEach(a => {
-        const parsedData = parseAssessmentData(a.data, a.assessmentType);
-        patientInfo += `
-${a.assessmentType.toUpperCase()} ASSESSMENT (${a.createdAt.toLocaleDateString()}):
-By: ${a.clinicianEmail}
-Summary: ${parsedData.summary}
-${parsedData.details.map(d => `  - ${d}`).join('\n')}
-`;
+      // SHEET 2: Detailed Assessments
+      const assessmentRows = assessments
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        .map(a => {
+          const parsedData = parseAssessmentData(a.data, a.assessmentType);
+          return {
+            'Assessment ID': a.id,
+            'Patient ID': a.patientId,
+            'Date': a.createdAt.toLocaleDateString(),
+            'Time': a.createdAt.toLocaleTimeString(),
+            'Day of Week': a.createdAt.toLocaleDateString('en-US', { weekday: 'long' }),
+            'Assessment Type': a.assessmentType.charAt(0).toUpperCase() + a.assessmentType.slice(1),
+            'Clinician Email': a.clinicianEmail,
+            'Summary': parsedData.summary,
+            'Detailed Findings': parsedData.details.join(' | '),
+            'Raw Data': a.data
+          };
+        });
+
+      if (assessmentRows.length > 0) {
+        const assessmentSheet = XLSX.utils.json_to_sheet(assessmentRows);
+        assessmentSheet['!cols'] = [
+          { wch: 25 }, // Assessment ID
+          { wch: 25 }, // Patient ID
+          { wch: 12 }, // Date
+          { wch: 12 }, // Time
+          { wch: 12 }, // Day of Week
+          { wch: 15 }, // Assessment Type
+          { wch: 30 }, // Clinician Email
+          { wch: 40 }, // Summary
+          { wch: 60 }, // Detailed Findings
+          { wch: 50 }  // Raw Data
+        ];
+        XLSX.utils.book_append_sheet(workbook, assessmentSheet, 'Assessments Details');
+      }
+
+      // SHEET 3: Dentition Assessment Breakdown (if exists)
+      const dentitionAssessments = assessments.filter(a => a.assessmentType === 'dentition');
+      if (dentitionAssessments.length > 0) {
+        const dentitionRows: any[] = [];
+        
+        dentitionAssessments.forEach(a => {
+          try {
+            const parsed = JSON.parse(a.data);
+            if (parsed.originalToothStates) {
+              const toothStates = parsed.originalToothStates;
+              const primaryTeeth = parsed.primaryTeeth || [];
+              
+              const PRIMARY_TOOTH_MAPPINGS: Record<string, string> = {
+                '11': '51', '12': '52', '13': '53', '14': '54', '15': '55',
+                '21': '61', '22': '62', '23': '63', '24': '64', '25': '65',
+                '41': '81', '42': '82', '43': '83', '44': '84', '45': '85',
+                '31': '71', '32': '72', '33': '73', '34': '74', '35': '75',
+              };
+              
+              const getCurrentToothId = (originalToothId: string): string => {
+                if (primaryTeeth.includes(originalToothId)) {
+                  return PRIMARY_TOOTH_MAPPINGS[originalToothId] || originalToothId;
+                }
+                return originalToothId;
+              };
+              
+              Object.entries(toothStates).forEach(([toothId, status]) => {
+                dentitionRows.push({
+                  'Assessment Date': a.createdAt.toLocaleDateString(),
+                  'Clinician': a.clinicianEmail,
+                  'Original Tooth Number': toothId,
+                  'Display Tooth Number': getCurrentToothId(toothId),
+                  'Is Primary Tooth': primaryTeeth.includes(toothId) ? 'Yes' : 'No',
+                  'Tooth Status': status,
+                  'Status Category': status === 'present' ? 'Present' : 
+                                   status === 'fully-missing' ? 'Missing' :
+                                   status === 'crown-missing' ? 'Crown Missing' :
+                                   status === 'roots-only' ? 'Roots Only' : 'Unknown'
+                });
+              });
+            }
+          } catch (e) {
+            console.error('Error parsing dentition data:', e);
+          }
+        });
+        
+        if (dentitionRows.length > 0) {
+          const dentitionSheet = XLSX.utils.json_to_sheet(dentitionRows);
+          dentitionSheet['!cols'] = [
+            { wch: 15 },
+            { wch: 30 },
+            { wch: 20 },
+            { wch: 20 },
+            { wch: 15 },
+            { wch: 15 },
+            { wch: 15 }
+          ];
+          XLSX.utils.book_append_sheet(workbook, dentitionSheet, 'Dentition Details');
+        }
+      }
+
+      // SHEET 4: Hygiene Assessment Breakdown (if exists)
+      const hygieneAssessments = assessments.filter(a => a.assessmentType === 'hygiene');
+      if (hygieneAssessments.length > 0) {
+        const hygieneRows: any[] = [];
+        
+        hygieneAssessments.forEach(a => {
+          try {
+            const parsed = JSON.parse(a.data);
+            
+            // Main hygiene assessment data
+            hygieneRows.push({
+              'Assessment Date': a.createdAt.toLocaleDateString(),
+              'Assessment Time': a.createdAt.toLocaleTimeString(),
+              'Clinician': a.clinicianEmail,
+              'Calculus Level': parsed.calculusLevel || 'N/A',
+              'Calculus Distribution': parsed.calculusDistribution || 'N/A',
+              'Calculus Quadrants': parsed.calculusQuadrants?.join(', ') || 'N/A',
+              'Plaque Level': parsed.plaqueLevel || 'N/A',
+              'Plaque Distribution': parsed.plaqueDistribution || 'N/A',
+              'Plaque Quadrants': parsed.plaqueQuadrants?.join(', ') || 'N/A',
+              'AAP Stage': parsed.aapStage || 'N/A',
+              'AAP Grade': parsed.aapGrade || 'N/A',
+              'Notes': parsed.notes || 'N/A'
+            });
+            
+            // If there are probing depths, create separate rows for each tooth
+            if (parsed.probingDepths) {
+              Object.entries(parsed.probingDepths).forEach(([tooth, depth]: any) => {
+                const bleeding = parsed.bleedingOnProbing?.[tooth] || false;
+                hygieneRows.push({
+                  'Assessment Date': a.createdAt.toLocaleDateString(),
+                  'Type': 'Probing Depth',
+                  'Tooth Number': tooth,
+                  'Probing Depth (mm)': depth,
+                  'Bleeding on Probing': bleeding ? 'Yes' : 'No',
+                  'Severity': depth >= 7 ? 'Severe (7+mm)' :
+                             depth >= 5 ? 'Moderate (5-6mm)' :
+                             depth === 4 ? 'Mild (4mm)' :
+                             'Healthy (≤3mm)'
+                });
+              });
+            }
+          } catch (e) {
+            console.error('Error parsing hygiene data:', e);
+          }
+        });
+        
+        if (hygieneRows.length > 0) {
+          const hygieneSheet = XLSX.utils.json_to_sheet(hygieneRows);
+          hygieneSheet['!cols'] = Array(15).fill({ wch: 18 });
+          XLSX.utils.book_append_sheet(workbook, hygieneSheet, 'Hygiene Details');
+        }
+      }
+
+      // SHEET 5: Extractions Assessment Breakdown (if exists)
+      const extractionsAssessments = assessments.filter(a => a.assessmentType === 'extractions');
+      if (extractionsAssessments.length > 0) {
+        const extractionRows: any[] = [];
+        
+        extractionsAssessments.forEach(a => {
+          try {
+            const parsed = JSON.parse(a.data);
+            const extractionStates = parsed.extractionStates || parsed;
+            
+            Object.entries(extractionStates).forEach(([tooth, status]: any) => {
+              if (status !== 'none') {
+                extractionRows.push({
+                  'Assessment Date': a.createdAt.toLocaleDateString(),
+                  'Clinician': a.clinicianEmail,
+                  'Tooth Number': tooth,
+                  'Extraction Status': status,
+                  'Status Description': status === 'loose' ? 'Loose - needs extraction' :
+                                      status === 'root-tip' ? 'Root tip - surgical extraction' :
+                                      status === 'non-restorable' ? 'Non-restorable - extraction needed' :
+                                      'Unknown',
+                  'Priority': status === 'root-tip' ? 'High' :
+                            status === 'loose' ? 'Medium' :
+                            'Standard'
+                });
+              }
+            });
+          } catch (e) {
+            console.error('Error parsing extractions data:', e);
+          }
+        });
+        
+        if (extractionRows.length > 0) {
+          const extractionSheet = XLSX.utils.json_to_sheet(extractionRows);
+          extractionSheet['!cols'] = [
+            { wch: 15 },
+            { wch: 30 },
+            { wch: 15 },
+            { wch: 20 },
+            { wch: 40 },
+            { wch: 12 }
+          ];
+          XLSX.utils.book_append_sheet(workbook, extractionSheet, 'Extractions Details');
+        }
+      }
+
+      // SHEET 6: Fillings Assessment Breakdown (if exists)
+      const fillingsAssessments = assessments.filter(a => a.assessmentType === 'fillings');
+      if (fillingsAssessments.length > 0) {
+        const fillingsRows: any[] = [];
+        
+        fillingsAssessments.forEach(a => {
+          try {
+            const parsed = JSON.parse(a.data);
+            if (parsed.originalTeethStates) {
+              const teethStates = parsed.originalTeethStates;
+              const primaryTeeth = parsed.primaryTeeth || [];
+              
+              const PRIMARY_TOOTH_MAPPINGS: Record<string, string> = {
+                '11': '51', '12': '52', '13': '53', '14': '54', '15': '55',
+                '21': '61', '22': '62', '23': '63', '24': '64', '25': '65',
+                '41': '81', '42': '82', '43': '83', '44': '84', '45': '85',
+                '31': '71', '32': '72', '33': '73', '34': '74', '35': '75',
+              };
+              
+              const getCurrentToothId = (originalToothId: string): string => {
+                if (primaryTeeth.includes(originalToothId)) {
+                  return PRIMARY_TOOTH_MAPPINGS[originalToothId] || originalToothId;
+                }
+                return originalToothId;
+              };
+              
+              Object.entries(teethStates).forEach(([toothId, state]: any) => {
+                fillingsRows.push({
+                  'Assessment Date': a.createdAt.toLocaleDateString(),
+                  'Clinician': a.clinicianEmail,
+                  'Original Tooth Number': toothId,
+                  'Display Tooth Number': getCurrentToothId(toothId),
+                  'Is Primary': primaryTeeth.includes(toothId) ? 'Yes' : 'No',
+                  'Has Existing Filling': state.hasFillings ? 'Yes' : 'No',
+                  'Filling Type': state.fillingType || 'N/A',
+                  'Filling Surfaces': state.fillingSurfaces?.join('') || 'N/A',
+                  'Has Crown': state.hasCrowns ? 'Yes' : 'No',
+                  'Crown Material': state.crownMaterial || 'N/A',
+                  'Has Root Canal': state.hasExistingRootCanal ? 'Yes' : 'No',
+                  'Has Cavities': state.hasCavities ? 'Yes' : 'No',
+                  'Cavity Surfaces': state.cavitySurfaces?.join('') || 'N/A',
+                  'Is Broken': state.isBroken ? 'Yes' : 'No',
+                  'Broken Surfaces': state.brokenSurfaces?.join('') || 'N/A',
+                  'Needs Root Canal': state.needsRootCanal ? 'Yes' : 'No',
+                  'Pulp Diagnosis': state.pulpDiagnosis || 'N/A',
+                  'Apical Diagnosis': state.apicalDiagnosis || 'N/A'
+                });
+              });
+            }
+          } catch (e) {
+            console.error('Error parsing fillings data:', e);
+          }
+        });
+        
+        if (fillingsRows.length > 0) {
+          const fillingsSheet = XLSX.utils.json_to_sheet(fillingsRows);
+          fillingsSheet['!cols'] = Array(18).fill({ wch: 18 });
+          XLSX.utils.book_append_sheet(workbook, fillingsSheet, 'Fillings Details');
+        }
+      }
+
+      // SHEET 7: Comprehensive Treatments
+      const treatmentRows = treatments
+        .sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())
+        .map(t => {
+          const treatmentDetailsList = parseTreatmentDetails(t);
+          let billingCodes = [];
+          try {
+            billingCodes = JSON.parse(t.billingCodes);
+          } catch (e) {
+            // Handle legacy format
+          }
+
+          return {
+            'Treatment ID': t.id,
+            'Patient ID': t.patientId,
+            'Visit ID': t.visitId || 'N/A',
+            'Date': t.completedAt.toLocaleDateString(),
+            'Time': t.completedAt.toLocaleTimeString(),
+            'Day of Week': t.completedAt.toLocaleDateString('en-US', { weekday: 'long' }),
+            'Treatment Type': t.type.charAt(0).toUpperCase() + t.type.slice(1),
+            'Tooth Number': t.tooth,
+            'Surface': t.surface,
+            'Units': t.units,
+            'Unit Value (USD)': `${t.value.toFixed(2)}`,
+            'Total Value (USD)': `${(t.value * t.units).toFixed(2)}`,
+            'Clinician Name': t.clinicianName,
+            'Treatment Details': treatmentDetailsList.join(' | '),
+            'Billing Codes': billingCodes.map((c: any) => 
+              typeof c === 'string' ? c : c.code || ''
+            ).join(', '),
+            'Billing Descriptions': billingCodes.map((c: any) => 
+              typeof c === 'object' ? c.description || '' : ''
+            ).join(' | '),
+            'Notes': t.notes || 'N/A'
+          };
+        });
+
+      if (treatmentRows.length > 0) {
+        const treatmentSheet = XLSX.utils.json_to_sheet(treatmentRows);
+        treatmentSheet['!cols'] = [
+          { wch: 25 }, // Treatment ID
+          { wch: 25 }, // Patient ID
+          { wch: 25 }, // Visit ID
+          { wch: 12 }, // Date
+          { wch: 12 }, // Time
+          { wch: 12 }, // Day of Week
+          { wch: 15 }, // Treatment Type
+          { wch: 12 }, // Tooth Number
+          { wch: 10 }, // Surface
+          { wch: 8 },  // Units
+          { wch: 12 }, // Unit Value
+          { wch: 12 }, // Total Value
+          { wch: 25 }, // Clinician Name
+          { wch: 40 }, // Treatment Details
+          { wch: 30 }, // Billing Codes
+          { wch: 50 }, // Billing Descriptions
+          { wch: 40 }  // Notes
+        ];
+        XLSX.utils.book_append_sheet(workbook, treatmentSheet, 'Treatments Details');
+      }
+
+      // SHEET 8: Financial Summary & Analysis
+      const financialData = [
+        ['FINANCIAL ANALYSIS REPORT'],
+        ['Patient:', `${patient.firstName} ${patient.lastName}`],
+        ['Report Date:', new Date().toLocaleDateString()],
+        [''],
+        ['TREATMENT VALUE BY TYPE'],
+        ['Treatment Type', 'Count', 'Total Value (USD)', 'Average Value', 'Percentage of Total'],
+      ];
+
+      Object.entries(patientStats.treatmentsByType).forEach(([type, count]) => {
+        const typeValue = treatments
+          .filter(t => t.type === type)
+          .reduce((sum, t) => sum + (t.value * t.units), 0);
+        const avgValue = count > 0 ? typeValue / count : 0;
+        const percentage = patientStats.totalValue > 0 ? (typeValue / patientStats.totalValue * 100) : 0;
+        
+        financialData.push([
+          type.charAt(0).toUpperCase() + type.slice(1),
+          count,
+          `${typeValue.toFixed(2)}`,
+          `${avgValue.toFixed(2)}`,
+          `${percentage.toFixed(1)}%`
+        ]);
       });
 
-      patientInfo += `
+      financialData.push(['']);
+      financialData.push(['TOTAL', patientStats.totalTreatments, `${patientStats.totalValue.toFixed(2)}`, '', '100.0%']);
+      financialData.push(['']);
+      financialData.push(['TREATMENT TIMELINE ANALYSIS']);
+      financialData.push(['First Treatment:', treatments.length > 0 ? 
+        treatments.sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime())[0].completedAt.toLocaleDateString() : 'N/A']);
+      financialData.push(['Last Treatment:', treatments.length > 0 ? 
+        treatments.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())[0].completedAt.toLocaleDateString() : 'N/A']);
+      
+      if (treatments.length > 1) {
+        const firstTreatment = treatments.sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime())[0];
+        const lastTreatment = treatments.sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())[0];
+        const daysBetween = Math.floor((lastTreatment.completedAt.getTime() - firstTreatment.completedAt.getTime()) / (1000 * 60 * 60 * 24));
+        financialData.push(['Treatment Span (days):', daysBetween]);
+      }
 
-DETAILED TREATMENTS:
-`;
+      const financialSheet = XLSX.utils.aoa_to_sheet(financialData);
+      financialSheet['!cols'] = [
+        { wch: 25 },
+        { wch: 12 },
+        { wch: 18 },
+        { wch: 15 },
+        { wch: 18 }
+      ];
+      XLSX.utils.book_append_sheet(workbook, financialSheet, 'Financial Summary');
 
-      treatments.forEach(t => {
-        const treatmentDetailsList = parseTreatmentDetails(t);
-        patientInfo += `
-${t.type.toUpperCase()} TREATMENT (${t.completedAt.toLocaleDateString()}):
-Performed by: ${t.clinicianName}
-Value: $${(t.value * t.units).toFixed(2)}
-${treatmentDetailsList.map(d => `  - ${d}`).join('\n')}
-`;
+      // Write the workbook to binary
+      const wbout = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+
+      // Create file path
+      const fileName = `Patient_${patient.lastName}_${patient.firstName}_Complete_${Date.now()}.xlsx`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      // Write file
+      await FileSystem.writeAsStringAsync(fileUri, wbout, {
+        encoding: FileSystem.EncodingType.Base64,
       });
 
-      patientInfo += `
+      console.log('✅ Comprehensive Excel file created:', fileUri);
 
-Generated on: ${new Date().toLocaleString()}
-`;
+      // Check if we have expo-sharing available
+      try {
+        // Try to use expo-sharing if available (after rebuild)
+        const Sharing = require('expo-sharing');
+        
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: `Comprehensive Patient Report - ${patient.firstName} ${patient.lastName}`,
+            UTI: 'com.microsoft.excel.xlsx'
+          });
+        } else {
+          Alert.alert(
+            'File Saved',
+            `Excel file has been saved to:\n\n${fileUri}\n\nYou can find it in your file manager.`,
+            [{ text: 'OK' }]
+          );
+        }
+      } catch (sharingError) {
+        // expo-sharing not available, try native Share with file:// URL
+        console.log('expo-sharing not available, using alternative method');
+        
+        if (Platform.OS === 'ios') {
+          // iOS can share file:// URLs directly
+          await Share.share({
+            url: fileUri,
+            title: `Comprehensive Patient Report - ${patient.firstName} ${patient.lastName}`,
+          });
+        } else if (Platform.OS === 'android') {
+          // Android might need content:// URL, but file:// often works
+          try {
+            await Share.share({
+              message: `Complete medical report for ${patient.firstName} ${patient.lastName}. File saved to: ${fileUri}`,
+              title: `Comprehensive Patient Report - ${patient.firstName} ${patient.lastName}`,
+            });
+            
+            Alert.alert(
+              'File Saved',
+              `Excel file has been saved to:\n\n${fileUri}\n\nNote: To share the actual file, you need to rebuild the app with expo-sharing. For now, you can access the file in your device's file manager.`,
+              [
+                { text: 'OK' },
+                { 
+                  text: 'Copy Path', 
+                  onPress: () => {
+                    // This would copy to clipboard if you have expo-clipboard
+                    console.log('File path:', fileUri);
+                  }
+                }
+              ]
+            );
+          } catch (shareError) {
+            Alert.alert(
+              'File Saved',
+              `Excel file has been saved to:\n\n${fileUri}\n\nYou can access it through your file manager app.`,
+              [{ text: 'OK' }]
+            );
+          }
+        } else {
+          Alert.alert(
+            'Success',
+            `Comprehensive Excel file saved to:\n\n${fileUri}`,
+            [{ text: 'OK' }]
+          );
+        }
+      }
 
-      await Share.share({
-        message: patientInfo,
-        title: `Detailed Patient Report - ${patient.firstName} ${patient.lastName}`
-      });
     } catch (error) {
-      console.error('Export error:', error);
-      Alert.alert('Error', 'Failed to export patient data');
+      console.error('❌ Excel export error:', error);
+      Alert.alert('Error', 'Failed to export to Excel. Please try again.');
     }
   };
 
@@ -865,8 +1307,8 @@ Generated on: ${new Date().toLocaleString()}
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Patient Details</Text>
-          <TouchableOpacity style={styles.exportButton} onPress={exportPatientData}>
-            <Text style={styles.exportButtonText}>📤 Export</Text>
+          <TouchableOpacity style={styles.exportButton} onPress={exportToExcel}>
+            <Text style={styles.exportButtonText}>📊 Export Excel</Text>
           </TouchableOpacity>
         </View>
       </View>
