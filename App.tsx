@@ -16,6 +16,7 @@ import { FillingsTreatmentProvider } from './contexts/FillingsTreatmentContext';
 import { DentureTreatmentProvider } from './contexts/DentureTreatmentContext';
 import { ImplantTreatmentProvider } from './contexts/ImplantTreatmentContext';
 // import { AudioRecordingProvider } from './contexts/AudioRecordingContext'; // Add this import
+import { localHubSyncService } from './services/LocalHubSync';
 
 import { database } from './db'; // your WatermelonDB instance
 import { initializeSync } from './utils/initializeSync';
@@ -24,6 +25,14 @@ export default function App() {
   useEffect(() => {
     // Initialize sync service when app starts
     initializeSync();
+  }, []);
+
+  useEffect(() => {
+    // Try to connect to hub on app start
+    localHubSyncService.discoverHub();
+    
+    // Start periodic sync (will only work if hub is found)
+    localHubSyncService.startPeriodicSync(180); // 3 minutes
   }, []);
 
   return (

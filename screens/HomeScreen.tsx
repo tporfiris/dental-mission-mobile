@@ -14,16 +14,27 @@ const HomeScreen = () => {
       case 'clinician':
         return (
           <>
+            <Text style={styles.roleSection}>🧪 Testing</Text>
+            <Button 
+              title="🧪 Hub Sync Test" 
+              onPress={() => navigation.navigate('HubTest')}
+              color="#6f42c1"
+            />
+            <View style={styles.spacer} />
             <Text style={styles.roleSection}>🦷 Clinician Tools</Text>
             <Button title="Add New Patient" onPress={() => navigation.navigate('NewPatient')} />
+            <View style={styles.spacer} />
+            <Button 
+              title="🏥 Begin Treatment" 
+              onPress={() => navigation.navigate('BeginTreatment')}
+              color="#28a745"
+            />
             <View style={styles.spacer} />
             <Button 
               title="🔍 Search Existing Patients" 
               onPress={() => navigation.navigate('PatientSearch')}
               color="#17a2b8"
             />
-            <View style={styles.spacer} />
-            <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
             <View style={styles.spacer} />
             <Button 
               title="🎤 Voice Recordings" 
@@ -40,12 +51,16 @@ const HomeScreen = () => {
             <Button title="Register New Patient" onPress={() => navigation.navigate('NewPatient')} />
             <View style={styles.spacer} />
             <Button 
+              title="🏥 Begin Treatment" 
+              onPress={() => navigation.navigate('BeginTreatment')}
+              color="#28a745"
+            />
+            <View style={styles.spacer} />
+            <Button 
               title="🔍 Search Existing Patients" 
               onPress={() => navigation.navigate('PatientSearch')}
               color="#17a2b8"
             />
-            <View style={styles.spacer} />
-            <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
             <View style={styles.spacer} />
             <Button 
               title="🎤 Voice Recordings" 
@@ -59,26 +74,14 @@ const HomeScreen = () => {
         return (
           <>
             <Text style={styles.roleSection}>📊 Admin Dashboard Access</Text>
+            <Text style={styles.adminNote}>
+              As an admin, you have read-only access to view mission data and analytics.
+            </Text>
+            <View style={styles.spacer} />
             <Button 
               title="📊 View Mission Dashboard" 
               onPress={() => navigation.navigate('AdminDashboard')}
               color="#007bff"
-            />
-            <View style={styles.spacer} />
-            <Button title="Register New Patient" onPress={() => navigation.navigate('NewPatient')} />
-            <View style={styles.spacer} />
-            <Button 
-              title="🔍 Search Existing Patients" 
-              onPress={() => navigation.navigate('PatientSearch')}
-              color="#17a2b8"
-            />
-            <View style={styles.spacer} />
-            <Button title="Scan Patient QR" onPress={() => navigation.navigate('ScanQRCode')} />
-            <View style={styles.spacer} />
-            <Button 
-              title="🎤 Voice Recordings" 
-              onPress={() => navigation.navigate('VoiceRecordings')}
-              color="#6f42c1"
             />
             <View style={styles.spacer} />
           </>
@@ -130,6 +133,14 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#3366CC',
     textAlign: 'center',
+  },
+  adminNote: {
+    fontSize: 14,
+    marginVertical: 10,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    paddingHorizontal: 20,
   },
   spacer: {
     height: 10,

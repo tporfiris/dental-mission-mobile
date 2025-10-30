@@ -190,27 +190,42 @@ class SimpleFirestoreSyncService {
     if (this.syncInProgress) {
       return;
     }
-
+  
     this.syncInProgress = true;
     this.currentStatus.isSyncing = true;
     this.currentStatus.syncError = null;
     this.notifyListeners();
-
+  
     try {
-      console.log('🚀 Starting sync of unsynced data...');
-
+      console.log('🚀 Starting sync...');
+      
       await this.syncUnsyncedPatients();
       await this.syncUnsyncedTreatments();
       await this.syncUnsyncedAssessments();
-
+  
       this.currentStatus.lastSyncTime = new Date();
       this.currentStatus.pendingSyncCount = 0;
       
-      console.log('✅ Sync completed successfully');
+      console.log('✅ Sync completed');
       
-    } catch (error) {
-      console.error('❌ Sync failed:', error);
-      this.currentStatus.syncError = error instanceof Error ? error.message : 'Unknown sync error';
+    } catch (err) {
+      console.error('❌ Sync failed:', err);
+      
+      // Type guard for error
+      const error = err as any; // or use: err as Error
+      
+      // User-friendly error messages
+      let errorMessage = 'Sync failed. Will retry automatically.';
+      
+      if (error?.code === 'permission-denied') {
+        errorMessage = 'Permission denied. Please check your account access.';
+      } else if (error?.code === 'unavailable') {
+        errorMessage = 'Server unavailable. Will retry when connection improves.';
+      } else if (error?.message?.includes('network')) {
+        errorMessage = 'Network error. Data will sync when connection is restored.';
+      }
+      
+      this.currentStatus.syncError = errorMessage;
     } finally {
       this.syncInProgress = false;
       this.currentStatus.isSyncing = false;

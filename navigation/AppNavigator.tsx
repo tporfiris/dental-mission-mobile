@@ -33,9 +33,16 @@ import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import PatientListScreen from '../screens/PatientListScreen';
 import PatientDetailScreen from '../screens/PatientDetailScreen';
 
-// Patient Search Screens - ADD THESE IMPORTS
+// Patient Search Screens
 import PatientSearchScreen from '../screens/PatientSearchScreen';
 import PatientProfileScreen from '../screens/PatientProfileScreen';
+
+// Begin Treatment Screens
+import BeginTreatmentScreen from '../screens/BeginTreatmentScreen';
+import TreatmentPatientSearchScreen from '../screens/TreatmentPatientSearchScreen';
+
+// Hub Test Screen
+import HubTestScreen from '../screens/HubTestScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -53,8 +60,36 @@ export default function AppNavigator() {
             component={HomeScreen}
             options={{ title: 'Dental Mission Home' }}
           />
+
+          {/* Hub Test Screen */}
+          <Stack.Screen 
+            name="HubTest" 
+            component={HubTestScreen}
+            options={{ 
+              title: '🧪 Hub Sync Test',
+              headerBackTitleVisible: false
+            }}
+          />
           
-          {/* Patient Search Screens - ADD THESE TWO SCREENS */}
+          {/* Begin Treatment Flow */}
+          <Stack.Screen 
+            name="BeginTreatment" 
+            component={BeginTreatmentScreen}
+            options={{ 
+              title: 'Begin Treatment',
+              headerBackTitleVisible: false
+            }}
+          />
+          <Stack.Screen 
+            name="TreatmentPatientSearch" 
+            component={TreatmentPatientSearchScreen}
+            options={{ 
+              title: 'Find Patient',
+              headerBackTitleVisible: false
+            }}
+          />
+          
+          {/* Patient Search Screens */}
           <Stack.Screen 
             name="PatientSearch" 
             component={PatientSearchScreen}
