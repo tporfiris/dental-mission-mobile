@@ -1,26 +1,27 @@
 // utils/initializeSync.ts
 import { simpleFirestoreSyncService } from '../services/SimpleFirestoreSync';
 
-// Initialize sync service when app starts
+// Initialize Firestore sync service when app starts
 export const initializeSync = async () => {
   try {
-    console.log('🔄 Initializing simple sync service...');
+    console.log('☁️ Initializing Firestore sync service...');
     
-    // The service automatically starts its periodic check
-    // No manual initialization needed
+    // Just update auth status - don't force sync
+    // (sync will be triggered automatically when user logs in)
+    simpleFirestoreSyncService.updateAuthStatus();
     
-    console.log('✅ Simple sync service initialized successfully');
+    console.log('✅ Firestore sync service initialized successfully');
   } catch (error) {
-    console.error('❌ Failed to initialize sync service:', error);
+    console.error('❌ Failed to initialize Firestore sync service:', error);
   }
 };
 
 // Helper function to trigger immediate sync check (optional)
 export const triggerSyncCheck = async () => {
   try {
-    console.log('🔍 Triggering immediate sync check...');
+    console.log('🔍 Triggering immediate Firestore sync check...');
     await simpleFirestoreSyncService.forceSync();
   } catch (error) {
-    console.error('❌ Error triggering sync check:', error);
+    console.error('❌ Error triggering Firestore sync check:', error);
   }
 };

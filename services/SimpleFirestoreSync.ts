@@ -42,32 +42,57 @@ class SimpleFirestoreSyncService {
 
   constructor() {
     this.checkAuthStatus();
-    this.startPeriodicSync();
+    
+    // Listen to Firebase Auth state changes
+    auth.onAuthStateChanged((user) => {
+      console.log('🔐 Firebase Auth state changed in sync service:', user?.email || 'logged out');
+      
+      if (user) {
+        // User logged in - enable sync
+        console.log('✅ User logged in, enabling Firestore sync');
+        this.currentStatus.isAuthenticated = true;
+        this.currentStatus.syncError = null;
+        this.notifyListeners();
+        
+        // Start periodic sync
+        this.startPeriodicSync();
+        
+      } else {
+        // User logged out - disable sync
+        console.log('⏹️ User logged out, disabling Firestore sync');
+        this.stopPeriodicSync();
+        this.currentStatus.isAuthenticated = false;
+        this.currentStatus.syncError = null;
+        this.currentStatus.pendingSyncCount = 0;
+        this.syncInProgress = false; // ✅ RESET THIS TOO
+        this.notifyListeners();
+      }
+    });
   }
 
-  // Start checking every minute for unsaved data
+  // Start checking every 45 seconds for unsaved data
   private startPeriodicSync() {
+    // Always stop first to prevent multiple timers
+    this.stopPeriodicSync();
+    
+    console.log('🕐 Started periodic sync check (every 45 seconds)');
+    
     // Check immediately
     this.checkForUnsyncedData();
     
-    // // Then check every 60 seconds
-    // this.syncInterval = setInterval(() => {
-    //   this.checkForUnsyncedData();
-    // }, 60000); // 1 minute
-
+    // Then check every 45 seconds
     this.syncInterval = setInterval(() => {
+      console.log('⏰ Periodic sync check triggered'); // ✅ DEBUG LOG
       this.checkForUnsyncedData();
-    }, 45000); // 45 seconds
-    
-    console.log('🕐 Started periodic sync check (every 1 minute)');
+    }, 45000);
   }
 
-  // Stop periodic sync (for cleanup)
+  // Stop periodic sync
   public stopPeriodicSync() {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
-      console.log('⏹️ Stopped periodic sync');
+      console.log('⏹️ Stopped periodic Firestore sync');
     }
   }
 
@@ -90,7 +115,14 @@ class SimpleFirestoreSyncService {
 
   // Check for data that hasn't been synced yet
   private async checkForUnsyncedData() {
-    if (!this.currentStatus.isAuthenticated || this.syncInProgress) {
+    // ✅ CRITICAL FIX: Check auth first, but don't block if already syncing
+    if (!this.currentStatus.isAuthenticated) {
+      console.log('⏭️ Skipping sync check - not authenticated');
+      return;
+    }
+
+    if (this.syncInProgress) {
+      console.log('⏭️ Skipping sync check - sync already in progress');
       return;
     }
 
@@ -102,7 +134,7 @@ class SimpleFirestoreSyncService {
         console.log(`🔍 Found ${unsyncedCount} unsynced items, starting sync...`);
         await this.syncUnsyncedData();
       } else {
-        console.log('✅ No unsynced data found');
+        console.log('✅ All data is synced');
       }
       
       this.notifyListeners();
@@ -113,8 +145,14 @@ class SimpleFirestoreSyncService {
     }
   }
 
-  // Count items that don't exist in Firestore yet - UPDATED FOR CONSOLIDATED STRUCTURE
+  // Count items that don't exist in Firestore yet
   private async countUnsyncedItems(): Promise<number> {
+    // ✅ DOUBLE CHECK AUTH HERE TOO
+    if (!auth.currentUser) {
+      console.log('⚠️ No authenticated user, cannot count items');
+      return 0;
+    }
+
     try {
       const [
         patients,
@@ -140,17 +178,22 @@ class SimpleFirestoreSyncService {
 
       // Check each patient
       for (const patient of patients) {
+        // ✅ CHECK AUTH BEFORE EACH FIRESTORE CALL
+        if (!auth.currentUser) break;
+        
         const exists = await this.checkIfExistsInFirestore('patients', patient.id);
         if (!exists) unsyncedCount++;
       }
 
       // Check each treatment
       for (const treatment of treatments) {
+        if (!auth.currentUser) break;
+        
         const exists = await this.checkIfExistsInFirestore('treatments', treatment.id);
         if (!exists) unsyncedCount++;
       }
 
-      // Check assessments - NOW ALL CHECK THE CONSOLIDATED 'assessments' COLLECTION
+      // Check assessments
       const allAssessments = [
         ...dentitionAssessments,
         ...hygieneAssessments,
@@ -161,7 +204,8 @@ class SimpleFirestoreSyncService {
       ];
 
       for (const assessment of allAssessments) {
-        // Check the consolidated 'assessments' collection instead of individual collections
+        if (!auth.currentUser) break;
+        
         const exists = await this.checkIfExistsInFirestore('assessments', assessment.id);
         if (!exists) unsyncedCount++;
       }
@@ -175,57 +219,59 @@ class SimpleFirestoreSyncService {
 
   // Check if a document exists in Firestore
   private async checkIfExistsInFirestore(collection: string, id: string): Promise<boolean> {
+    // ✅ CHECK AUTH BEFORE FIRESTORE CALL
+    if (!auth.currentUser) {
+      console.log('⚠️ No authenticated user, skipping Firestore check');
+      return true; // Assume exists to skip syncing
+    }
+
     try {
       const docRef = doc(db, collection, id);
       const docSnap = await getDoc(docRef);
       return docSnap.exists();
     } catch (error) {
+      // ✅ DON'T LOG PERMISSION ERRORS - THEY'RE EXPECTED AFTER LOGOUT
+      if (error instanceof Error && error.message.includes('permissions')) {
+        return true; // Assume exists to avoid retry
+      }
       console.error(`Error checking if ${collection}/${id} exists:`, error);
-      return false; // Assume it doesn't exist if we can't check
+      return false;
     }
   }
 
   // Sync only the data that doesn't exist in Firestore
   private async syncUnsyncedData() {
     if (this.syncInProgress) {
+      console.log('⏭️ Sync already in progress, skipping');
       return;
     }
-  
+
+    // ✅ CHECK AUTH ONE MORE TIME
+    if (!auth.currentUser) {
+      console.log('⚠️ User logged out during sync, aborting');
+      return;
+    }
+
     this.syncInProgress = true;
     this.currentStatus.isSyncing = true;
     this.currentStatus.syncError = null;
     this.notifyListeners();
-  
+
     try {
-      console.log('🚀 Starting sync...');
-      
+      console.log('🚀 Starting sync of unsynced data...');
+
       await this.syncUnsyncedPatients();
       await this.syncUnsyncedTreatments();
       await this.syncUnsyncedAssessments();
-  
+
       this.currentStatus.lastSyncTime = new Date();
       this.currentStatus.pendingSyncCount = 0;
       
-      console.log('✅ Sync completed');
+      console.log('✅ Sync completed successfully');
       
-    } catch (err) {
-      console.error('❌ Sync failed:', err);
-      
-      // Type guard for error
-      const error = err as any; // or use: err as Error
-      
-      // User-friendly error messages
-      let errorMessage = 'Sync failed. Will retry automatically.';
-      
-      if (error?.code === 'permission-denied') {
-        errorMessage = 'Permission denied. Please check your account access.';
-      } else if (error?.code === 'unavailable') {
-        errorMessage = 'Server unavailable. Will retry when connection improves.';
-      } else if (error?.message?.includes('network')) {
-        errorMessage = 'Network error. Data will sync when connection is restored.';
-      }
-      
-      this.currentStatus.syncError = errorMessage;
+    } catch (error) {
+      console.error('❌ Sync failed:', error);
+      this.currentStatus.syncError = error instanceof Error ? error.message : 'Unknown sync error';
     } finally {
       this.syncInProgress = false;
       this.currentStatus.isSyncing = false;
@@ -235,10 +281,14 @@ class SimpleFirestoreSyncService {
 
   // Sync only patients that don't exist in Firestore
   private async syncUnsyncedPatients() {
+    if (!auth.currentUser) return;
+
     const patients = await database.get<Patient>('patients').query().fetch();
     const unsyncedPatients = [];
 
     for (const patient of patients) {
+      if (!auth.currentUser) break;
+      
       const exists = await this.checkIfExistsInFirestore('patients', patient.id);
       if (!exists) {
         unsyncedPatients.push(patient);
@@ -246,7 +296,6 @@ class SimpleFirestoreSyncService {
     }
 
     if (unsyncedPatients.length === 0) {
-      console.log('ℹ️ No unsynced patients');
       return;
     }
 
@@ -274,10 +323,14 @@ class SimpleFirestoreSyncService {
 
   // Sync only treatments that don't exist in Firestore
   private async syncUnsyncedTreatments() {
+    if (!auth.currentUser) return;
+
     const treatments = await database.get<Treatment>('treatments').query().fetch();
     const unsyncedTreatments = [];
 
     for (const treatment of treatments) {
+      if (!auth.currentUser) break;
+      
       const exists = await this.checkIfExistsInFirestore('treatments', treatment.id);
       if (!exists) {
         unsyncedTreatments.push(treatment);
@@ -285,7 +338,6 @@ class SimpleFirestoreSyncService {
     }
 
     if (unsyncedTreatments.length === 0) {
-      console.log('ℹ️ No unsynced treatments');
       return;
     }
 
@@ -316,8 +368,10 @@ class SimpleFirestoreSyncService {
     console.log(`✅ Synced ${unsyncedTreatments.length} new treatments`);
   }
 
-  // Sync only assessments that don't exist in Firestore - CONSOLIDATED VERSION
+  // Sync only assessments that don't exist in Firestore
   private async syncUnsyncedAssessments() {
+    if (!auth.currentUser) return;
+
     const assessmentTypes = [
       { collection: 'dentition_assessments', name: 'dentition' },
       { collection: 'hygiene_assessments', name: 'hygiene' },
@@ -327,14 +381,16 @@ class SimpleFirestoreSyncService {
       { collection: 'implant_assessments', name: 'implant' },
     ];
 
-    // Process all assessment types and batch them together
     const allUnsyncedAssessments = [];
 
     for (const { collection: localCollection, name: assessmentType } of assessmentTypes) {
+      if (!auth.currentUser) break;
+      
       const assessments = await database.get(localCollection).query().fetch();
 
       for (const assessment of assessments) {
-        // Check if this assessment exists in the consolidated 'assessments' collection
+        if (!auth.currentUser) break;
+        
         const exists = await this.checkIfExistsInFirestore('assessments', assessment.id);
         if (!exists) {
           allUnsyncedAssessments.push({
@@ -346,22 +402,20 @@ class SimpleFirestoreSyncService {
     }
 
     if (allUnsyncedAssessments.length === 0) {
-      console.log('ℹ️ No unsynced assessments');
       return;
     }
 
     console.log(`🔄 Syncing ${allUnsyncedAssessments.length} assessments to consolidated collection...`);
     
-    // Batch all assessments into the single 'assessments' collection
     const batch = writeBatch(db);
 
     for (const { assessment, type } of allUnsyncedAssessments) {
-      const assessmentRef = doc(db, 'assessments', assessment.id); // Single collection!
+      const assessmentRef = doc(db, 'assessments', assessment.id);
       
       batch.set(assessmentRef, {
         id: assessment.id,
         patientId: assessment.patientId,
-        assessmentType: type, // ← This is the key field that replaces separate collections
+        assessmentType: type,
         data: assessment.data,
         createdAt: assessment.createdAt ? assessment.createdAt.toISOString() : null,
         updatedAt: assessment.updatedAt ? assessment.updatedAt.toISOString() : null,
@@ -373,14 +427,6 @@ class SimpleFirestoreSyncService {
 
     await batch.commit();
     console.log(`✅ Synced ${allUnsyncedAssessments.length} assessments to consolidated collection`);
-    
-    // Log breakdown by type
-    const breakdown = allUnsyncedAssessments.reduce((acc, { type }) => {
-      acc[type] = (acc[type] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    console.log('📊 Assessment sync breakdown:', breakdown);
   }
 
   // Subscribe to sync status updates
@@ -408,7 +454,7 @@ class SimpleFirestoreSyncService {
     return { ...this.currentStatus };
   }
 
-  // Trigger auth status check (call when user logs in/out)
+  // Trigger auth status check
   public updateAuthStatus(): void {
     this.checkAuthStatus();
   }
