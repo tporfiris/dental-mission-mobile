@@ -145,6 +145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw new Error(error.message);
     }
   };
+  
   // ✅ UPDATED: Logout function with sync cleanup
   const logout = async () => {
     try {
