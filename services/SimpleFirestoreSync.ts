@@ -7,7 +7,8 @@ import {
   setDoc, 
   getDoc,
   writeBatch,
-  serverTimestamp 
+  serverTimestamp,
+  Timestamp
 } from 'firebase/firestore';
 import Patient from '../db/models/Patient';
 import Treatment from '../db/models/Treatment';
@@ -313,7 +314,7 @@ class SimpleFirestoreSyncService {
         location: patient.location,
         photoUri: patient.photoUri,
         createdAt: serverTimestamp(),
-        syncedAt: serverTimestamp(),
+        // syncedAt: serverTimestamp(),
       });
     }
 
@@ -324,10 +325,10 @@ class SimpleFirestoreSyncService {
   // Sync only treatments that don't exist in Firestore
   private async syncUnsyncedTreatments() {
     if (!auth.currentUser) return;
-
+  
     const treatments = await database.get<Treatment>('treatments').query().fetch();
     const unsyncedTreatments = [];
-
+  
     for (const treatment of treatments) {
       if (!auth.currentUser) break;
       
@@ -336,36 +337,58 @@ class SimpleFirestoreSyncService {
         unsyncedTreatments.push(treatment);
       }
     }
-
-    if (unsyncedTreatments.length === 0) {
-      return;
-    }
-
+  
+    if (unsyncedTreatments.length === 0) return;
+  
     console.log(`🔄 Syncing ${unsyncedTreatments.length} new treatments...`);
     const batch = writeBatch(db);
-
+  
     for (const treatment of unsyncedTreatments) {
       const treatmentRef = doc(db, 'treatments', treatment.id);
-      batch.set(treatmentRef, {
-        id: treatment.id,
+      
+      // ✅ Parse notes if it's JSON (optimized format)
+      let parsedNotes = treatment.notes;
+      try {
+        if (treatment.notes && treatment.notes.startsWith('{')) {
+          parsedNotes = JSON.parse(treatment.notes);
+        }
+      } catch (e) {
+        parsedNotes = treatment.notes;
+      }
+      
+      // ✅ Parse billing codes to array
+      let parsedBillingCodes = [];
+      try {
+        if (treatment.billingCodes) {
+          parsedBillingCodes = JSON.parse(treatment.billingCodes);
+        }
+      } catch (e) {
+        console.warn('Failed to parse billing codes');
+      }
+      
+      const treatmentData = {
         patientId: treatment.patientId,
-        visitId: treatment.visitId,
         type: treatment.type,
         tooth: treatment.tooth,
         surface: treatment.surface,
         units: treatment.units,
         value: treatment.value,
-        billingCodes: treatment.billingCodes,
-        notes: treatment.notes,
+        billingCodes: parsedBillingCodes, // ✅ Array, not string
+        notes: parsedNotes, // ✅ Object, not string
         clinicianName: treatment.clinicianName,
-        completedAt: treatment.completedAt ? treatment.completedAt.toISOString() : null,
+        completedAt: treatment.completedAt ? 
+          Timestamp.fromDate(treatment.completedAt) : null, // ✅ Timestamp
         createdAt: serverTimestamp(),
         syncedAt: serverTimestamp(),
-      });
+        // ✅ Omit empty visitId
+        ...(treatment.visitId && { visitId: treatment.visitId }),
+      };
+  
+      batch.set(treatmentRef, treatmentData);
     }
-
+  
     await batch.commit();
-    console.log(`✅ Synced ${unsyncedTreatments.length} new treatments`);
+    console.log(`✅ Synced ${unsyncedTreatments.length} treatments (optimized)`);
   }
 
   // Sync only assessments that don't exist in Firestore
@@ -412,16 +435,28 @@ class SimpleFirestoreSyncService {
     for (const { assessment, type } of allUnsyncedAssessments) {
       const assessmentRef = doc(db, 'assessments', assessment.id);
       
+      // ✅ Parse the JSON string to object
+      let parsedData;
+      try {
+        parsedData = JSON.parse(assessment.data);
+      } catch (error) {
+        console.error('Failed to parse assessment data:', error);
+        parsedData = { raw: assessment.data };
+      }
+      
       batch.set(assessmentRef, {
-        id: assessment.id,
+        // ✅ Removed: id field (redundant)
         patientId: assessment.patientId,
         assessmentType: type,
-        data: assessment.data,
-        createdAt: assessment.createdAt ? assessment.createdAt.toISOString() : null,
-        updatedAt: assessment.updatedAt ? assessment.updatedAt.toISOString() : null,
-        syncedAt: serverTimestamp(),
+        data: parsedData,  // ✅ Store as actual object, not string
+        createdAt: assessment.createdAt ? 
+          Timestamp.fromDate(assessment.createdAt) : 
+          serverTimestamp(),  // ✅ Use Firestore Timestamp
+        updatedAt: assessment.updatedAt ? 
+          Timestamp.fromDate(assessment.updatedAt) : 
+          serverTimestamp(),  // ✅ Use Firestore Timestamp
         clinicianId: auth.currentUser?.uid || null,
-        clinicianEmail: auth.currentUser?.email || null,
+        // ✅ Removed: clinicianEmail (redundant)
       });
     }
 

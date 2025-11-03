@@ -1,3 +1,4 @@
+// screens/ExtractionsTreatmentScreen.tsx - OPTIMIZED VERSION
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal } from 'react-native';
 import { useExtractionsTreatment } from '../contexts/ExtractionsTreatmentContext';
@@ -16,7 +17,6 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
   
-  // Use the context for all state management
   const {
     treatmentState,
     addExtraction,
@@ -45,13 +45,12 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
 
   // Calculate ODA billing codes and total cost
   const billingCalculation = useMemo(() => {
+    // ✅ OPTIMIZED: Store minimal billing info
     const billingCodes: Array<{
       code: string;
-      description: string;
       price: number;
       tooth: string;
       complexity: string;
-      extractionId: string;
     }> = [];
 
     let totalCost = 0;
@@ -61,11 +60,9 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
       if (odaInfo) {
         billingCodes.push({
           code: odaInfo.code,
-          description: `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction - Tooth ${extraction.toothNumber}`,
           price: odaInfo.price,
           tooth: extraction.toothNumber,
           complexity: extraction.complexity,
-          extractionId: extraction.id
         });
         totalCost += odaInfo.price;
       }
@@ -75,6 +72,11 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
   }, [extractions]);
 
   const { billingCodes, totalCost } = billingCalculation;
+
+  // ✅ HELPER: Generate description on-the-fly (not stored)
+  const getExtractionDescription = (tooth: string, complexity: string): string => {
+    return `${complexity === 'simple' ? 'Simple' : 'Complicated'} extraction - Tooth ${tooth}`;
+  };
 
   const handleAddExtraction = () => {
     if (!toothNumber.trim()) {
@@ -90,7 +92,6 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
       return;
     }
     
-    // Check if tooth already extracted
     const existingExtraction = extractions.find(e => e.toothNumber === toothNumber);
     if (existingExtraction) {
       Alert.alert(
@@ -112,7 +113,6 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
     
     addExtraction(newExtraction);
     
-    // Clear form
     updateToothNumber('');
     updateSelectedComplexity('simple');
     updateExtractionNotes('');
@@ -160,25 +160,32 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
       const clinicianName = user?.email || 'Unknown Clinician';
       const completedDate = new Date();
 
-      // Save each extraction as a separate treatment record
       await database.write(async () => {
         for (const extraction of extractions) {
           const treatmentId = uuid.v4();
+          const code = billingCodes.find(c => c.tooth === extraction.toothNumber);
           
-          // Find the billing code for this specific extraction
-          const code = billingCodes.find(c => c.extractionId === extraction.id);
-          
+          // ✅ OPTIMIZED: Build notes once, store minimal billing data
+          const notesText = extraction.notes 
+            ? `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction. ${extraction.notes}`
+            : `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction`;
+
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
             treatment.patientId = patientId;
-            treatment.visitId = '';
+            // ❌ REMOVED: visitId (empty string - not needed)
             treatment.type = 'extraction';
             treatment.tooth = extraction.toothNumber;
-            treatment.surface = 'N/A';
+            // ❌ REMOVED: surface (N/A - not applicable)
             treatment.units = 1;
-            treatment.value = code ? code.price : 0; // Store ODA price
-            treatment.billingCodes = JSON.stringify(code ? [code] : []); // Store ODA code
-            treatment.notes = `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction of tooth ${extraction.toothNumber}. ${extraction.notes}`.trim();
+            treatment.value = code ? code.price : 0;
+            // ✅ OPTIMIZED: Minimal billing code (no descriptions)
+            treatment.billingCodes = JSON.stringify(code ? [{
+              code: code.code,
+              price: code.price,
+              complexity: code.complexity
+            }] : []);
+            treatment.notes = notesText;
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
@@ -189,10 +196,8 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
         patientId,
         extractionsCount: extractions.length,
         teeth: extractions.map(e => `${e.toothNumber}(${e.complexity})`),
-        odaCodes: billingCodes.map(code => `${code.code}: $${code.price}`),
         totalCost: `$${totalCost}`,
         clinician: clinicianName,
-        completedAt: completedDate.toISOString()
       });
 
       return true;
@@ -219,7 +224,9 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
 
     const simpleExtractions = extractions.filter(e => e.complexity === 'simple').length;
     const complicatedExtractions = extractions.filter(e => e.complexity === 'complicated').length;
-    const odaCodesText = billingCodes.map(code => `${code.code}: $${code.price} (Tooth ${code.tooth})`).join('\n• ');
+    const odaCodesText = billingCodes.map(code => 
+      `${code.code}: $${code.price} (Tooth ${code.tooth})`
+    ).join('\n• ');
 
     Alert.alert(
       'Complete Treatment',
@@ -324,7 +331,6 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             </View>
           </View>
 
-          {/* ODA Info for selected complexity */}
           <View style={styles.odaInfo}>
             <Text style={styles.odaInfoText}>
               💰 ODA Code: {ODA_FEES[selectedComplexity].code} - ${ODA_FEES[selectedComplexity].price}
@@ -332,7 +338,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
           </View>
 
           <View style={styles.formColumn}>
-            <Text style={styles.formLabel}>Notes (stitches, antibiotics, etc.):</Text>
+            <Text style={styles.formLabel}>Notes (optional):</Text>
             <TextInput
               style={styles.notesInput}
               value={extractionNotes}
@@ -420,7 +426,9 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
                 <Text style={styles.billingCode}>{code.code}</Text>
                 <Text style={styles.billingPrice}>${code.price}</Text>
               </View>
-              <Text style={styles.billingDescription}>{code.description}</Text>
+              <Text style={styles.billingDescription}>
+                {getExtractionDescription(code.tooth, code.complexity)}
+              </Text>
               <Text style={styles.billingDetails}>
                 Complexity: {code.complexity} • Tooth: {code.tooth}
               </Text>
@@ -574,6 +582,7 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
 
 export default ExtractionsTreatmentScreen;
 
+// Styles remain the same
 const styles = StyleSheet.create({
   container: {
     flex: 1,

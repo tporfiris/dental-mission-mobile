@@ -80,8 +80,82 @@ export const FillingsAssessmentProvider: React.FC<{ children: React.ReactNode }>
         .fetch();
 
       if (assessments.length > 0) {
-        return JSON.parse(assessments[0].data);
+        const savedData = JSON.parse(assessments[0].data);
+        
+        // ✅ NEW: Check if this is optimized format
+        if (savedData.teethWithIssues) {
+          console.log('📖 Loading optimized assessment format');
+          
+          // Convert compact format back to full format for UI
+          const fullTeethStates: Record<string, any> = {};
+          
+          // Initialize all teeth as default
+          TOOTH_IDS.forEach(toothId => {
+            fullTeethStates[toothId] = {
+              hasFillings: false,
+              fillingType: null,
+              fillingSurfaces: [],
+              hasCrowns: false,
+              crownMaterial: null,
+              hasExistingRootCanal: false,
+              hasCavities: false,
+              cavitySurfaces: [],
+              isBroken: false,
+              brokenSurfaces: [],
+              needsRootCanal: false,
+              pulpDiagnosis: null,
+              apicalDiagnosis: null,
+            };
+          });
+          
+          // Populate teeth that have issues
+          Object.entries(savedData.teethWithIssues).forEach(([toothId, toothData]: [string, any]) => {
+            const tooth = fullTeethStates[toothId];
+            
+            if (toothData.fillings) {
+              tooth.hasFillings = true;
+              tooth.fillingType = toothData.fillings.type;
+              tooth.fillingSurfaces = toothData.fillings.surfaces || [];
+            }
+            
+            if (toothData.crown) {
+              tooth.hasCrowns = true;
+              tooth.crownMaterial = toothData.crown.material;
+            }
+            
+            if (toothData.rootCanal?.existing) {
+              tooth.hasExistingRootCanal = true;
+            }
+            
+            if (toothData.cavities) {
+              tooth.hasCavities = true;
+              tooth.cavitySurfaces = toothData.cavities.surfaces || [];
+            }
+            
+            if (toothData.broken) {
+              tooth.isBroken = true;
+              tooth.brokenSurfaces = toothData.broken.surfaces || [];
+            }
+            
+            if (toothData.rootCanalNeeded) {
+              tooth.needsRootCanal = true;
+              tooth.pulpDiagnosis = toothData.rootCanalNeeded.pulpDiagnosis;
+              tooth.apicalDiagnosis = toothData.rootCanalNeeded.apicalDiagnosis;
+            }
+          });
+          
+          return {
+            teethStates: fullTeethStates,
+            primaryTeeth: savedData.primaryTeeth || [],
+            restorationStates: savedData.restorations || {},
+          };
+        }
+        
+        // ✅ OLD FORMAT: Return as-is for backward compatibility
+        console.log('📖 Loading legacy assessment format');
+        return savedData;
       }
+      
       return null;
     } catch (error) {
       console.error('❌ Error loading latest fillings assessment:', error);

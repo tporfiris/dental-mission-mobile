@@ -4,6 +4,70 @@ import { database } from '../db';
 import { Q } from '@nozbe/watermelondb';
 import HygieneAssessment from '../db/models/HygieneAssessment';
 
+// ✅ NEW: Helper to convert optimized format back to full format for UI
+export const expandOptimizedData = (optimizedData: any): any => {
+  // If data is already in old format, return as-is
+  if (optimizedData.probingDepths && typeof optimizedData.probingDepths === 'object' && !optimizedData.probingDepths.default) {
+    console.log('📖 Loading legacy format data');
+    return optimizedData;
+  }
+  
+  console.log('📖 Loading optimized format data, expanding for UI...');
+  
+  // Expand probing depths
+  const probingDepths: Record<string, number> = {};
+  const defaultDepth = optimizedData.probingDepths?.default || 2;
+  const exceptions = optimizedData.probingDepths?.exceptions || {};
+  
+  TOOTH_IDS.forEach(toothId => {
+    probingDepths[toothId] = exceptions[toothId] || defaultDepth;
+  });
+  
+  // Expand bleeding on probing
+  const bleedingOnProbing: Record<string, boolean> = {};
+  const bleedingTeeth = optimizedData.bleedingTeeth || [];
+  
+  TOOTH_IDS.forEach(toothId => {
+    bleedingOnProbing[toothId] = bleedingTeeth.includes(toothId);
+  });
+  
+  // Expand quadrant names
+  const expandQuadrant = (q: string) => {
+    const map: Record<string, string> = {
+      'UR': 'upper-right',
+      'UL': 'upper-left',
+      'LL': 'lower-left',
+      'LR': 'lower-right'
+    };
+    return map[q] || q;
+  };
+  
+  // Return expanded format for UI
+  return {
+    // Calculus (handle both old and new format)
+    calculusLevel: optimizedData.calculus?.level || optimizedData.calculusLevel || 'none',
+    calculusDistribution: optimizedData.calculus?.distribution || optimizedData.calculusDistribution || 'none',
+    calculusQuadrants: (optimizedData.calculus?.quadrants || optimizedData.calculusQuadrants || [])
+      .map(expandQuadrant),
+    
+    // Plaque (handle both old and new format)
+    plaqueLevel: optimizedData.plaque?.level || optimizedData.plaqueLevel || 'none',
+    plaqueDistribution: optimizedData.plaque?.distribution || optimizedData.plaqueDistribution || 'none',
+    plaqueQuadrants: (optimizedData.plaque?.quadrants || optimizedData.plaqueQuadrants || [])
+      .map(expandQuadrant),
+    
+    // Expanded probing depths
+    probingDepths,
+    
+    // Expanded bleeding on probing
+    bleedingOnProbing,
+    
+    // AAP Classification (handle both old and new format)
+    aapStage: optimizedData.aap?.stage || optimizedData.aapStage || null,
+    aapGrade: optimizedData.aap?.grade || optimizedData.aapGrade || null,
+  };
+};
+
 const TOOTH_IDS = [
   '11','12','13','14','15','16','17','18',
   '21','22','23','24','25','26','27','28',
@@ -76,7 +140,13 @@ export const HygieneAssessmentProvider: React.FC<{ children: React.ReactNode }> 
         .fetch();
 
       if (assessments.length > 0) {
-        return JSON.parse(assessments[0].data);
+        const rawData = JSON.parse(assessments[0].data);
+        
+        // ✅ NEW: Expand optimized data for UI
+        const expandedData = expandOptimizedData(rawData);
+        
+        console.log('✅ Loaded and expanded hygiene assessment');
+        return expandedData;
       }
       return null;
     } catch (error) {

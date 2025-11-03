@@ -35,39 +35,20 @@ interface ImplantRecord {
   placedAt: Date;
 }
 
+// Context should only store persistent treatment data
+// Modal state and UI state should stay in the screen component
 interface ImplantTreatmentState {
-  // Legacy structure for backward compatibility
-  placedImplants: PlacedImplant[];
-  
-  // New structure for the updated screen
-  implantRecords: ImplantRecord[];
-  generalNotes: string;
+  implantRecords: ImplantRecord[];  // Only persistent data
+  crownRecords: ImplantCrownRecord[];  // Add crown records
   treatmentCompleted: boolean;
   completedAt: Date | null;
-  
-  // Modal state preservation
-  modalVisible: boolean;
-  selectedType: TreatmentType;
-  toothNumber: string;
-  implantLocations: string;
-  ponticLocations: string;
-  notes: string;
-  editingId: string | null;
 }
 
 const defaultImplantTreatmentState: ImplantTreatmentState = {
-  placedImplants: [],
   implantRecords: [],
-  generalNotes: '',
+  crownRecords: [],
   treatmentCompleted: false,
   completedAt: null,
-  modalVisible: false,
-  selectedType: 'single-implant',
-  toothNumber: '',
-  implantLocations: '',
-  ponticLocations: '',
-  notes: '',
-  editingId: null,
 };
 
 interface ImplantTreatmentContextType {

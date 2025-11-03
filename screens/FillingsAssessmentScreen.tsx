@@ -235,29 +235,108 @@ const ComprehensiveDentalAssessmentScreen = ({ route, navigation }: any) => {
   // SIMPLIFIED SAVE - Use context function
   const handleSave = useCallback(async () => {
     try {
-      // Transform tooth states to use current display tooth numbers
-      const transformedTeethStates: Record<string, ToothAssessment> = {};
+      // ✅ OPTIMIZATION: Only include teeth that have actual findings
+      const teethWithIssues: Record<string, any> = {};
       
-      Object.entries(enhancedState.teethStates).forEach(([originalToothId, assessment]) => {
-        const currentToothId = getCurrentToothId(originalToothId);
-        transformedTeethStates[currentToothId] = assessment;
+      Object.entries(enhancedState.teethStates).forEach(([toothId, tooth]) => {
+        // Check if tooth has ANY findings
+        const hasAnyIssue = 
+          (tooth.hasFillings && tooth.fillingSurfaces.length > 0) ||
+          tooth.hasCrowns ||
+          tooth.hasExistingRootCanal ||
+          (tooth.hasCavities && tooth.cavitySurfaces.length > 0) ||
+          (tooth.isBroken && tooth.brokenSurfaces.length > 0) ||
+          tooth.needsRootCanal;
         
-        if (currentToothId !== originalToothId) {
-          console.log(`💾 Saving tooth ${originalToothId} as primary tooth ${currentToothId}`);
+        if (!hasAnyIssue) {
+          return; // Skip teeth with no findings
+        }
+        
+        // Get current tooth ID (primary or permanent)
+        const currentToothId = getCurrentToothId(toothId);
+        
+        // Build compact tooth data - only include fields that have values
+        const toothData: any = {};
+        
+        // Fillings
+        if (tooth.hasFillings && tooth.fillingSurfaces.length > 0) {
+          toothData.fillings = {
+            type: tooth.fillingType,
+            surfaces: tooth.fillingSurfaces
+          };
+        }
+        
+        // Crowns
+        if (tooth.hasCrowns) {
+          toothData.crown = {
+            material: tooth.crownMaterial
+          };
+        }
+        
+        // Existing Root Canal
+        if (tooth.hasExistingRootCanal) {
+          toothData.rootCanal = {
+            existing: true
+          };
+        }
+        
+        // Cavities
+        if (tooth.hasCavities && tooth.cavitySurfaces.length > 0) {
+          toothData.cavities = {
+            surfaces: tooth.cavitySurfaces
+          };
+        }
+        
+        // Broken/Cracked
+        if (tooth.isBroken && tooth.brokenSurfaces.length > 0) {
+          toothData.broken = {
+            surfaces: tooth.brokenSurfaces
+          };
+        }
+        
+        // Root Canal Needed
+        if (tooth.needsRootCanal) {
+          toothData.rootCanalNeeded = {
+            pulpDiagnosis: tooth.pulpDiagnosis,
+            apicalDiagnosis: tooth.apicalDiagnosis
+          };
+        }
+        
+        teethWithIssues[currentToothId] = toothData;
+        
+        if (currentToothId !== toothId) {
+          console.log(`💾 Saving tooth ${toothId} as primary tooth ${currentToothId}`);
         }
       });
-
-      // Create comprehensive assessment data
+  
+      // ✅ OPTIMIZATION: Only include restoration states for teeth with restorations
+      const activeRestorations: Record<string, any> = {};
+      Object.entries(restorationStates).forEach(([toothId, restoration]) => {
+        if (restoration.surfaces.length > 0) {
+          const currentToothId = getCurrentToothId(toothId);
+          activeRestorations[currentToothId] = {
+            surfaces: restoration.surfaces,
+            tentative: restoration.tentative
+          };
+        }
+      });
+  
+      // ✅ OPTIMIZED: Compact assessment data
       const assessmentData = {
-        ...enhancedState,
-        teethStates: transformedTeethStates,
+        teethWithIssues,  // Only teeth with findings
         primaryTeeth: Array.from(enhancedState.primaryTeeth),
-        originalTeethStates: enhancedState.teethStates,
-        savedWithPrimaryNumbers: true,
-        timestamp: new Date().toISOString(),
-        restorationStates
+        restorations: activeRestorations,  // Only active restorations
+        timestamp: new Date().toISOString()
+        // ❌ REMOVED: originalTeethStates (duplicate)
+        // ❌ REMOVED: savedWithPrimaryNumbers (not needed)
+        // ❌ REMOVED: selectedTooth, modalVisible, activeTab (UI state)
       };
-
+  
+      console.log('💾 Optimized assessment data:', {
+        teethWithIssues: Object.keys(teethWithIssues).length,
+        estimatedSize: JSON.stringify(assessmentData).length + ' bytes'
+      });
+  
       // Use the context's saveAssessment function
       await saveAssessment(patientId, assessmentData);
       

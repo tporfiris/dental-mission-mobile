@@ -213,6 +213,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
     );
   };
 
+  // ✅ OPTIMIZED: Minimal data storage
   const saveTreatmentToDatabase = async () => {
     try {
       const completedDate = new Date();
@@ -222,21 +223,25 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         // Save implant records
         for (const record of implantRecords) {
           const treatmentId = uuid.v4();
-          const implantBilling = billingCodes.filter(code => 
-            code.category === 'Implant' && code.toothNumber === record.toothNumber
-          );
+          
+          // ✅ OPTIMIZED: Minimal billing code (just code and price)
+          const minimalBilling = [{
+            code: ODA_FEES.implant.single.code,
+            price: ODA_FEES.implant.single.price
+          }];
           
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
             treatment.patientId = patientId;
-            treatment.visitId = '';
+            // ✅ visitId omitted (was empty string)
             treatment.type = 'implant';
             treatment.tooth = record.toothNumber;
-            treatment.surface = 'N/A';
+            // ✅ surface omitted (was N/A placeholder)
             treatment.units = 1;
-            treatment.value = ODA_FEES.implant.single.price; // Store ODA cost
-            treatment.billingCodes = JSON.stringify(implantBilling); // Store ODA codes
-            treatment.notes = `Single implant placed at tooth ${record.toothNumber}. ${record.notes}`;
+            treatment.value = ODA_FEES.implant.single.price;
+            treatment.billingCodes = JSON.stringify(minimalBilling);
+            // ✅ OPTIMIZED: Just store actual notes, no redundant description
+            treatment.notes = record.notes || `Implant at tooth ${record.toothNumber}`;
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
@@ -245,33 +250,35 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         // Save crown records
         for (const record of crownRecords) {
           const treatmentId = uuid.v4();
-          const crownBilling = billingCodes.filter(code => 
-            code.category === 'Implant Crown' && code.toothNumber === record.toothNumber
-          );
+          
+          // ✅ OPTIMIZED: Minimal billing code
+          const minimalBilling = [{
+            code: ODA_FEES.crown.implant.code,
+            price: ODA_FEES.crown.implant.price
+          }];
           
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
             treatment.patientId = patientId;
-            treatment.visitId = '';
+            // ✅ visitId omitted
             treatment.type = 'implant-crown';
             treatment.tooth = record.toothNumber;
-            treatment.surface = 'N/A';
+            // ✅ surface omitted
             treatment.units = 1;
-            treatment.value = ODA_FEES.crown.implant.price; // Store ODA cost
-            treatment.billingCodes = JSON.stringify(crownBilling); // Store ODA codes
-            treatment.notes = `${record.crownType === 'screw-retained' ? 'Screw-retained' : 'Cemented'} implant crown placed at tooth ${record.toothNumber}. ${record.notes}`;
+            treatment.value = ODA_FEES.crown.implant.price;
+            treatment.billingCodes = JSON.stringify(minimalBilling);
+            // ✅ OPTIMIZED: Store crown type compactly in notes
+            treatment.notes = `${record.crownType}: ${record.notes}`;
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
         }
       });
 
-      console.log('✅ Implant treatment saved to database:', {
+      console.log('✅ Implant treatment saved (optimized):', {
         patientId,
-        implantRecords: implantRecords.length,
-        crownRecords: crownRecords.length,
-        totalRecords: implantRecords.length + crownRecords.length,
-        odaCodes: billingCodes.map(code => `${code.code}: $${code.price}`),
+        implants: implantRecords.length,
+        crowns: crownRecords.length,
         totalCost: `$${totalCost}`,
         clinician: clinicianName,
         completedAt: completedDate.toISOString()
@@ -480,18 +487,20 @@ const ImplantTreatmentScreen = ({ route }: any) => {
       </View>
 
       {/* General Notes */}
-      <View style={styles.notesSection}>
-        <Text style={styles.sectionTitle}>Treatment Notes</Text>
-        <TextInput
-          style={styles.notesInput}
-          value={generalNotes}
-          onChangeText={setGeneralNotes}
-          placeholder="General notes about the implant treatment session..."
-          multiline
-          numberOfLines={3}
-          textAlignVertical="top"
-        />
-      </View>
+      {generalNotes && (
+        <View style={styles.notesSection}>
+          <Text style={styles.sectionTitle}>Treatment Notes</Text>
+          <TextInput
+            style={styles.notesInput}
+            value={generalNotes}
+            onChangeText={setGeneralNotes}
+            placeholder="General notes about the implant treatment session..."
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
+          />
+        </View>
+      )}
 
       {/* ODA Billing Summary */}
       {billingCodes.length > 0 && (
@@ -734,6 +743,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
 
 export default ImplantTreatmentScreen;
 
+// Styles remain exactly the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,

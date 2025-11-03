@@ -111,46 +111,63 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     try {
       const treatmentId = uuid.v4();
       const completedDate = new Date();
-      const clinicianName = user?.email || 'Unknown Clinician';
+      const clinicianId = user?.uid || 'unknown';
   
-      const treatmentData = {
-        scalingUnits,
-        polishingUnits,
-        fluorideType,
-        prescribedMedication,
-        notes,
-        odaCodes: billingCodes,
-        totalCost
+      // ✅ OPTIMIZED: Only store essential treatment data (no billing code duplication)
+      const treatmentData: any = {
+        scaling: scalingUnits,
+        polishing: polishingUnits,
       };
+
+      // Only add fluoride if not 'none'
+      if (fluorideType !== 'none') {
+        treatmentData.fluoride = fluorideType;
+      }
+
+      // Only add medication if provided
+      if (prescribedMedication.trim()) {
+        treatmentData.medication = prescribedMedication;
+      }
+
+      // Only add notes if provided
+      if (notes.trim()) {
+        treatmentData.notes = notes;
+      }
   
       await database.write(async () => {
         await database.get<Treatment>('treatments').create(treatment => {
           treatment._raw.id = treatmentId;
           treatment.patientId = patientId;
-          treatment.visitId = '';
           treatment.type = 'hygiene';
-          treatment.tooth = 'N/A';
-          treatment.surface = 'N/A';
-          treatment.units = 1; // ← CHANGE THIS TO 1
-          treatment.value = totalCost; // ← Keep this as total cost
+          treatment.units = 1;
+          treatment.value = totalCost;
+          
+          // ✅ Store billing codes separately (for invoicing)
           treatment.billingCodes = JSON.stringify(billingCodes);
+          
+          // ✅ Store only treatment details (no duplicate billing info)
           treatment.notes = JSON.stringify(treatmentData);
-          treatment.clinicianName = clinicianName;
+          
+          // ✅ Store clinician ID only (not email - save bytes)
+          treatment.clinicianName = clinicianId;
+          
           treatment.completedAt = completedDate;
+          
+          // ❌ DON'T set these - they're empty/placeholders:
+          // treatment.visitId = '';
+          // treatment.tooth = 'N/A';
+          // treatment.surface = 'N/A';
         });
       });
 
-      console.log('✅ Hygiene treatment saved to database:', {
+      console.log('✅ Hygiene treatment saved (OPTIMIZED):', {
         treatmentId,
         patientId,
         type: 'hygiene',
-        scalingUnits,
-        polishingUnits,
-        fluorideType,
-        odaCodes: billingCodes.map(code => `${code.code}: $${code.price}`),
+        dataStored: treatmentData,
+        billingCodesCount: billingCodes.length,
         totalCost: `$${totalCost}`,
-        clinician: clinicianName,
-        completedAt: completedDate.toISOString()
+        bytesStored: JSON.stringify(treatmentData).length + JSON.stringify(billingCodes).length
       });
 
       return true;
@@ -770,5 +787,3 @@ const styles = StyleSheet.create({
     color: '#dc3545',
   },
 });
-
-

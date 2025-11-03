@@ -17,6 +17,11 @@ import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
 
+import { useFillingsTreatment } from '../contexts/FillingsTreatmentContext';
+
+
+
+
 // ODA Fee Structure for Filling Treatments
 const ODA_FEES = {
   amalgam: {
@@ -211,6 +216,8 @@ const defaultToothTreatment: ToothTreatment = {
 const FillingsTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
+  // Inside your FillingsTreatmentScreen component:
+  const { getOptimizedTreatmentData } = useFillingsTreatment(); // ✅ ADD THIS
 
   // Initialize all teeth with default treatment state
   const initializeTeethStates = () => {
@@ -517,42 +524,68 @@ const FillingsTreatmentScreen = ({ route }: any) => {
     );
   };
 
-  // Database save functionality
+  // ✅ OPTIMIZED VERSION - Only stores teeth with treatments
   const saveTreatmentToDatabase = async () => {
     try {
       const completedTreatments = getCompletedTreatments();
       const clinicianName = user?.email || 'Unknown Clinician';
       const completedDate = new Date();
-  
+
+      // ✅ Get optimized treatment data (only teeth with treatments)
+      const optimizedData = getOptimizedTreatmentData();
+      
+      console.log('💾 Optimized treatment data:', {
+        teethCount: Object.keys(optimizedData.treatedTeeth).length,
+        totalTeeth: 32,
+        savings: `${Math.round((1 - Object.keys(optimizedData.treatedTeeth).length / 32) * 100)}% reduction`
+      });
+
       await database.write(async () => {
         const treatmentId = uuid.v4();
         
         await database.get<Treatment>('treatments').create(treatment => {
           treatment._raw.id = treatmentId;
           treatment.patientId = patientId;
-          treatment.visitId = '';
           treatment.type = 'filling';
           treatment.tooth = 'Multiple';
           treatment.surface = 'Various';
-          treatment.units = 1; // ← CHANGE THIS FROM getTotalSurfaceCount() TO 1
-          treatment.value = totalCost; // Keep as total cost
+          treatment.units = 1;
+          treatment.value = totalCost;
           treatment.billingCodes = JSON.stringify(billingCodes);
-          treatment.notes = `Filling treatment completed. ${notes}`.trim();
+          
+          // ✅ Store optimized treatment data (not full 32 teeth)
+          treatment.notes = JSON.stringify({
+            treatments: optimizedData.treatedTeeth, // Only teeth with treatments
+            generalNotes: notes,
+            summary: {
+              teethTreated: completedTreatments.length,
+              totalSurfaces: getTotalSurfaceCount(),
+              rootCanals: Object.values(treatments).filter(t => t.rootCanalDone).length,
+              crowns: Object.values(treatments).filter(t => t.crownIndicated).length
+            }
+          });
+          
           treatment.clinicianName = clinicianName;
           treatment.completedAt = completedDate;
+          
+          // ✅ Omit empty fields
+          if (notes) {
+            // Notes are included in the JSON above
+          }
         });
       });
-  
-      console.log('✅ Filling treatments saved to database:', {
+
+      console.log('✅ Filling treatments saved to database (OPTIMIZED):', {
         patientId,
-        teethTreated: completedTreatments.length,
-        totalSurfaces: getTotalSurfaceCount(), // Still log this for debugging
+        teethWithTreatments: Object.keys(optimizedData.treatedTeeth).length,
+        teethSkipped: 32 - Object.keys(optimizedData.treatedTeeth).length,
         totalCost,
-        billingCodes: billingCodes.length,
+        billingCodesCount: billingCodes.length,
         clinician: clinicianName,
+        storageEfficiency: `${Math.round((1 - Object.keys(optimizedData.treatedTeeth).length / 32) * 100)}% smaller`,
         completedAt: completedDate.toISOString()
       });
-  
+
       return true;
     } catch (error) {
       console.error('❌ Failed to save filling treatments:', error);

@@ -142,47 +142,63 @@ const DentureTreatmentScreen = ({ route }: any) => {
     );
   };
   
-
+  // ✅ OPTIMIZED: Single treatment record with all dentures grouped
   const saveTreatmentToDatabase = async () => {
     try {
-      const treatmentPromises = billingCodes.map(async (code) => {
-        const treatmentId = uuid.v4();
-        const completedDate = new Date();
-        const clinicianName = user?.email || 'Unknown Clinician';
+      const treatmentId = uuid.v4();
+      const completedDate = new Date();
+      const clinicianName = user?.email || 'Unknown Clinician';
 
-        return database.write(async () => {
-          await database.get<Treatment>('treatments').create(treatment => {
-            treatment._raw.id = treatmentId;
-            treatment.patientId = patientId;
-            treatment.visitId = '';
-            treatment.type = 'denture';
-            treatment.tooth = 'N/A';
-            treatment.surface = 'N/A';
-            treatment.units = 1;
-            treatment.value = code.price; // Store individual denture cost
-            treatment.billingCodes = JSON.stringify([code]);
-            treatment.notes = `${code.placement.placement}. ${generalNotes}`;
-            treatment.clinicianName = clinicianName;
-            treatment.completedAt = completedDate;
-          });
+      // ✅ OPTIMIZATION: Create compact treatment data structure
+      const treatmentData = {
+        placements: placements.map(p => ({
+          type: p.type,
+          description: p.placement
+        })),
+        codes: billingCodes.map(c => ({
+          code: c.code,
+          price: c.price
+        }))
+      };
+
+      // ✅ OPTIMIZATION: Combine all denture notes efficiently
+      const placementDescriptions = placements.map(p => p.placement).join('; ');
+      const combinedNotes = generalNotes 
+        ? `${placementDescriptions}. ${generalNotes}` 
+        : placementDescriptions;
+
+      await database.write(async () => {
+        await database.get<Treatment>('treatments').create(treatment => {
+          treatment._raw.id = treatmentId;
+          treatment.patientId = patientId;
+          // ✅ OPTIMIZATION: Omit empty fields
+          // treatment.visitId = ''; // ❌ Don't save empty strings
+          treatment.type = 'denture';
+          // treatment.tooth = 'N/A'; // ❌ Don't save placeholders
+          // treatment.surface = 'N/A'; // ❌ Don't save placeholders
+          treatment.units = placements.length; // ✅ Number of dentures placed
+          treatment.value = totalCost; // ✅ Total cost
+          treatment.billingCodes = JSON.stringify(billingCodes);
+          treatment.notes = combinedNotes; // ✅ Clean notes without duplication
+          treatment.clinicianName = clinicianName;
+          treatment.completedAt = completedDate;
         });
       });
 
-      await Promise.all(treatmentPromises);
-
-      console.log('✅ Denture treatments saved to database:', {
+      console.log('✅ Denture treatment saved to database:', {
+        treatmentId,
         patientId,
         placementsCount: placements.length,
         codesGenerated: billingCodes.length,
         odaCodes: billingCodes.map(code => `${code.code}: $${code.price}`),
         totalCost: `$${totalCost}`,
-        completedAt: new Date().toISOString()
+        completedAt: completedDate.toISOString()
       });
 
       return true;
     } catch (error) {
-      console.error('❌ Failed to save denture treatments:', error);
-      Alert.alert('Save Error', 'Failed to save treatments to database. Please try again.');
+      console.error('❌ Failed to save denture treatment:', error);
+      Alert.alert('Save Error', 'Failed to save treatment to database. Please try again.');
       return false;
     }
   };
@@ -245,7 +261,7 @@ const DentureTreatmentScreen = ({ route }: any) => {
       {placements.length > 0 && !completedAt && (
         <View style={styles.summaryIndicator}>
           <Text style={styles.summaryIndicatorText}>
-            ✅ {placements.length} denture{placements.length > 1 ? 's' : ''} recorded • Total: $${totalCost.toFixed(2)}
+            ✅ {placements.length} denture{placements.length > 1 ? 's' : ''} recorded • Total: ${totalCost.toFixed(2)}
           </Text>
         </View>
       )}

@@ -1,3 +1,4 @@
+// contexts/FillingsTreatmentContext.tsx - OPTIMIZED VERSION
 import React, { createContext, useContext, useState } from 'react';
 
 const SURFACES = ['M', 'O', 'D', 'B', 'L'] as const;
@@ -78,7 +79,9 @@ interface FillingsTreatmentContextType {
   resetTreatment: () => void;
   getCompletedTreatments: () => Array<{toothId: string; treatment: ToothTreatment}>;
   getTotalSurfaceCount: () => number;
-  quickSetAllProbing: (depth: number) => void; // For compatibility if needed
+  quickSetAllProbing: (depth: number) => void;
+  // ✅ NEW: Get optimized data for saving
+  getOptimizedTreatmentData: () => any;
 }
 
 const FillingsTreatmentContext = createContext<FillingsTreatmentContextType>({
@@ -93,6 +96,7 @@ const FillingsTreatmentContext = createContext<FillingsTreatmentContextType>({
   getCompletedTreatments: () => [],
   getTotalSurfaceCount: () => 0,
   quickSetAllProbing: () => {},
+  getOptimizedTreatmentData: () => ({}),
 });
 
 export const useFillingsTreatment = () => useContext(FillingsTreatmentContext);
@@ -168,6 +172,64 @@ export const FillingsTreatmentProvider: React.FC<{ children: React.ReactNode }> 
     // Placeholder for compatibility - not used in fillings treatment
   };
 
+  // ✅ NEW: Get optimized data that only includes teeth with treatments
+  const getOptimizedTreatmentData = () => {
+    const treatedTeeth: Record<string, any> = {};
+    
+    Object.entries(treatmentState.treatments).forEach(([toothId, treatment]) => {
+      // Only include teeth that have actual treatment data
+      const hasTreatment = 
+        treatment.surfaces.length > 0 ||
+        treatment.rootCanalDone ||
+        treatment.crownIndicated === true;
+      
+      if (hasTreatment) {
+        const optimizedTooth: any = {};
+        
+        // Only include non-default values
+        if (treatment.surfaces.length > 0) {
+          optimizedTooth.surfaces = treatment.surfaces;
+          if (treatment.fillingMaterial) {
+            optimizedTooth.material = treatment.fillingMaterial;
+          }
+          if (treatment.prepDepth) {
+            optimizedTooth.depth = treatment.prepDepth;
+          }
+        }
+        
+        if (treatment.hasCracks !== null) {
+          optimizedTooth.cracks = treatment.hasCracks;
+        }
+        
+        if (treatment.crownIndicated === true) {
+          optimizedTooth.crown = {
+            indicated: true,
+            material: treatment.crownMaterial
+          };
+        }
+        
+        if (treatment.rootCanalDone) {
+          optimizedTooth.rootCanal = {
+            done: true,
+            canals: treatment.canalCount
+          };
+        }
+        
+        if (treatment.completed) {
+          optimizedTooth.completed = true;
+        }
+        
+        treatedTeeth[toothId] = optimizedTooth;
+      }
+    });
+    
+    return {
+      treatedTeeth,
+      notes: treatmentState.notes || undefined, // Omit if empty
+      completedAt: treatmentState.completedAt?.toISOString(),
+    };
+  };
+
   return (
     <FillingsTreatmentContext.Provider value={{
       treatmentState,
@@ -181,6 +243,7 @@ export const FillingsTreatmentProvider: React.FC<{ children: React.ReactNode }> 
       getCompletedTreatments,
       getTotalSurfaceCount,
       quickSetAllProbing,
+      getOptimizedTreatmentData, // ✅ NEW
     }}>
       {children}
     </FillingsTreatmentContext.Provider>

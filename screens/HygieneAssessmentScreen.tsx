@@ -211,13 +211,127 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
   // ✅ UPDATED: Use context's saveAssessment function
   const handleSaveAssessment = async () => {
     try {
-      await saveAssessment(patientId);
+      // ✅ OPTIMIZED: Transform data before saving
+      const optimizedData = optimizeHygieneData(enhancedState);
+      
+      console.log('💾 Saving optimized hygiene assessment:', optimizedData);
+      console.log('📊 Size reduction:', 
+        `${JSON.stringify(buildLegacyData(enhancedState)).length} bytes -> ${JSON.stringify(optimizedData).length} bytes`
+      );
+      
+      await saveAssessment(patientId, optimizedData);
       Alert.alert('Success', 'Hygiene assessment saved successfully!');
       navigation.goBack();
     } catch (error) {
       console.error('Error saving hygiene assessment:', error);
       Alert.alert('Error', 'Failed to save hygiene assessment. Please try again.');
     }
+  };
+  
+  // ✅ NEW: Helper function to build legacy format (for comparison)
+  const buildLegacyData = (state: EnhancedHygieneState) => {
+    return {
+      calculusLevel: state.calculusLevel,
+      calculusDistribution: state.calculusDistribution,
+      calculusQuadrants: state.calculusQuadrants,
+      plaqueLevel: state.plaqueLevel,
+      plaqueDistribution: state.plaqueDistribution,
+      plaqueQuadrants: state.plaqueQuadrants,
+      probingDepths: state.probingDepths,
+      bleedingOnProbing: state.bleedingOnProbing,
+      aapStage: state.aapStage,
+      aapGrade: state.aapGrade,
+    };
+  };
+  
+  // ✅ NEW: Optimization function
+  const optimizeHygieneData = (state: EnhancedHygieneState) => {
+    // Find the most common probing depth (usually 2mm)
+    const depthCounts = new Map<ProbingDepth, number>();
+    Object.values(state.probingDepths).forEach(depth => {
+      depthCounts.set(depth, (depthCounts.get(depth) || 0) + 1);
+    });
+    
+    let defaultDepth: ProbingDepth = 2;
+    let maxCount = 0;
+    depthCounts.forEach((count, depth) => {
+      if (count > maxCount) {
+        maxCount = count;
+        defaultDepth = depth;
+      }
+    });
+    
+    // Build exceptions object (only teeth that differ from default)
+    const depthExceptions: Record<string, ProbingDepth> = {};
+    Object.entries(state.probingDepths).forEach(([toothId, depth]) => {
+      if (depth !== defaultDepth) {
+        depthExceptions[toothId] = depth;
+      }
+    });
+    
+    // Get only teeth that DO bleed (instead of all teeth with boolean)
+    const bleedingTeeth = Object.entries(state.bleedingOnProbing)
+      .filter(([_, bleeds]) => bleeds)
+      .map(([toothId, _]) => toothId);
+    
+    // Shorten quadrant names
+    const shortenQuadrant = (q: string) => {
+      const map: Record<string, string> = {
+        'upper-right': 'UR',
+        'upper-left': 'UL',
+        'lower-left': 'LL',
+        'lower-right': 'LR'
+      };
+      return map[q] || q;
+    };
+    
+    return {
+      // Calculus (optimized structure)
+      calculus: {
+        level: state.calculusLevel,
+        distribution: state.calculusDistribution,
+        ...(state.calculusDistribution === 'localized' && state.calculusQuadrants.length > 0
+          ? { quadrants: state.calculusQuadrants.map(shortenQuadrant) }
+          : {}
+        )
+      },
+      
+      // Plaque (optimized structure)
+      plaque: {
+        level: state.plaqueLevel,
+        distribution: state.plaqueDistribution,
+        ...(state.plaqueDistribution === 'localized' && state.plaqueQuadrants.length > 0
+          ? { quadrants: state.plaqueQuadrants.map(shortenQuadrant) }
+          : {}
+        )
+      },
+      
+      // ✅ OPTIMIZED: Probing depths with exceptions
+      probingDepths: {
+        default: defaultDepth,
+        ...(Object.keys(depthExceptions).length > 0
+          ? { exceptions: depthExceptions }
+          : {}
+        )
+      },
+      
+      // ✅ OPTIMIZED: Only bleeding teeth (not booleans for all)
+      ...(bleedingTeeth.length > 0
+        ? { bleedingTeeth }
+        : {}
+      ),
+      
+      // AAP Classification (compact structure)
+      ...(state.aapStage || state.aapGrade
+        ? {
+            aap: {
+              ...(state.aapStage ? { stage: state.aapStage } : {}),
+              ...(state.aapGrade ? { grade: state.aapGrade } : {})
+            }
+          }
+        : {}
+      )
+    };
   };
 
   // Assessment handler functions

@@ -1,3 +1,8 @@
+// screens/ExtractionsAssessmentScreen.tsx - FIXED
+// 
+// FIX: Changed handleSaveAssessment to pass extractionStates directly
+// (not wrapped in another object)
+
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -38,7 +43,7 @@ const ExtractionTreatmentPlanningScreen = ({ route, navigation }: any) => {
   const { 
     extractionStates, 
     setExtractionStates,
-    saveAssessment,  // ✅ Get from context
+    saveAssessment,
   } = useExtractionsAssessment();
   
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
@@ -47,46 +52,51 @@ const ExtractionTreatmentPlanningScreen = ({ route, navigation }: any) => {
   // Updated tooth positions - same as other assessment screens
   const toothOffsets: Record<string, { x: number; y: number }> = {
     // Upper arch - symmetric pairs
-    '21': { x: 20, y: -120 },   // Upper right central
-    '11': { x: -20, y: -120 },  // Upper left central (mirrored)
-    '22': { x: 55, y: -110 },   // Upper right lateral  
-    '12': { x: -55, y: -110 },  // Upper left lateral (mirrored)
-    '23': { x: 90, y: -90 },    // Upper right canine
-    '13': { x: -90, y: -90 },   // Upper left canine (mirrored)
-    '24': { x: 110, y: -60 },   // Upper right first premolar
-    '14': { x: -110, y: -60 },  // Upper left first premolar (mirrored)
-    '25': { x: 120, y: -25 },   // Upper right second premolar
-    '15': { x: -120, y: -25 },  // Upper left second premolar (mirrored)
-    '26': { x: 125, y: 10 },    // Upper right first molar
-    '16': { x: -125, y: 10 },   // Upper left first molar (mirrored)
-    '27': { x: 125, y: 45 },    // Upper right second molar
-    '17': { x: -125, y: 45 },   // Upper left second molar (mirrored)
-    '28': { x: 125, y: 80 },    // Upper right third molar (wisdom)
-    '18': { x: -125, y: 80 },   // Upper left third molar (mirrored)
+    '21': { x: 20, y: -120 },
+    '11': { x: -20, y: -120 },
+    '22': { x: 55, y: -110 },
+    '12': { x: -55, y: -110 },
+    '23': { x: 90, y: -90 },
+    '13': { x: -90, y: -90 },
+    '24': { x: 110, y: -60 },
+    '14': { x: -110, y: -60 },
+    '25': { x: 120, y: -25 },
+    '15': { x: -120, y: -25 },
+    '26': { x: 125, y: 10 },
+    '16': { x: -125, y: 10 },
+    '27': { x: 125, y: 45 },
+    '17': { x: -125, y: 45 },
+    '28': { x: 125, y: 80 },
+    '18': { x: -125, y: 80 },
     
     // Lower arch - symmetric pairs
-    '31': { x: 20, y: 330 },    // Lower right central
-    '41': { x: -20, y: 330 },   // Lower left central (mirrored)
-    '32': { x: 55, y: 320 },    // Lower right lateral
-    '42': { x: -55, y: 320 },   // Lower left lateral (mirrored)
-    '33': { x: 90, y: 300 },    // Lower right canine
-    '43': { x: -90, y: 300 },   // Lower left canine (mirrored)
-    '34': { x: 110, y: 270 },   // Lower right first premolar
-    '44': { x: -110, y: 270 },  // Lower left first premolar (mirrored)
-    '35': { x: 120, y: 235 },   // Lower right second premolar
-    '45': { x: -120, y: 235 },  // Lower left second premolar (mirrored)
-    '36': { x: 125, y: 200 },   // Lower right first molar
-    '46': { x: -125, y: 200 },  // Lower left first molar (mirrored)
-    '37': { x: 125, y: 165 },   // Lower right second molar
-    '47': { x: -125, y: 165 },  // Lower left second molar (mirrored)
-    '38': { x: 125, y: 130 },   // Lower right third molar (wisdom)
-    '48': { x: -125, y: 130 },  // Lower left third molar (mirrored)
+    '31': { x: 20, y: 330 },
+    '41': { x: -20, y: 330 },
+    '32': { x: 55, y: 320 },
+    '42': { x: -55, y: 320 },
+    '33': { x: 90, y: 300 },
+    '43': { x: -90, y: 300 },
+    '34': { x: 110, y: 270 },
+    '44': { x: -110, y: 270 },
+    '35': { x: 120, y: 235 },
+    '45': { x: -120, y: 235 },
+    '36': { x: 125, y: 200 },
+    '46': { x: -125, y: 200 },
+    '37': { x: 125, y: 165 },
+    '47': { x: -125, y: 165 },
+    '38': { x: 125, y: 130 },
+    '48': { x: -125, y: 130 },
   };
 
-  // ✅ Use the context's saveAssessment function
+  // ✅ FIXED: Pass extractionStates directly (not wrapped)
   const handleSaveAssessment = async () => {
     try {
-      await saveAssessment(patientId);
+      console.log('💾 Saving extractions assessment');
+      
+      // ✅ Pass extractionStates directly to saveAssessment
+      // The context will handle filtering out "none" values
+      await saveAssessment(patientId, extractionStates);
+      
       Alert.alert('Success', 'Extractions assessment saved successfully!');
       navigation.goBack();
     } catch (error) {
@@ -136,11 +146,11 @@ const ExtractionTreatmentPlanningScreen = ({ route, navigation }: any) => {
   };
 
   const getToothPosition = (toothId: string) => {
-    const chartCenter = { x: 180, y: 135 }; // Center of the chart container
+    const chartCenter = { x: 180, y: 135 };
     const offset = toothOffsets[toothId];
     
     return {
-      left: chartCenter.x + offset.x - 15, // -15 to center the 30px circle
+      left: chartCenter.x + offset.x - 15,
       top: chartCenter.y + offset.y - 15
     };
   };
@@ -306,16 +316,10 @@ ${extractionSummary.byReason['root-tip'].length > 0 ? '⚠️ Root tips should b
 
       {/* Dental Chart Container */}
       <View style={styles.dentalChart}>
-        {/* Upper Arch Label */}
         <Text style={styles.upperArchLabel}>Upper Arch</Text>
-        
-        {/* Lower Arch Label */}
         <Text style={styles.lowerArchLabel}>Lower Arch</Text>
-        
-        {/* Center Instructions */}
         <Text style={styles.centerInstructions}>Tap to mark{'\n'}for extraction{'\n'}Long press for{'\n'}quick toggle</Text>
         
-        {/* Render all teeth */}
         {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
           renderTooth(toothId)
         )}
@@ -345,7 +349,6 @@ ${extractionSummary.byReason['root-tip'].length > 0 ? '⚠️ Root tips should b
         Tap: Select extraction reason • Long press: Quick toggle non-restorable
       </Text>
 
-      {/* Save Button - Updated to use context function */}
       <Pressable style={styles.saveButton} onPress={handleSaveAssessment}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
