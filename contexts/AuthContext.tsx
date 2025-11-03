@@ -1,16 +1,17 @@
 // contexts/AuthContext.tsx
+// ✅ UPDATED: Better logout handling to prevent sync errors
 import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { Alert, AppState } from 'react-native';
-import { simpleFirestoreSyncService } from '../services/SimpleFirestoreSync'; // ✅ ADD THIS IMPORT
+import { simpleFirestoreSyncService } from '../services/SimpleFirestoreSync';
 
 interface AuthContextType {
   user: User | null;
   role: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>; // ✅ ADD THIS
+  login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -18,7 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   role: null,
   loading: true,
-  login: async () => {}, // ✅ ADD THIS
+  login: async () => {},
   logout: async () => {},
 });
 
@@ -110,7 +111,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
-  // ✅ ADD THIS: Login function with sync integration
   const login = async (email: string, password: string) => {
     try {
       console.log('🔐 Attempting login for:', email);
@@ -121,9 +121,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Update sync service auth status
       console.log('🔄 Updating sync service auth status...');
       simpleFirestoreSyncService.updateAuthStatus();
-      
-      // ✅ REMOVE THIS LINE - sync will trigger automatically via onAuthStateChanged
-      // await simpleFirestoreSyncService.forceSync();
       
       // Fetch user role
       console.log('📝 Fetching role for user:', userCredential.user.uid);
@@ -146,25 +143,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
   
-  // ✅ UPDATED: Logout function with sync cleanup
+  // ✅ UPDATED: Logout function with better sync cleanup
   const logout = async () => {
     try {
       console.log('👋 Logging out user...');
       
-      // Stop sync service before logout
+      // 1. Stop sync service FIRST
       console.log('⏹️ Stopping sync service...');
       simpleFirestoreSyncService.stopPeriodicSync();
       
-      // Clear session timeout
+      // 2. Small delay to ensure sync fully stops
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // 3. Clear session timeout
       if (sessionTimeoutRef.current) {
         clearTimeout(sessionTimeoutRef.current);
       }
       
-      await signOut(auth);
+      // 4. Clear local state BEFORE Firebase signOut
       setUser(null);
       setRole(null);
       
-      console.log('👋 User logged out');
+      // 5. Finally sign out from Firebase
+      await signOut(auth);
+      
+      console.log('👋 User logged out successfully');
     } catch (error) {
       console.error('❌ Logout error:', error);
       throw error;
