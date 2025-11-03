@@ -1,4 +1,5 @@
 // screens/AdminDashboardScreen.tsx - Enhanced with comprehensive Excel export
+// ✅ UPDATED to use new parseAssessmentData utility
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -24,6 +25,7 @@ import {
 } from 'firebase/firestore';
 import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
+import { parseAssessmentData, parseTreatmentDetails } from '../utils/parseAssessmentData';
 
 const { width } = Dimensions.get('window');
 
@@ -46,6 +48,7 @@ interface Treatment {
   units: number;
   value: number;
   billingCodes: string;
+  notes: string;
   clinicianName: string;
   completedAt: Date;
 }
@@ -54,6 +57,7 @@ interface Assessment {
   id: string;
   patientId: string;
   assessmentType: string;
+  data: string;
   clinicianEmail: string;
   createdAt: Date;
 }
@@ -138,7 +142,8 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           surface: data.surface || 'N/A',
           units: data.units || 1,
           value: data.value || 0,
-          billingCodes: data.billingCodes || '[]',
+          billingCodes: typeof data.billingCodes === 'string' ? data.billingCodes : JSON.stringify(data.billingCodes || []),
+          notes: typeof data.notes === 'string' ? data.notes : JSON.stringify(data.notes || {}),
           clinicianName: data.clinicianName || 'Unknown',
           completedAt: safeToDate(data.completedAt || data.createdAt || data.syncedAt)
         };
@@ -151,7 +156,8 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           id: doc.id,
           patientId: data.patientId || '',
           assessmentType: data.assessmentType || 'unknown',
-          clinicianEmail: data.clinicianEmail || 'Unknown',
+          data: typeof data.data === 'string' ? data.data : JSON.stringify(data.data || {}),
+          clinicianEmail: data.clinicianEmail || data.clinicianId || 'Unknown',
           createdAt: safeToDate(data.createdAt || data.syncedAt)
         };
       });
@@ -380,6 +386,9 @@ const AdminDashboardScreen = ({ navigation }: any) => {
             // Handle legacy format
           }
 
+          // ✅ Use new parsing utility
+          const treatmentDetails = parseTreatmentDetails(t);
+
           return {
             'Treatment ID': t.id,
             'Patient ID': t.patientId,
@@ -397,6 +406,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
             'Unit Value': `${currencySymbol} ${(t.value * currencyMultiplier).toFixed(2)}`,
             'Total Value': `${currencySymbol} ${(t.value * t.units * currencyMultiplier).toFixed(2)}`,
             'Clinician': t.clinicianName,
+            'Treatment Details': treatmentDetails.join(' | '),
             'Billing Codes': billingCodes.map((c: any) => 
               typeof c === 'string' ? c : c.code || ''
             ).join(', '),
@@ -408,7 +418,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
 
       if (treatmentRows.length > 0) {
         const treatmentSheet = XLSX.utils.json_to_sheet(treatmentRows);
-        treatmentSheet['!cols'] = Array(18).fill({ wch: 18 });
+        treatmentSheet['!cols'] = Array(19).fill({ wch: 18 });
         XLSX.utils.book_append_sheet(workbook, treatmentSheet, 'All Treatments');
       }
 
@@ -417,6 +427,10 @@ const AdminDashboardScreen = ({ navigation }: any) => {
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         .map(a => {
           const patient = filteredData.patients.find(p => p.id === a.patientId);
+          
+          // ✅ Use new parsing utility
+          const parsed = parseAssessmentData(a.data, a.assessmentType);
+          
           return {
             'Assessment ID': a.id,
             'Patient ID': a.patientId,
@@ -428,13 +442,15 @@ const AdminDashboardScreen = ({ navigation }: any) => {
             'Time': a.createdAt.toLocaleTimeString(),
             'Day of Week': a.createdAt.toLocaleDateString('en-US', { weekday: 'long' }),
             'Assessment Type': a.assessmentType.charAt(0).toUpperCase() + a.assessmentType.slice(1),
-            'Clinician Email': a.clinicianEmail
+            'Clinician': a.clinicianEmail,
+            'Summary': parsed.summary,
+            'Details': parsed.details.join(' | ')
           };
         });
 
       if (assessmentRows.length > 0) {
         const assessmentSheet = XLSX.utils.json_to_sheet(assessmentRows);
-        assessmentSheet['!cols'] = Array(11).fill({ wch: 18 });
+        assessmentSheet['!cols'] = Array(13).fill({ wch: 18 });
         XLSX.utils.book_append_sheet(workbook, assessmentSheet, 'All Assessments');
       }
 

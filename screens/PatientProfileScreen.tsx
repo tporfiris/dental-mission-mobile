@@ -1,4 +1,4 @@
-// screens/PatientProfileScreen.tsx
+// screens/PatientProfileScreen.tsx - UPDATED VERSION
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -20,6 +20,8 @@ import FillingsAssessment from '../db/models/FillingsAssessment';
 import DentureAssessment from '../db/models/DentureAssessment';
 import ImplantAssessment from '../db/models/ImplantAssessment';
 import Treatment from '../db/models/Treatment';
+// ✅ NEW: Import centralized parsing utilities
+import { parseAssessmentData, parseTreatmentDetails } from '../utils/parseAssessmentData';
 
 interface Assessment {
   id: string;
@@ -50,252 +52,31 @@ interface GroupedTreatment {
   treatments: TreatmentDetail[];
 }
 
-// Helper function to parse assessment data with detailed formatting
-const parseAssessmentData = (data: string, type: string) => {
-  try {
-    const parsed = JSON.parse(data);
-    
-    switch (type) {
-      case 'dentition': {
-        if (parsed.savedWithPrimaryNumbers && parsed.originalToothStates) {
-          const toothStates = parsed.originalToothStates;
-          const primaryTeeth = parsed.primaryTeeth || [];
-          
-          const PRIMARY_TOOTH_MAPPINGS: Record<string, string> = {
-            '11': '51', '12': '52', '13': '53', '14': '54', '15': '55',
-            '21': '61', '22': '62', '23': '63', '24': '64', '25': '65',
-            '41': '81', '42': '82', '43': '83', '44': '84', '45': '85',
-            '31': '71', '32': '72', '33': '73', '34': '74', '35': '75',
-          };
-          
-          const getCurrentToothId = (originalToothId: string): string => {
-            if (primaryTeeth.includes(originalToothId)) {
-              return PRIMARY_TOOTH_MAPPINGS[originalToothId] || originalToothId;
-            }
-            return originalToothId;
-          };
-          
-          const present = Object.entries(toothStates).filter(([_, s]: any) => s === 'present');
-          const crownMissing = Object.entries(toothStates).filter(([_, s]: any) => s === 'crown-missing');
-          const rootsOnly = Object.entries(toothStates).filter(([_, s]: any) => s === 'roots-only');
-          const missing = Object.entries(toothStates).filter(([_, s]: any) => s === 'fully-missing');
-          
-          const dentitionDetails = [
-            `Present teeth (${present.length}): ${present.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
-            `Crown missing (${crownMissing.length}): ${crownMissing.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
-            `Roots only (${rootsOnly.length}): ${rootsOnly.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
-            `Fully missing (${missing.length}): ${missing.map(([t]) => getCurrentToothId(t)).join(', ') || 'None'}`,
-          ];
-          
-          if (primaryTeeth.length > 0) {
-            const primaryToothNumbers = primaryTeeth.map((t: string) => getCurrentToothId(t));
-            dentitionDetails.push(`Primary teeth (${primaryTeeth.length}): ${primaryToothNumbers.join(', ')}`);
-          }
-          
-          return {
-            summary: `${present.length} present, ${missing.length} missing`,
-            details: dentitionDetails
-          };
-        }
-        return { summary: 'Dentition assessed', details: [] };
-      }
-        
-      case 'hygiene': {
-        if (parsed.calculusLevel !== undefined || parsed.plaqueLevel !== undefined) {
-          const hygieneDetails = [];
-          
-          const calculusLevel = parsed.calculusLevel || 'none';
-          const plaqueLevel = parsed.plaqueLevel || 'none';
-          
-          hygieneDetails.push(`Calculus: ${calculusLevel}`);
-          hygieneDetails.push(`Plaque: ${plaqueLevel}`);
-          
-          if (parsed.aapStage) {
-            hygieneDetails.push(`AAP Stage: ${parsed.aapStage}`);
-          }
-          if (parsed.aapGrade) {
-            hygieneDetails.push(`AAP Grade: ${parsed.aapGrade}`);
-          }
-          
-          if (parsed.probingDepths) {
-            const depths = Object.entries(parsed.probingDepths);
-            const severeDepths = depths.filter(([_, d]: any) => d >= 7);
-            if (severeDepths.length > 0) {
-              hygieneDetails.push(`Severe pockets (7+mm): ${severeDepths.map(([t]) => t).join(', ')}`);
-            }
-          }
-          
-          return {
-            summary: `Calculus: ${calculusLevel}, Plaque: ${plaqueLevel}`,
-            details: hygieneDetails
-          };
-        }
-        return { summary: 'Hygiene assessed', details: [] };
-      }
-        
-      case 'extractions': {
-        const extractionStates = parsed.extractionStates || parsed;
-        const extractions = Object.entries(extractionStates).filter(([_, s]: any) => s !== 'none');
-        
-        const loose = extractions.filter(([_, s]: any) => s === 'loose');
-        const rootTip = extractions.filter(([_, s]: any) => s === 'root-tip');
-        const nonRestorable = extractions.filter(([_, s]: any) => s === 'non-restorable');
-        
-        const extractionDetails = [
-          `Loose teeth: ${loose.map(([t]) => t).join(', ') || 'None'}`,
-          `Root tips: ${rootTip.map(([t]) => t).join(', ') || 'None'}`,
-          `Non-restorable: ${nonRestorable.map(([t]) => t).join(', ') || 'None'}`,
-        ];
-        
-        return {
-          summary: `${extractions.length} teeth marked for extraction`,
-          details: extractionDetails
-        };
-      }
-        
-      case 'fillings': {
-        if (parsed.savedWithPrimaryNumbers && parsed.originalTeethStates) {
-          const teethStates = parsed.originalTeethStates;
-          
-          const fillingsCount = Object.values(teethStates).filter((t: any) => 
-            t.hasFillings && t.fillingSurfaces?.length > 0
-          ).length;
-          const cavitiesCount = Object.values(teethStates).filter((t: any) => 
-            t.hasCavities && t.cavitySurfaces?.length > 0
-          ).length;
-          const rctNeededCount = Object.values(teethStates).filter((t: any) => t.needsRootCanal).length;
-          
-          const fillingsDetails = [
-            `Existing fillings: ${fillingsCount} teeth`,
-            `Cavities found: ${cavitiesCount} teeth`,
-            `Root canal needed: ${rctNeededCount} teeth`,
-          ];
-          
-          return {
-            summary: `${fillingsCount} fillings, ${cavitiesCount} cavities`,
-            details: fillingsDetails
-          };
-        }
-        return { summary: 'Dental assessment completed', details: [] };
-      }
-        
-      case 'denture': {
-        const dentureType = parsed.selectedDentureType;
-        const dentureDetails = [];
-        
-        if (dentureType && dentureType !== 'none') {
-          dentureDetails.push(`Denture type: ${dentureType}`);
-        }
-        
-        const relineOptions = parsed.dentureOptions || {};
-        const relineServices = Object.entries(relineOptions).filter(([_, v]) => v);
-        if (relineServices.length > 0) {
-          dentureDetails.push(`Reline services: ${relineServices.length}`);
-        }
-        
-        return {
-          summary: dentureType === 'none' ? 'No denture needed' : `${dentureType} recommended`,
-          details: dentureDetails
-        };
-      }
-        
-      case 'implant': {
-        const singleImplants = parsed.singleImplantTeeth || [];
-        const bridgeImplants = parsed.bridgeImplantTeeth || [];
-        const totalImplants = singleImplants.length + bridgeImplants.length;
-        
-        const implantDetails = [];
-        
-        if (singleImplants.length > 0) {
-          implantDetails.push(`Single implants: ${singleImplants.join(', ')}`);
-        }
-        if (bridgeImplants.length > 0) {
-          implantDetails.push(`Bridge implants: ${bridgeImplants.join(', ')}`);
-        }
-        if (parsed.boneGraftingPlanned) {
-          implantDetails.push('Bone grafting planned');
-        }
-        
-        return {
-          summary: totalImplants > 0 ? `${totalImplants} implants planned` : 'No implants planned',
-          details: implantDetails
-        };
-      }
-        
-      default:
-        return { summary: 'Assessment completed', details: [] };
-    }
-  } catch (error) {
-    console.error('Error parsing assessment data:', error);
-    return { summary: 'Assessment completed', details: [] };
-  }
-};
+// ✅ REMOVED: All the local parseAssessmentData() function code (400+ lines)
+// ✅ REMOVED: All the local parseTreatmentDetails() function code
 
-// Helper function to parse treatment details
-const parseTreatmentDetails = (treatment: Treatment): TreatmentDetail => {
-  const details: string[] = [];
+// ✅ NEW: Simple wrapper to convert Treatment model to parseable format
+const convertTreatmentForParsing = (treatment: Treatment): TreatmentDetail => {
+  const details = parseTreatmentDetails({
+    id: treatment.id,
+    type: treatment.type,
+    tooth: treatment.tooth,
+    surface: treatment.surface,
+    units: treatment.units,
+    value: treatment.value,
+    notes: treatment.notes,
+    billingCodes: treatment.billingCodes,
+    clinicianName: treatment.clinicianName,
+    completedAt: treatment.completedAt,
+  });
+  
   let billingCodes: any[] = [];
-  
   try {
-    billingCodes = JSON.parse(treatment.billingCodes);
+    billingCodes = typeof treatment.billingCodes === 'string' 
+      ? JSON.parse(treatment.billingCodes) 
+      : treatment.billingCodes || [];
   } catch (e) {
-    // Handle legacy format
-  }
-  
-  switch (treatment.type) {
-    case 'hygiene':
-      try {
-        const hygieneData = JSON.parse(treatment.notes);
-        if (hygieneData.scalingUnits) {
-          details.push(`Scaling: ${hygieneData.scalingUnits} units`);
-        }
-        if (hygieneData.polishingUnits) {
-          details.push(`Polishing: ${hygieneData.polishingUnits} units`);
-        }
-        if (hygieneData.fluorideType && hygieneData.fluorideType !== 'none') {
-          details.push(`Fluoride: ${hygieneData.fluorideType}`);
-        }
-        if (hygieneData.prescribedMedication) {
-          details.push(`Medication: ${hygieneData.prescribedMedication}`);
-        }
-      } catch (e) {
-        details.push(`Units: ${treatment.units}`);
-      }
-      break;
-      
-    case 'extraction':
-      details.push(`Tooth: ${treatment.tooth}`);
-      if (billingCodes.length > 0 && billingCodes[0].complexity) {
-        details.push(`Type: ${billingCodes[0].complexity}`);
-      }
-      break;
-      
-    case 'filling':
-      details.push(`Tooth: ${treatment.tooth}`);
-      details.push(`Surface: ${treatment.surface}`);
-      details.push(`Units: ${treatment.units}`);
-      break;
-      
-    case 'denture':
-      if (billingCodes.length > 0) {
-        details.push(`Type: ${billingCodes[0].description || 'Denture placement'}`);
-      }
-      break;
-      
-    case 'implant':
-    case 'implant-crown':
-      details.push(`Tooth: ${treatment.tooth}`);
-      if (billingCodes.length > 0) {
-        details.push(`Type: ${billingCodes[0].category || treatment.type}`);
-      }
-      break;
-      
-    default:
-      details.push(`Tooth: ${treatment.tooth}`);
-      if (treatment.surface !== 'N/A') {
-        details.push(`Surface: ${treatment.surface}`);
-      }
-      details.push(`Units: ${treatment.units}`);
+    // Handle parsing error
   }
   
   return {
@@ -429,7 +210,8 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
         )
         .fetch();
 
-      const parsedTreatments = patientTreatments.map(t => parseTreatmentDetails(t));
+      // ✅ NEW: Use the wrapper function to convert treatments
+      const parsedTreatments = patientTreatments.map(t => convertTreatmentForParsing(t));
 
       // Group treatments by date
       const groupedTreatmentsByDate = parsedTreatments.reduce((acc, treatment) => {
@@ -553,6 +335,7 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
               
               {group.assessments.map((assessment) => {
                 const isExpanded = expandedAssessment === assessment.id;
+                // ✅ NEW: Use centralized parsing function
                 const parsed = parseAssessmentData(assessment.data, assessment.type.toLowerCase());
                 
                 return (
@@ -907,6 +690,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  treatmentDateText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  treatmentDateCount: {
+    fontSize: 12,
+    color: '#fff',
+    opacity: 0.9,
   },
   treatmentValue: {
     fontSize: 16,

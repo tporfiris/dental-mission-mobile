@@ -20,6 +20,7 @@ import {
   orderBy, 
   query 
 } from 'firebase/firestore';
+import { parseAssessmentData, parseTreatmentDetails } from '../utils/parseAssessmentData';
 
 const { width } = Dimensions.get('window');
 
@@ -78,117 +79,32 @@ const PatientListScreen = ({ navigation }: any) => {
     return new Date();
   };
 
-  // Get detailed quick summary for assessment with tooth numbers
+  // Get detailed quick summary for assessment - NOW USING UTILITY
   const getAssessmentSummary = (assessment: Assessment): string => {
     try {
-      const data = JSON.parse(assessment.data);
+      // Parse the data string to object first
+      const dataObj = typeof assessment.data === 'string' 
+        ? JSON.parse(assessment.data) 
+        : assessment.data;
       
-      switch (assessment.assessmentType) {
-        case 'dentition':
-          if (data.originalToothStates) {
-            const missing = Object.entries(data.originalToothStates).filter(([_, s]: any) => s === 'fully-missing');
-            const crownMissing = Object.entries(data.originalToothStates).filter(([_, s]: any) => s === 'crown-missing');
-            if (missing.length > 0) {
-              const teeth = missing.slice(0, 3).map(([t]) => t).join(', ');
-              const more = missing.length > 3 ? `, +${missing.length - 3} more` : '';
-              return `Missing: ${teeth}${more}`;
-            }
-            if (crownMissing.length > 0) {
-              return `${crownMissing.length} crown missing`;
-            }
-            return 'All teeth present';
-          }
-          return 'Dentition assessed';
-          
-        case 'hygiene':
-          if (data.enhancedAssessment) {
-            const calculus = data.enhancedAssessment.calculusLevel || 'none';
-            const plaque = data.enhancedAssessment.plaqueLevel || 'none';
-            const aap = data.enhancedAssessment.aapStage ? ` (AAP ${data.enhancedAssessment.aapStage})` : '';
-            return `${calculus} calculus, ${plaque} plaque${aap}`;
-          }
-          return 'Hygiene assessed';
-          
-        case 'extractions':
-          const extractions = Object.entries(data.extractionStates || data).filter(([_, s]: any) => s !== 'none');
-          if (extractions.length > 0) {
-            const teeth = extractions.slice(0, 4).map(([t]) => t).join(', ');
-            const more = extractions.length > 4 ? `, +${extractions.length - 4}` : '';
-            return `Extract: ${teeth}${more}`;
-          }
-          return 'No extractions needed';
-          
-        case 'fillings':
-          if (data.originalTeethStates) {
-            const cavities = Object.entries(data.originalTeethStates).filter(([_, t]: any) => 
-              t.hasCavities && t.cavitySurfaces && t.cavitySurfaces.length > 0
-            );
-            const rct = Object.entries(data.originalTeethStates).filter(([_, t]: any) => t.needsRootCanal);
-            
-            if (cavities.length > 0 || rct.length > 0) {
-              const parts = [];
-              if (cavities.length > 0) {
-                const teeth = cavities.slice(0, 3).map(([t, s]: any) => `${t}(${s.cavitySurfaces.join('')})`).join(', ');
-                const more = cavities.length > 3 ? `, +${cavities.length - 3}` : '';
-                parts.push(`Cavities: ${teeth}${more}`);
-              }
-              if (rct.length > 0) {
-                parts.push(`${rct.length} RCT needed`);
-              }
-              return parts.join(' • ');
-            }
-            return 'No cavities found';
-          }
-          return 'Restorative assessed';
-          
-        case 'denture':
-          const type = data.selectedDentureType;
-          if (type && type !== 'none') {
-            return type.replace(/-/g, ' ');
-          }
-          return 'No denture needed';
-          
-        case 'implant':
-          const single = data.singleImplantTeeth || [];
-          const bridge = data.bridgeImplantTeeth || [];
-          if (single.length > 0 || bridge.length > 0) {
-            const parts = [];
-            if (single.length > 0) {
-              const teeth = single.slice(0, 3).join(', ');
-              const more = single.length > 3 ? `, +${single.length - 3}` : '';
-              parts.push(`Single: ${teeth}${more}`);
-            }
-            if (bridge.length > 0) {
-              parts.push(`Bridge: ${bridge.length} teeth`);
-            }
-            return parts.join(' • ');
-          }
-          return 'No implants planned';
-          
-        default:
-          return 'Assessed';
-      }
+      // Use the utility parser
+      const parsed = parseAssessmentData(dataObj, assessment.assessmentType);
+      return parsed.summary;
     } catch (e) {
-      return 'Assessed';
+      console.error('Error parsing assessment summary:', e);
+      return 'Assessment completed';
     }
   };
 
-  // Get quick summary for treatment
+  // Get quick summary for treatment - NOW USING UTILITY
   const getTreatmentSummary = (treatment: Treatment): string => {
-    switch (treatment.type) {
-      case 'hygiene':
-        return `${treatment.units} units`;
-      case 'extraction':
-        return `Tooth ${treatment.tooth}`;
-      case 'filling':
-        return `Tooth ${treatment.tooth} (${treatment.surface})`;
-      case 'denture':
-        return 'Denture placed';
-      case 'implant':
-      case 'implant-crown':
-        return `Tooth ${treatment.tooth}`;
-      default:
-        return `${treatment.units} units`;
+    try {
+      const details = parseTreatmentDetails(treatment);
+      // Return first 2 details joined
+      return details.slice(0, 2).join(' • ');
+    } catch (e) {
+      console.error('Error parsing treatment summary:', e);
+      return `${treatment.type} treatment`;
     }
   };
 
