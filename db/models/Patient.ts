@@ -10,7 +10,8 @@ export default class Patient extends Model {
   @field('age') age!: number;
   @field('gender') gender!: string;
   @field('location') location!: string;
-  @field('photo_uri') photoUri!: string;
+  @field('photo_uri') photoUri!: string; // Local URI
+  @field('photo_cloud_uri') photoCloudUri!: string; // Cloud URI (Firebase Storage)
 
   @children('visits') visits!: Visit[];
 }

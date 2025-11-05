@@ -22,6 +22,7 @@ import ImplantAssessment from '../db/models/ImplantAssessment';
 import Treatment from '../db/models/Treatment';
 // ✅ NEW: Import centralized parsing utilities
 import { parseAssessmentData, parseTreatmentDetails } from '../utils/parseAssessmentData';
+import { SmartImage } from '../components/SmartImage';
 
 interface Assessment {
   id: string;
@@ -279,7 +280,11 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
       {/* Patient Header */}
       <View style={styles.header}>
         {patient.photoUri ? (
-          <Image source={{ uri: patient.photoUri }} style={styles.profilePhoto} />
+          <SmartImage 
+            localUri={patient.photoUri}
+            cloudUri={patient.photoCloudUri}
+            style={styles.profilePhoto} 
+          />
         ) : (
           <View style={styles.photoPlaceholder}>
             <Text style={styles.photoPlaceholderText}>

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Button, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Button, ScrollView } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
 import QRCode from 'react-native-qrcode-svg';
 import Patient from '../db/models/Patient';
+import { SmartImage } from '../components/SmartImage';
 
 const AssessmentsScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params;
@@ -30,7 +31,11 @@ const AssessmentsScreen = ({ route, navigation }: any) => {
       <Text style={styles.header}>Patient Assessments</Text>
 
       {patient.photoUri ? (
-        <Image source={{ uri: patient.photoUri }} style={styles.image} />
+        <SmartImage
+          localUri={patient.photoUri}
+          cloudUri={patient.photoCloudUri}
+          style={styles.image}
+        />
       ) : null}
 
       <View style={styles.infoBox}>

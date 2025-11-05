@@ -7,7 +7,6 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Image,
   Button,
   Platform,
 } from 'react-native';
@@ -15,6 +14,7 @@ import { useDatabase } from '@nozbe/watermelondb/hooks';
 import { Q } from '@nozbe/watermelondb';
 import { Picker } from '@react-native-picker/picker';
 import Patient from '../db/models/Patient';
+import { SmartImage } from '../components/SmartImage';
 
 const PatientSearchScreen = ({ navigation }: any) => {
   const db = useDatabase();
@@ -115,7 +115,11 @@ const PatientSearchScreen = ({ navigation }: any) => {
     >
       <View style={styles.patientCardContent}>
         {item.photoUri ? (
-          <Image source={{ uri: item.photoUri }} style={styles.patientPhoto} />
+          <SmartImage
+            localUri={item.photoUri}
+            cloudUri={item.photoCloudUri}
+            style={styles.patientPhoto}
+          />
         ) : (
           <View style={styles.photoPlaceholder}>
             <Text style={styles.photoPlaceholderText}>

@@ -128,9 +128,10 @@ const LoginScreen = () => {
       
       <View style={styles.testAccountsContainer}>
         <Text style={styles.testAccountsTitle}>Test Accounts:</Text>
-        <Text style={styles.testAccount}>Boss: boss@test.com</Text>
+        <Text style={styles.testAccount}>Admin: admin@mission.com</Text>
+        <Text style={styles.testAccount}>Admin Password: password123</Text>
         <Text style={styles.testAccount}>Clinician: clinician1@test.com</Text>
-        <Text style={styles.testAccount}>Password: mission123</Text>
+        <Text style={styles.testAccount}>Clinician Password: mission123</Text>
       </View>
     </View>
   );

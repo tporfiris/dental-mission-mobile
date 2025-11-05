@@ -15,6 +15,7 @@ import {
 import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
 import { parseAssessmentData, parseTreatmentDetails } from '../utils/parseAssessmentData';
+import { SmartImage } from '../components/SmartImage';
 
 const { width } = Dimensions.get('window');
 
@@ -26,6 +27,7 @@ interface Patient {
   gender: string;
   location: string;
   photoUri?: string;
+  photoCloudUri?: string;
   createdAt: Date;
 }
 
@@ -407,7 +409,11 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
         <View style={styles.patientHeader}>
           <View style={styles.photoContainer}>
             {patient.photoUri ? (
-              <Image source={{ uri: patient.photoUri }} style={styles.patientPhoto} />
+              <SmartImage
+                localUri={patient.photoUri}
+                cloudUri={patient.photoCloudUri}
+                style={styles.patientPhoto}
+              />
             ) : (
               <View style={styles.placeholderPhoto}>
                 <Text style={styles.placeholderText}>

@@ -14,6 +14,7 @@ import * as FileSystem from 'expo-file-system';
 import { database } from '../db';
 import AudioNote from '../db/models/AudioNote';
 import uuid from 'react-native-uuid';
+import { mediaUploadService } from '../services/MediaUploadService';
 
 export interface VoiceRecordingState {
   isRecording: boolean;
@@ -279,6 +280,7 @@ export const useVoiceRecording = (patientId: string, clinicianId: string, catego
           // Let WatermelonDB auto-generate the ID
           audioNote.patientId = patientId;
           audioNote.uri = permanentUri;
+          audioNote.cloudUri = ''; // Empty initially
           audioNote.transcription = transcription;
           audioNote.timestamp = Date.now();
           audioNote.clinicianId = clinicianId;
@@ -286,6 +288,9 @@ export const useVoiceRecording = (patientId: string, clinicianId: string, catego
           audioNote.subcategory = subcategory;
         });
       });
+
+      // Queue audio for upload when WiFi is available
+      mediaUploadService.queueForUpload(permanentUri, 'audio', patientId);
 
       const audioNoteId = savedAudioNote!.id;
 

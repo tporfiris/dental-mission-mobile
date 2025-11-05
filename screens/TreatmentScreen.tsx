@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Button, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Button, ScrollView } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
 import QRCode from 'react-native-qrcode-svg';
 import Patient from '../db/models/Patient';
+import { SmartImage } from '../components/SmartImage';
 
 const TreatmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params;
@@ -34,7 +35,11 @@ const TreatmentScreen = ({ route, navigation }: any) => {
         <Text style={styles.sectionTitle}>Patient Information</Text>
         
         {patient.photoUri ? (
-          <Image source={{ uri: patient.photoUri }} style={styles.patientImage} />
+          <SmartImage
+            localUri={patient.photoUri}
+            cloudUri={patient.photoCloudUri}
+            style={styles.patientImage}
+          />
         ) : (
           <View style={styles.imagePlaceholder}>
             <Text style={styles.placeholderText}>No Photo</Text>

@@ -6,7 +6,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 6, // Increment version for schema changes
+  version: 7, // Increment version for schema changes
   tables: [
     tableSchema({
       name: 'patients',
@@ -17,6 +17,7 @@ export const schema = appSchema({
         { name: 'gender', type: 'string' },
         { name: 'location', type: 'string' },
         { name: 'photo_uri', type: 'string' },
+        { name: 'photo_cloud_uri', type: 'string' },
       ],
     }),
     tableSchema({
@@ -110,7 +111,8 @@ export const schema = appSchema({
       columns: [
         { name: 'patient_id', type: 'string', isIndexed: true }, // Direct patient link
         { name: 'visit_id', type: 'string', isIndexed: true, isOptional: true }, // Optional visit link
-        { name: 'uri', type: 'string' }, // local or cloud storage path
+        { name: 'uri', type: 'string' }, // local storage path
+        { name: 'cloud_uri', type: 'string' }, // cloud storage path
         { name: 'transcription', type: 'string' },
         { name: 'timestamp', type: 'number' },
         { name: 'clinician_id', type: 'string', isIndexed: true },

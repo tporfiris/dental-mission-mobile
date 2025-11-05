@@ -1,4 +1,4 @@
-// screens/PatientListScreen.tsx - Enhanced with assessment/treatment previews
+// screens/PatientListScreen.tsx - Enhanced with assessment/treatment previews and cloud images
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -10,7 +10,6 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
-  Image,
   Dimensions
 } from 'react-native';
 import { db } from '../firebaseConfig';
@@ -21,6 +20,7 @@ import {
   query 
 } from 'firebase/firestore';
 import { parseAssessmentData, parseTreatmentDetails } from '../utils/parseAssessmentData';
+import { SmartImage } from '../components/SmartImage';
 
 const { width } = Dimensions.get('window');
 
@@ -32,6 +32,7 @@ interface Patient {
   gender: string;
   location: string;
   photoUri?: string;
+  photoCloudUri?: string; // ✅ ADD THIS
   createdAt: Date;
 }
 
@@ -126,6 +127,7 @@ const PatientListScreen = ({ navigation }: any) => {
           gender: data.gender || 'Unknown',
           location: data.location || 'Unknown',
           photoUri: data.photoUri || '',
+          photoCloudUri: data.photoCloudUri || '', // ✅ ADD THIS
           createdAt: safeToDate(data.createdAt || data.syncedAt)
         };
       });
@@ -319,10 +321,14 @@ const PatientListScreen = ({ navigation }: any) => {
                 onPress={() => navigateToPatientDetail(patient)}
               >
                 <View style={styles.patientCardContent}>
-                  {/* Patient Photo */}
+                  {/* Patient Photo - ✅ UPDATED */}
                   <View style={styles.photoContainer}>
                     {patient.photoUri ? (
-                      <Image source={{ uri: patient.photoUri }} style={styles.patientPhoto} />
+                      <SmartImage
+                        localUri={patient.photoUri}
+                        cloudUri={patient.photoCloudUri}
+                        style={styles.patientPhoto}
+                      />
                     ) : (
                       <View style={styles.placeholderPhoto}>
                         <Text style={styles.placeholderText}>

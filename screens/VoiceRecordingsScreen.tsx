@@ -10,6 +10,7 @@ import {
   RefreshControl,
   TextInput,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { database } from '../db';
@@ -22,6 +23,7 @@ interface AudioNoteWithPatient {
   id: string;
   patientId: string;
   uri: string;
+  cloudUri?: string; // ✅ ADD THIS
   transcription: string;
   timestamp: number;
   clinicianId: string;
@@ -40,6 +42,7 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [loadingAudio, setLoadingAudio] = useState<string | null>(null); // ✅ ADD THIS
   
   // Audio player for playback
   const player = useAudioPlayer(null);
@@ -77,6 +80,7 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
             id: note.id,
             patientId: note.patientId,
             uri: note.uri,
+            cloudUri: note.cloudUri || undefined, // ✅ ADD THIS
             transcription: note.transcription || '',
             timestamp: note.timestamp,
             clinicianId: note.clinicianId,
@@ -96,6 +100,7 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
             id: note.id,
             patientId: note.patientId,
             uri: note.uri,
+            cloudUri: note.cloudUri || undefined, // ✅ ADD THIS
             transcription: note.transcription || '',
             timestamp: note.timestamp,
             clinicianId: note.clinicianId,
@@ -144,36 +149,71 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
     setRefreshing(false);
   };
 
-  // Play recording
+  // ✅ UPDATED: Play recording with cloud URI support
   const playRecording = async (recording: AudioNoteWithPatient) => {
     try {
       console.log('Attempting to play recording:', recording.id);
+      setLoadingAudio(recording.id);
       
       // Stop any currently playing audio
       if (playerStatus.playing) {
         player.pause();
         setPlayingId(null);
-        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      // Check if file exists
-      const fileInfo = await FileSystem.getInfoAsync(recording.uri);
-      console.log('File check result:', { exists: fileInfo.exists, size: fileInfo.size });
+      let audioUri = recording.uri; // Default to local URI
       
-      if (!fileInfo.exists) {
-        Alert.alert('Error', 'Recording file not found. It may have been deleted.');
-        return;
+      // Try cloud URI first if available
+      if (recording.cloudUri) {
+        console.log('🌐 Using cloud URI for playback');
+        audioUri = recording.cloudUri;
+      } else {
+        console.log('📱 Using local URI for playback');
+        
+        // Check if local file exists
+        const fileInfo = await FileSystem.getInfoAsync(recording.uri);
+        console.log('File check result:', { exists: fileInfo.exists, size: fileInfo.size });
+        
+        if (!fileInfo.exists) {
+          setLoadingAudio(null);
+          Alert.alert(
+            'Recording Not Available',
+            'This recording is not available locally and has not been uploaded to the cloud yet. Please ensure the device that created this recording is online to sync it.'
+          );
+          return;
+        }
       }
 
       // Load and play the recording
-      player.replace({ uri: recording.uri });
+      player.replace({ uri: audioUri });
       player.play();
       setPlayingId(recording.id);
+      setLoadingAudio(null);
 
-      console.log('Started playback for recording:', recording.id);
+      console.log('▶️ Started playback for recording:', recording.id);
     } catch (error) {
       console.error('Error playing recording:', error);
-      Alert.alert('Error', 'Failed to play recording. Please try again.');
+      setLoadingAudio(null);
+      
+      // If cloud playback failed and we have local URI, try local
+      if (recording.cloudUri && recording.uri) {
+        console.log('☁️ Cloud playback failed, trying local URI...');
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(recording.uri);
+          if (fileInfo.exists) {
+            player.replace({ uri: recording.uri });
+            player.play();
+            setPlayingId(recording.id);
+            console.log('▶️ Started local playback');
+            return;
+          }
+        } catch (localError) {
+          console.error('Local playback also failed:', localError);
+        }
+      }
+      
+      Alert.alert('Error', 'Failed to play recording. The file may not be available.');
     }
   };
 
@@ -183,7 +223,7 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
       player.pause();
       player.seekTo(0);
       setPlayingId(null);
-      console.log('Stopped playback manually');
+      console.log('⏹️ Stopped playback manually');
     } catch (error) {
       console.error('Error stopping playback:', error);
     }
@@ -214,13 +254,20 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
                 await audioNote.destroyPermanently();
               });
 
-              // Delete file
+              // Delete local file if exists
               try {
-                await FileSystem.deleteAsync(recording.uri);
-                console.log('Deleted recording file:', recording.uri);
+                const fileInfo = await FileSystem.getInfoAsync(recording.uri);
+                if (fileInfo.exists) {
+                  await FileSystem.deleteAsync(recording.uri);
+                  console.log('Deleted local recording file:', recording.uri);
+                }
               } catch (fileError) {
-                console.warn('Could not delete recording file:', fileError);
+                console.warn('Could not delete local recording file:', fileError);
               }
+
+              // Note: Cloud file deletion would require Firebase Admin SDK
+              // For now, we just mark it as deleted in the database
+              // You could add a cloud function to clean up orphaned files
 
               // Reload recordings
               await loadRecordings();
@@ -271,6 +318,7 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007bff" />
         <Text style={styles.loadingText}>Loading voice recordings...</Text>
       </View>
     );
@@ -349,6 +397,19 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
                 </Text>
               </View>
 
+              {/* ✅ ADD: Cloud/Local indicator */}
+              <View style={styles.sourceIndicator}>
+                {recording.cloudUri ? (
+                  <View style={styles.cloudBadge}>
+                    <Text style={styles.cloudBadgeText}>☁️ Cloud</Text>
+                  </View>
+                ) : (
+                  <View style={styles.localBadge}>
+                    <Text style={styles.localBadgeText}>📱 Local Only</Text>
+                  </View>
+                )}
+              </View>
+
               {/* Transcription/Notes */}
               {recording.transcription && (
                 <View style={styles.transcriptionContainer}>
@@ -365,6 +426,7 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
                   style={[
                     styles.playButton,
                     playingId === recording.id && styles.playButtonActive,
+                    loadingAudio === recording.id && styles.playButtonLoading,
                   ]}
                   onPress={() => {
                     if (playingId === recording.id) {
@@ -373,10 +435,15 @@ const VoiceRecordingsScreen = ({ navigation }: any) => {
                       playRecording(recording);
                     }
                   }}
+                  disabled={loadingAudio === recording.id}
                 >
-                  <Text style={styles.playButtonText}>
-                    {playingId === recording.id ? 'Stop' : 'Play'}
-                  </Text>
+                  {loadingAudio === recording.id ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.playButtonText}>
+                      {playingId === recording.id ? '⏹️ Stop' : '▶️ Play'}
+                    </Text>
+                  )}
                 </Pressable>
 
                 {playingId === recording.id && (
@@ -469,6 +536,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
   },
   loadingText: {
+    marginTop: 16,
     fontSize: 16,
     color: '#666',
   },
@@ -581,7 +649,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   categoryBadge: {
     backgroundColor: '#e7f3ff',
@@ -597,6 +665,34 @@ const styles = StyleSheet.create({
   recordingDate: {
     fontSize: 12,
     color: '#666',
+  },
+  // ✅ NEW: Source indicator styles
+  sourceIndicator: {
+    marginBottom: 12,
+  },
+  cloudBadge: {
+    backgroundColor: '#d4edda',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  cloudBadgeText: {
+    fontSize: 11,
+    color: '#155724',
+    fontWeight: '600',
+  },
+  localBadge: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+  },
+  localBadgeText: {
+    fontSize: 11,
+    color: '#856404',
+    fontWeight: '600',
   },
   transcriptionContainer: {
     backgroundColor: '#f8f9fa',
@@ -625,9 +721,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    minWidth: 80,
+    alignItems: 'center',
   },
   playButtonActive: {
     backgroundColor: '#dc3545',
+  },
+  playButtonLoading: {
+    backgroundColor: '#6c757d',
   },
   playButtonText: {
     color: '#fff',

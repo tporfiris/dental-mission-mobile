@@ -10,6 +10,7 @@ export default class AudioNote extends Model {
   @field('patient_id') patientId!: string;
   @field('visit_id') visitId?: string;
   @field('uri') uri!: string;
+  @field('cloud_uri') cloudUri!: string; // Cloud URI (Firebase Storage)
   @field('transcription') transcription!: string;
   @field('timestamp') timestamp!: number;
   @field('clinician_id') clinicianId!: string;

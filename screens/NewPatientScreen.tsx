@@ -9,6 +9,7 @@ import { Picker } from '@react-native-picker/picker';
 import uuid from 'react-native-uuid';
 import * as ImagePicker from 'expo-image-picker';
 import Patient from '../db/models/Patient';
+import { mediaUploadService } from '../services/MediaUploadService';
 
 const NewPatientScreen = ({ navigation }: any) => {
   const db = useDatabase();
@@ -65,8 +66,14 @@ const NewPatientScreen = ({ navigation }: any) => {
           patient.gender = gender;
           patient.location = location;
           patient.photoUri = photoUri || '';
+          patient.photoCloudUri = ''; // Empty initially
         });
       });
+
+      // Queue photo for upload when WiFi is available
+      if (photoUri) {
+        mediaUploadService.queueForUpload(photoUri, 'photo', id);
+      }
   
       console.log('✅ Patient saved with ID:', id);
 
