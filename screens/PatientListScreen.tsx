@@ -327,6 +327,7 @@ const PatientListScreen = ({ navigation }: any) => {
                       <SmartImage
                         localUri={patient.photoUri}
                         cloudUri={patient.photoCloudUri}
+                        placeholderInitials={`${patient.firstName.charAt(0)}${patient.lastName.charAt(0)}`}
                         style={styles.patientPhoto}
                       />
                     ) : (

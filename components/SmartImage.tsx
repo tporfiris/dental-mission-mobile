@@ -1,23 +1,53 @@
 // components/SmartImage.tsx
 import React, { useState } from 'react';
-import { Image, ImageProps, ActivityIndicator, View, StyleSheet } from 'react-native';
+import { Image, ImageProps, ActivityIndicator, View, StyleSheet, Text } from 'react-native';
 
 interface SmartImageProps extends Omit<ImageProps, 'source'> {
   localUri: string;
   cloudUri?: string;
+  placeholderInitials?: string;
 }
 
 export const SmartImage: React.FC<SmartImageProps> = ({ 
   localUri, 
-  cloudUri, 
+  cloudUri,
+  placeholderInitials,
   style,
   ...props 
 }) => {
   const [useLocal, setUseLocal] = useState(!cloudUri);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
-  // Prefer cloud URI if available, fall back to local
-  const imageUri = useLocal || !cloudUri ? localUri : cloudUri;
+  // Validate URI - check if it's a valid file path or URL
+  const isValidUri = (uri: string): boolean => {
+    if (!uri) return false;
+    return uri.startsWith('file://') || uri.startsWith('http://') || uri.startsWith('https://');
+  };
+
+  // Determine which URI to use
+  const getImageUri = (): string | null => {
+    if (!useLocal && cloudUri && isValidUri(cloudUri)) {
+      return cloudUri;
+    }
+    if (localUri && isValidUri(localUri)) {
+      return localUri;
+    }
+    return null;
+  };
+
+  const imageUri = getImageUri();
+
+  // If no valid URI, show placeholder
+  if (!imageUri || hasError) {
+    return (
+      <View style={[style, styles.placeholderContainer]}>
+        <Text style={styles.placeholderText}>
+          {placeholderInitials || '👤'}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={style}>
@@ -32,13 +62,14 @@ export const SmartImage: React.FC<SmartImageProps> = ({
         source={{ uri: imageUri }}
         onLoadStart={() => setIsLoading(true)}
         onLoadEnd={() => setIsLoading(false)}
-        onError={(error) => {
-          console.log('Image load error:', error.nativeEvent.error);
+        onError={() => {
+          // ✅ REMOVED: console.log - silently handle error
           setIsLoading(false);
-          // If cloud fails and we have local, fall back to local
-          if (!useLocal && localUri) {
-            console.log('Falling back to local image');
+          
+          if (!useLocal && localUri && isValidUri(localUri)) {
             setUseLocal(true);
+          } else {
+            setHasError(true);
           }
         }}
       />
@@ -51,5 +82,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  placeholderContainer: {
+    backgroundColor: '#007bff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
