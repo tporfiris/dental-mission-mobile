@@ -1,4 +1,4 @@
-// screens/ExtractionsTreatmentScreen.tsx - OPTIMIZED VERSION
+// screens/ExtractionsTreatmentScreen.tsx - OPTIMIZED VERSION with Clear All
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal } from 'react-native';
 import { useExtractionsTreatment } from '../contexts/ExtractionsTreatmentContext';
@@ -45,7 +45,6 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
 
   // Calculate ODA billing codes and total cost
   const billingCalculation = useMemo(() => {
-    // ✅ OPTIMIZED: Store minimal billing info
     const billingCodes: Array<{
       code: string;
       price: number;
@@ -73,7 +72,6 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
 
   const { billingCodes, totalCost } = billingCalculation;
 
-  // ✅ HELPER: Generate description on-the-fly (not stored)
   const getExtractionDescription = (tooth: string, complexity: string): string => {
     return `${complexity === 'simple' ? 'Simple' : 'Complicated'} extraction - Tooth ${tooth}`;
   };
@@ -165,7 +163,6 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
           const treatmentId = uuid.v4();
           const code = billingCodes.find(c => c.tooth === extraction.toothNumber);
           
-          // ✅ OPTIMIZED: Build notes once, store minimal billing data
           const notesText = extraction.notes 
             ? `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction. ${extraction.notes}`
             : `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction`;
@@ -173,13 +170,10 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
             treatment.patientId = patientId;
-            // ❌ REMOVED: visitId (empty string - not needed)
             treatment.type = 'extraction';
             treatment.tooth = extraction.toothNumber;
-            // ❌ REMOVED: surface (N/A - not applicable)
             treatment.units = 1;
             treatment.value = code ? code.price : 0;
-            // ✅ OPTIMIZED: Minimal billing code (no descriptions)
             treatment.billingCodes = JSON.stringify(code ? [{
               code: code.code,
               price: code.price,
@@ -253,14 +247,17 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
 
   const handleReset = () => {
     Alert.alert(
-      'Reset Treatment',
-      'Are you sure you want to reset all extraction data? This cannot be undone.',
+      'Clear All Data',
+      'Are you sure you want to clear all extraction data? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Reset', 
+          text: 'Clear All', 
           style: 'destructive', 
-          onPress: resetTreatment
+          onPress: () => {
+            resetTreatment();
+            Alert.alert('Cleared', 'All extraction data has been cleared.');
+          }
         }
       ]
     );
@@ -461,7 +458,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
           onPress={handleReset}
         >
           <Text style={[styles.actionButtonText, styles.resetButtonText]}>
-            🔄 Reset Treatment
+            Clear All
           </Text>
         </Pressable>
       </View>
@@ -582,7 +579,6 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
 
 export default ExtractionsTreatmentScreen;
 
-// Styles remain the same
 const styles = StyleSheet.create({
   container: {
     flex: 1,

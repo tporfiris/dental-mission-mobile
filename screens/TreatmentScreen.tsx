@@ -63,14 +63,6 @@ const TreatmentScreen = ({ route, navigation }: any) => {
             <Text style={styles.infoLabel}>Location:</Text>
             <Text style={styles.infoValue}>{patient.location}</Text>
           </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Patient ID:</Text>
-            <Text style={styles.infoValue}>{patient.id}</Text>
-          </View>
-        </View>
-
-        <View style={styles.qrContainer}>
-          <QRCode value={patient.id} size={120} />
         </View>
       </View>
 
@@ -117,6 +109,13 @@ const TreatmentScreen = ({ route, navigation }: any) => {
             />
           </View>
         </View>
+      </View>
+
+      {/* QR Code at Bottom */}
+      <View style={styles.qrContainer}>
+        <Text style={styles.qrLabel}>Patient QR Code</Text>
+        <QRCode value={patient.id} size={100} />
+        <Text style={styles.qrText}>ID: {patient.id.slice(0, 8)}...</Text>
       </View>
     </ScrollView>
   );
@@ -199,10 +198,6 @@ const styles = StyleSheet.create({
     flex: 2,
     textAlign: 'right',
   },
-  qrContainer: { 
-    alignItems: 'center', 
-    marginTop: 10 
-  },
   assessmentSection: {
     width: '100%',
     marginBottom: 20,
@@ -220,5 +215,25 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     marginBottom: 12,
+  },
+  qrContainer: { 
+    alignItems: 'center', 
+    marginTop: 30,
+    marginBottom: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    width: '100%',
+  },
+  qrLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 12,
+  },
+  qrText: { 
+    marginTop: 8, 
+    fontSize: 11, 
+    color: '#888',
   },
 });

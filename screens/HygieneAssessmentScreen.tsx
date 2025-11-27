@@ -1036,6 +1036,30 @@ BLEEDING ON PROBING:
           <Text style={styles.reportButtonText}>View Report</Text>
         </Pressable>
       </View>
+
+      {/* Clear All Button */}
+      <Pressable 
+        style={styles.clearAllButton} 
+        onPress={() => {
+          Alert.alert(
+            'Clear All Data',
+            'Are you sure you want to clear all assessment data? This cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Clear All', 
+                style: 'destructive',
+                onPress: () => {
+                  setEnhancedState(getInitialState());
+                  Alert.alert('Cleared', 'All assessment data has been cleared.');
+                }
+              }
+            ]
+          );
+        }}
+      >
+        <Text style={styles.clearAllButtonText}>Clear All</Text>
+      </Pressable>
     </ScrollView>
   );
 };
@@ -1606,5 +1630,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     textAlign: 'center',
+  },
+  clearAllButton: { 
+    backgroundColor: '#fff', 
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    paddingVertical: 12, 
+    paddingHorizontal: 24, 
+    borderRadius: 8, 
+    marginBottom: 20,
+    width: '100%',
+  },
+  clearAllButtonText: { 
+    color: '#dc3545', 
+    fontWeight: 'bold', 
+    fontSize: 16, 
+    textAlign: 'center' 
   },
 });

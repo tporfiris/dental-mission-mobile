@@ -28,7 +28,6 @@ const HygieneTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
   
-  // Use context for state management
   const {
     treatmentState,
     updateScalingUnits,
@@ -49,7 +48,6 @@ const HygieneTreatmentScreen = ({ route }: any) => {
     completedAt,
   } = treatmentState;
 
-  // Calculate ODA codes and total cost
   const calculateODABilling = () => {
     const billingCodes: Array<{
       code: string;
@@ -60,7 +58,6 @@ const HygieneTreatmentScreen = ({ route }: any) => {
 
     let totalCost = 0;
 
-    // Scaling codes
     if (scalingUnits > 0 && scalingUnits <= 4) {
       const scalingInfo = ODA_FEES.scaling[scalingUnits as keyof typeof ODA_FEES.scaling];
       if (scalingInfo) {
@@ -74,7 +71,6 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       }
     }
 
-    // Polishing codes
     if (polishingUnits > 0) {
       const polishingInfo = ODA_FEES.polishing[polishingUnits as keyof typeof ODA_FEES.polishing];
       if (polishingInfo) {
@@ -88,7 +84,6 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       }
     }
 
-    // Fluoride codes
     if (fluorideType !== 'none') {
       const fluorideInfo = ODA_FEES.fluoride[fluorideType as keyof typeof ODA_FEES.fluoride];
       if (fluorideInfo) {
@@ -113,23 +108,19 @@ const HygieneTreatmentScreen = ({ route }: any) => {
       const completedDate = new Date();
       const clinicianId = user?.uid || 'unknown';
   
-      // ✅ OPTIMIZED: Only store essential treatment data (no billing code duplication)
       const treatmentData: any = {
         scaling: scalingUnits,
         polishing: polishingUnits,
       };
 
-      // Only add fluoride if not 'none'
       if (fluorideType !== 'none') {
         treatmentData.fluoride = fluorideType;
       }
 
-      // Only add medication if provided
       if (prescribedMedication.trim()) {
         treatmentData.medication = prescribedMedication;
       }
 
-      // Only add notes if provided
       if (notes.trim()) {
         treatmentData.notes = notes;
       }
@@ -141,33 +132,19 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           treatment.type = 'hygiene';
           treatment.units = 1;
           treatment.value = totalCost;
-          
-          // ✅ Store billing codes separately (for invoicing)
           treatment.billingCodes = JSON.stringify(billingCodes);
-          
-          // ✅ Store only treatment details (no duplicate billing info)
           treatment.notes = JSON.stringify(treatmentData);
-          
-          // ✅ Store clinician ID only (not email - save bytes)
           treatment.clinicianName = clinicianId;
-          
           treatment.completedAt = completedDate;
-          
-          // ❌ DON'T set these - they're empty/placeholders:
-          // treatment.visitId = '';
-          // treatment.tooth = 'N/A';
-          // treatment.surface = 'N/A';
         });
       });
 
-      console.log('✅ Hygiene treatment saved (OPTIMIZED):', {
+      console.log('✅ Hygiene treatment saved:', {
         treatmentId,
         patientId,
         type: 'hygiene',
         dataStored: treatmentData,
-        billingCodesCount: billingCodes.length,
         totalCost: `$${totalCost}`,
-        bytesStored: JSON.stringify(treatmentData).length + JSON.stringify(billingCodes).length
       });
 
       return true;
@@ -222,15 +199,16 @@ const HygieneTreatmentScreen = ({ route }: any) => {
 
   const handleReset = () => {
     Alert.alert(
-      'Reset Treatment',
-      'Are you sure you want to reset all treatment data? This cannot be undone.',
+      'Clear All Data',
+      'Are you sure you want to clear all treatment data? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Reset', 
+          text: 'Clear All', 
           style: 'destructive', 
           onPress: () => {
             resetTreatment();
+            Alert.alert('Cleared', 'All treatment data has been cleared.');
           }
         }
       ]
@@ -309,31 +287,11 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Scaling Units Performed</Text>
           <View style={styles.unitOptionsContainer}>
-            <ScalingUnitButton 
-              value="0" 
-              selected={scalingUnits === 0} 
-              onPress={() => updateScalingUnits(0)} 
-            />
-            <ScalingUnitButton 
-              value="1" 
-              selected={scalingUnits === 1} 
-              onPress={() => updateScalingUnits(1)} 
-            />
-            <ScalingUnitButton 
-              value="2" 
-              selected={scalingUnits === 2} 
-              onPress={() => updateScalingUnits(2)} 
-            />
-            <ScalingUnitButton 
-              value="3" 
-              selected={scalingUnits === 3} 
-              onPress={() => updateScalingUnits(3)} 
-            />
-            <ScalingUnitButton 
-              value="4" 
-              selected={scalingUnits === 4} 
-              onPress={() => updateScalingUnits(4)} 
-            />
+            <ScalingUnitButton value="0" selected={scalingUnits === 0} onPress={() => updateScalingUnits(0)} />
+            <ScalingUnitButton value="1" selected={scalingUnits === 1} onPress={() => updateScalingUnits(1)} />
+            <ScalingUnitButton value="2" selected={scalingUnits === 2} onPress={() => updateScalingUnits(2)} />
+            <ScalingUnitButton value="3" selected={scalingUnits === 3} onPress={() => updateScalingUnits(3)} />
+            <ScalingUnitButton value="4" selected={scalingUnits === 4} onPress={() => updateScalingUnits(4)} />
           </View>
           <Text style={styles.inputHint}>
             Select number of scaling units performed (typically 1-4)
@@ -351,21 +309,9 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Polishing Units Performed</Text>
           <View style={styles.unitOptionsContainer}>
-            <PolishingUnitButton 
-              value="0" 
-              selected={polishingUnits === 0} 
-              onPress={() => updatePolishingUnits(0)} 
-            />
-            <PolishingUnitButton 
-              value="0.5" 
-              selected={polishingUnits === 0.5} 
-              onPress={() => updatePolishingUnits(0.5)} 
-            />
-            <PolishingUnitButton 
-              value="1" 
-              selected={polishingUnits === 1} 
-              onPress={() => updatePolishingUnits(1)} 
-            />
+            <PolishingUnitButton value="0" selected={polishingUnits === 0} onPress={() => updatePolishingUnits(0)} />
+            <PolishingUnitButton value="0.5" selected={polishingUnits === 0.5} onPress={() => updatePolishingUnits(0.5)} />
+            <PolishingUnitButton value="1" selected={polishingUnits === 1} onPress={() => updatePolishingUnits(1)} />
           </View>
           <Text style={styles.inputHint}>
             Select polishing units performed (typically 0.5 or 1 unit)
@@ -383,25 +329,13 @@ const HygieneTreatmentScreen = ({ route }: any) => {
         <View style={styles.inputGroup}>
           <Text style={styles.inputLabel}>Fluoride Treatment</Text>
           <View style={styles.fluorideContainer}>
-            <FluorideButton 
-              type="none"
-              selected={fluorideType === 'none'} 
-              onPress={() => updateFluorideType('none')}
-            >
+            <FluorideButton type="none" selected={fluorideType === 'none'} onPress={() => updateFluorideType('none')}>
               None
             </FluorideButton>
-            <FluorideButton 
-              type="rinse"
-              selected={fluorideType === 'rinse'} 
-              onPress={() => updateFluorideType('rinse')}
-            >
+            <FluorideButton type="rinse" selected={fluorideType === 'rinse'} onPress={() => updateFluorideType('rinse')}>
               Fluoride Rinse
             </FluorideButton>
-            <FluorideButton 
-              type="varnish"
-              selected={fluorideType === 'varnish'} 
-              onPress={() => updateFluorideType('varnish')}
-            >
+            <FluorideButton type="varnish" selected={fluorideType === 'varnish'} onPress={() => updateFluorideType('varnish')}>
               Fluoride Varnish
             </FluorideButton>
           </View>
@@ -409,7 +343,6 @@ const HygieneTreatmentScreen = ({ route }: any) => {
             Select fluoride treatment performed (optional)
           </Text>
           
-          {/* Fluoride Information */}
           {fluorideType === 'rinse' && (
             <View style={styles.fluorideInfo}>
               <Text style={styles.fluorideInfoText}>
@@ -504,7 +437,7 @@ const HygieneTreatmentScreen = ({ route }: any) => {
           onPress={handleReset}
         >
           <Text style={[styles.actionButtonText, styles.resetButtonText]}>
-            🔄 Reset Treatment
+            Clear All
           </Text>
         </Pressable>
       </View>

@@ -236,6 +236,7 @@ const FillingsTreatmentScreen = ({ route }: any) => {
   const [allCompleted, setAllCompleted] = useState(false);
   const [completedAt, setCompletedAt] = useState<Date | null>(null);
   const [primaryTeeth, setPrimaryTeeth] = useState<Set<string>>(new Set());
+  const [toothBackup, setToothBackup] = useState<ToothTreatment | null>(null);
 
   // Helper functions for tooth management
   const getCurrentToothId = (originalToothId: string): string => {
@@ -286,6 +287,32 @@ const FillingsTreatmentScreen = ({ route }: any) => {
       ...prev,
       [toothId]: { ...defaultToothTreatment }
     }));
+  };
+
+  // Modal control functions
+  const openToothModal = (toothId: string) => {
+    setSelectedTooth(toothId);
+    // Backup current tooth state
+    setToothBackup({ ...treatments[toothId] });
+    setModalVisible(true);
+  };
+
+  const cancelToothModal = () => {
+    // Restore backed-up tooth state
+    if (selectedTooth && toothBackup) {
+      setTreatments(prev => ({
+        ...prev,
+        [selectedTooth]: { ...toothBackup }
+      }));
+    }
+    setModalVisible(false);
+    setToothBackup(null);
+  };
+
+  const doneToothModal = () => {
+    // Keep changes and close
+    setModalVisible(false);
+    setToothBackup(null);
   };
 
   // Summary calculation functions
@@ -494,7 +521,7 @@ const FillingsTreatmentScreen = ({ route }: any) => {
     return (
       <View key={toothId} style={{ position: 'absolute', left: position.left, top: position.top }}>
         <Pressable
-          onPress={() => { setSelectedTooth(toothId); setModalVisible(true); }}
+          onPress={() => openToothModal(toothId)}
           onLongPress={() => canSwitch && toggleToothType(toothId)}
           style={[styles.toothCircle, getToothStyle(toothId)]}
         >
@@ -514,7 +541,10 @@ const FillingsTreatmentScreen = ({ route }: any) => {
         </Pressable>
         
         {canSwitch && (
-          <View style={styles.switchIndicator}>
+          <View style={[
+            styles.switchIndicator,
+            isCurrentlyPrimary ? styles.switchIndicatorPrimary : styles.switchIndicatorAdult
+          ]}>
             <Text style={styles.switchText}>
               {isCurrentlyPrimary ? 'P' : 'A'}
             </Text>
@@ -628,12 +658,12 @@ const FillingsTreatmentScreen = ({ route }: any) => {
 
   const resetTreatment = () => {
     Alert.alert(
-      'Reset Treatment',
-      'Reset all data?',
+      'Clear All Data',
+      'Are you sure you want to clear all treatment data? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Reset', 
+          text: 'Clear All', 
           style: 'destructive',
           onPress: () => {
             setTreatments(initializeTeethStates());
@@ -641,6 +671,7 @@ const FillingsTreatmentScreen = ({ route }: any) => {
             setAllCompleted(false);
             setCompletedAt(null);
             setPrimaryTeeth(new Set());
+            Alert.alert('Cleared', 'All treatment data has been cleared.');
           }
         }
       ]
@@ -688,6 +719,25 @@ const FillingsTreatmentScreen = ({ route }: any) => {
             {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
               renderTooth(toothId)
             )}
+          </View>
+          
+          {/* Legend */}
+          <View style={styles.legendContainer}>
+            <Text style={styles.legendTitle}>Adult/Primary Indicator:</Text>
+            <View style={styles.legendRow}>
+              <View style={styles.legendItem}>
+                <View style={[styles.switchIndicator, styles.switchIndicatorAdult, styles.legendIndicator]}>
+                  <Text style={styles.switchText}>A</Text>
+                </View>
+                <Text style={styles.legendText}>Adult Tooth</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.switchIndicator, styles.switchIndicatorPrimary, styles.legendIndicator]}>
+                  <Text style={styles.switchText}>P</Text>
+                </View>
+                <Text style={styles.legendText}>Primary Tooth</Text>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -744,12 +794,10 @@ const FillingsTreatmentScreen = ({ route }: any) => {
           </Pressable>
           
           <Pressable style={styles.resetButton} onPress={resetTreatment}>
-            <Text style={styles.resetButtonText}>Reset</Text>
+            <Text style={styles.resetButtonText}>Clear All</Text>
           </Pressable>
         </View>
       </ScrollView>
-
-      // FillingsTreatmentScreen.tsx - PART 7 (Treatment Modal)
 
       {/* Treatment Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
@@ -1027,6 +1075,12 @@ const FillingsTreatmentScreen = ({ route }: any) => {
 
             <View style={styles.modalFooter}>
               <Pressable 
+                style={styles.cancelBtn} 
+                onPress={cancelToothModal}
+              >
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable 
                 style={styles.clearBtn} 
                 onPress={() => selectedTooth && clearTooth(selectedTooth)}
               >
@@ -1034,7 +1088,7 @@ const FillingsTreatmentScreen = ({ route }: any) => {
               </Pressable>
               <Pressable 
                 style={styles.doneBtn} 
-                onPress={() => setModalVisible(false)}
+                onPress={doneToothModal}
               >
                 <Text style={styles.doneBtnText}>Done</Text>
               </Pressable>
@@ -1165,23 +1219,37 @@ const styles = StyleSheet.create({
   },
   toothLabel: {
     color: 'white',
-    fontWeight: '600',
-    fontSize: 10,
+    fontWeight: '700',
+    fontSize: 11,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   primaryToothLabel: {
-    color: '#ffd700',
-    fontWeight: 'bold',
+    color: '#000000',
+    fontWeight: '700',
+    fontSize: 11,
+    textShadowColor: 'rgba(255, 255, 255, 0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   switchIndicator: {
     position: 'absolute',
-    top: -8,
-    left: -8,
-    backgroundColor: '#28a745',
-    borderRadius: 6,
-    width: 12,
-    height: 12,
+    top: -10,
+    left: -10,
+    borderRadius: 7,
+    width: 14,
+    height: 14,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'white',
+  },
+  switchIndicatorAdult: {
+    backgroundColor: '#007bff',
+  },
+  switchIndicatorPrimary: {
+    backgroundColor: '#ff6b35',
   },
   switchText: {
     color: 'white',
@@ -1219,13 +1287,45 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   toothNormal: {
-    backgroundColor: '#6c757d',
+    backgroundColor: '#4CAF50',
   },
   toothTreated: {
     backgroundColor: '#007bff',
   },
   toothCompleted: {
     backgroundColor: '#28a745',
+  },
+  legendContainer: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  legendTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  legendRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 24,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  legendIndicator: {
+    position: 'relative',
+    top: 0,
+    left: 0,
+  },
+  legendText: {
+    fontSize: 13,
+    color: '#495057',
   },
   billingSection: {
     backgroundColor: '#fff',
@@ -1635,6 +1735,20 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
     gap: 12,
+  },
+  cancelBtn: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#6c757d',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6c757d',
   },
   clearBtn: {
     flex: 1,

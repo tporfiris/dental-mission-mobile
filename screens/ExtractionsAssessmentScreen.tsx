@@ -1,7 +1,4 @@
-// screens/ExtractionsAssessmentScreen.tsx - FIXED
-// 
-// FIX: Changed handleSaveAssessment to pass extractionStates directly
-// (not wrapped in another object)
+// screens/ExtractionsAssessmentScreen.tsx - FIXED with Clear All button
 
 import React, { useState, useMemo } from 'react';
 import {
@@ -353,6 +350,34 @@ ${extractionSummary.byReason['root-tip'].length > 0 ? '⚠️ Root tips should b
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
 
+      {/* Clear All Button */}
+      <Pressable 
+        style={styles.clearAllButton} 
+        onPress={() => {
+          Alert.alert(
+            'Clear All Data',
+            'Are you sure you want to clear all extraction data? This cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Clear All', 
+                style: 'destructive',
+                onPress: () => {
+                  const clearedStates: Record<string, ExtractionReason> = {};
+                  [...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].forEach(id => {
+                    clearedStates[id] = 'none';
+                  });
+                  setExtractionStates(clearedStates);
+                  Alert.alert('Cleared', 'All extraction data has been cleared.');
+                }
+              }
+            ]
+          );
+        }}
+      >
+        <Text style={styles.clearAllButtonText}>Clear All</Text>
+      </Pressable>
+
       {/* Extraction Reason Modal */}
       <Modal
         animationType="slide"
@@ -632,13 +657,28 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   saveButtonText: {
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
     textAlign: 'center',
+  },
+  clearAllButton: { 
+    backgroundColor: '#fff', 
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    paddingVertical: 12, 
+    paddingHorizontal: 24, 
+    borderRadius: 8, 
+    marginBottom: 20,
+  },
+  clearAllButtonText: { 
+    color: '#dc3545', 
+    fontWeight: 'bold', 
+    fontSize: 16, 
+    textAlign: 'center' 
   },
   modalOverlay: {
     flex: 1,

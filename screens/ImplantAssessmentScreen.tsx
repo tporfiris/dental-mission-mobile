@@ -26,23 +26,20 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
     updateBoneGrafting,
     updateTimingMode,
     clearCurrentSelection,
-    saveAssessment,  // ✅ Get from context
-    loadLatestAssessment,  // ✅ Get from context
+    saveAssessment,
+    loadLatestAssessment,
   } = useImplantAssessment();
 
   const { implantMode, boneGraftingPlanned, timingMode } = implantState;
   const selectedTeeth = getSelectedTeeth();
 
-  // ✅ Optional: Load previous assessment on mount
   useEffect(() => {
     const loadPrevious = async () => {
       await loadLatestAssessment(patientId);
     };
     
-    
     loadPrevious();
     
-    // ✅ Optional: Reset state when leaving screen
     return () => {
     };
   }, [patientId]);
@@ -66,10 +63,8 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
     '38': { x: 125, y: 130 }, '48': { x: -125, y: 130 },
   };
 
-  // ✅ UPDATED: Use context's saveAssessment function
   const handleSaveAssessment = async () => {
     try {
-      // Validate that at least one tooth is selected
       if (implantState.singleImplantTeeth.length === 0 && implantState.bridgeImplantTeeth.length === 0) {
         Alert.alert(
           'No Teeth Selected',
@@ -79,7 +74,6 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
         return;
       }
 
-      // Call the context's save function
       await saveAssessment(patientId);
       
       Alert.alert(
@@ -330,6 +324,38 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
 
       <Pressable style={styles.saveButton} onPress={handleSaveAssessment}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
+      </Pressable>
+
+      {/* Clear All Button */}
+      <Pressable 
+        style={styles.clearAllButton} 
+        onPress={() => {
+          Alert.alert(
+            'Clear All Data',
+            'Are you sure you want to clear all implant assessment data? This cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Clear All', 
+                style: 'destructive',
+                onPress: () => {
+                  // Clear both single and bridge selections
+                  implantState.singleImplantTeeth = [];
+                  implantState.bridgeImplantTeeth = [];
+                  updateBoneGrafting(false);
+                  updateTimingMode('delayed');
+                  Alert.alert('Cleared', 'All implant assessment data has been cleared.');
+                  // Force re-render by toggling mode
+                  const currentMode = implantMode;
+                  updateImplantMode(currentMode === 'single' ? 'bridge' : 'single');
+                  updateImplantMode(currentMode);
+                }
+              }
+            ]
+          );
+        }}
+      >
+        <Text style={styles.clearAllButtonText}>Clear All</Text>
       </Pressable>
     </ScrollView>
   );
@@ -648,12 +674,29 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
-    marginBottom: 20,
+    marginBottom: 12,
+    width: '100%',
   },
   saveButtonText: {
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
     textAlign: 'center',
+  },
+  clearAllButton: { 
+    backgroundColor: '#fff', 
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    paddingVertical: 12, 
+    paddingHorizontal: 24, 
+    borderRadius: 8, 
+    marginBottom: 20,
+    width: '100%',
+  },
+  clearAllButtonText: { 
+    color: '#dc3545', 
+    fontWeight: 'bold', 
+    fontSize: 16, 
+    textAlign: 'center' 
   },
 });

@@ -1,247 +1,303 @@
-import React, { useState } from 'react';
+// screens/ImplantTreatmentScreen.tsx - COMPLETE VERSION with Clear All
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal } from 'react-native';
-import { useImplantTreatment } from '../contexts/ImplantTreatmentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
 
-// ODA Fee Structure for Implant Treatments
+// ODA Fee Structure for Implants
 const ODA_FEES = {
-  implant: {
-    single: { code: '79931', price: 1412 },
-  },
-  crown: {
-    implant: { code: '27205', price: 1151 },
-  },
+  'single-implant': { code: '75101', price: 2500, description: 'Single Tooth Implant' },
+  'implant-crown': { code: '75201', price: 1800, description: 'Implant Crown' },
+  'bone-grafting': { code: '75301', price: 850, description: 'Bone Grafting Procedure' },
+  'sinus-lift': { code: '75401', price: 1200, description: 'Sinus Lift Procedure' },
 };
 
 interface ImplantRecord {
   id: string;
   toothNumber: string;
+  implantType: 'single-implant' | 'bone-grafting' | 'sinus-lift';
   notes: string;
-  placedAt: Date;
+  addedAt: Date;
 }
 
-interface ImplantCrownRecord {
+interface CrownRecord {
   id: string;
   toothNumber: string;
-  crownType: 'screw-retained' | 'cemented';
   notes: string;
-  placedAt: Date;
+  addedAt: Date;
 }
 
 const ImplantTreatmentScreen = ({ route }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const { user } = useAuth();
 
-  // State for implant records
+  // Treatment state
   const [implantRecords, setImplantRecords] = useState<ImplantRecord[]>([]);
-  const [crownRecords, setCrownRecords] = useState<ImplantCrownRecord[]>([]);
+  const [crownRecords, setCrownRecords] = useState<CrownRecord[]>([]);
   const [generalNotes, setGeneralNotes] = useState('');
   const [treatmentCompleted, setTreatmentCompleted] = useState(false);
   const [completedAt, setCompletedAt] = useState<Date | null>(null);
 
-  // Modal state for implants
-  const [implantModalVisible, setImplantModalVisible] = useState(false);
-  const [toothNumber, setToothNumber] = useState('');
-  const [notes, setNotes] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // Form state for implants
+  const [implantToothNumber, setImplantToothNumber] = useState('');
+  const [selectedImplantType, setSelectedImplantType] = useState<'single-implant' | 'bone-grafting' | 'sinus-lift'>('single-implant');
+  const [implantNotes, setImplantNotes] = useState('');
 
-  // Modal state for crowns
-  const [crownModalVisible, setCrownModalVisible] = useState(false);
+  // Form state for crowns
   const [crownToothNumber, setCrownToothNumber] = useState('');
-  const [crownType, setCrownType] = useState<'screw-retained' | 'cemented'>('screw-retained');
   const [crownNotes, setCrownNotes] = useState('');
-  const [editingCrownId, setEditingCrownId] = useState<string | null>(null);
 
-  // Calculate ODA codes and total cost
-  const calculateODABilling = () => {
+  // Modal state
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState<{ type: 'implant' | 'crown'; data: any } | null>(null);
+
+  // Calculate ODA billing codes and total cost
+  const billingCalculation = useMemo(() => {
     const billingCodes: Array<{
       code: string;
-      description: string;
       price: number;
-      category: string;
-      toothNumber: string;
+      description: string;
+      tooth?: string;
+      type: string;
     }> = [];
 
     let totalCost = 0;
 
-    // Single implant codes
+    // Add implant records
     implantRecords.forEach(record => {
-      const implantInfo = ODA_FEES.implant.single;
-      billingCodes.push({
-        code: implantInfo.code,
-        description: `Single Implant - Tooth ${record.toothNumber}`,
-        price: implantInfo.price,
-        category: 'Implant',
-        toothNumber: record.toothNumber
-      });
-      totalCost += implantInfo.price;
+      const odaInfo = ODA_FEES[record.implantType];
+      if (odaInfo) {
+        billingCodes.push({
+          code: odaInfo.code,
+          price: odaInfo.price,
+          description: odaInfo.description,
+          tooth: record.toothNumber,
+          type: 'implant',
+        });
+        totalCost += odaInfo.price;
+      }
     });
 
-    // Implant crown codes
+    // Add crown records
     crownRecords.forEach(record => {
-      const crownInfo = ODA_FEES.crown.implant;
+      const odaInfo = ODA_FEES['implant-crown'];
       billingCodes.push({
-        code: crownInfo.code,
-        description: `Implant Crown (${record.crownType}) - Tooth ${record.toothNumber}`,
-        price: crownInfo.price,
-        category: 'Implant Crown',
-        toothNumber: record.toothNumber
+        code: odaInfo.code,
+        price: odaInfo.price,
+        description: odaInfo.description,
+        tooth: record.toothNumber,
+        type: 'crown',
       });
-      totalCost += crownInfo.price;
+      totalCost += odaInfo.price;
     });
 
     return { billingCodes, totalCost };
+  }, [implantRecords, crownRecords]);
+
+  const { billingCodes, totalCost } = billingCalculation;
+
+  const validateToothNumber = (tooth: string): boolean => {
+    const num = parseInt(tooth);
+    if (isNaN(num)) return false;
+    
+    const validRanges = [
+      [11, 18], [21, 28],
+      [31, 38], [41, 48]
+    ];
+    
+    return validRanges.some(([min, max]) => num >= min && num <= max);
   };
 
-  const { billingCodes, totalCost } = calculateODABilling();
-
-  const openNewImplantModal = () => {
-    setEditingId(null);
-    setToothNumber('');
-    setNotes('');
-    setImplantModalVisible(true);
-  };
-
-  const openEditImplantModal = (record: ImplantRecord) => {
-    setEditingId(record.id);
-    setToothNumber(record.toothNumber);
-    setNotes(record.notes);
-    setImplantModalVisible(true);
-  };
-
-  const openNewCrownModal = () => {
-    setEditingCrownId(null);
-    setCrownToothNumber('');
-    setCrownType('screw-retained');
-    setCrownNotes('');
-    setCrownModalVisible(true);
-  };
-
-  const openEditCrownModal = (record: ImplantCrownRecord) => {
-    setEditingCrownId(record.id);
-    setCrownToothNumber(record.toothNumber);
-    setCrownType(record.crownType);
-    setCrownNotes(record.notes);
-    setCrownModalVisible(true);
-  };
-
-  const handleSaveImplant = () => {
-    // Validation
-    if (!toothNumber.trim()) {
-      Alert.alert('Validation Error', 'Please enter the tooth number for the implant.');
+  const handleAddImplant = () => {
+    if (!implantToothNumber.trim()) {
+      Alert.alert('Error', 'Please enter a tooth number');
       return;
     }
 
-    const recordData: ImplantRecord = {
-      id: editingId || uuid.v4() as string,
-      toothNumber: toothNumber.trim(),
-      notes: notes.trim(),
-      placedAt: new Date(),
-    };
-
-    if (editingId) {
-      // Update existing record
-      setImplantRecords(prev => 
-        prev.map(record => record.id === editingId ? recordData : record)
+    if (!validateToothNumber(implantToothNumber)) {
+      Alert.alert(
+        'Invalid Tooth Number',
+        'Please enter a valid tooth number (11-18, 21-28, 31-38, 41-48)'
       );
-    } else {
-      // Add new record
-      setImplantRecords(prev => [...prev, recordData]);
+      return;
     }
 
-    setImplantModalVisible(false);
+    const existingImplant = implantRecords.find(r => r.toothNumber === implantToothNumber);
+    if (existingImplant) {
+      Alert.alert(
+        'Tooth Already Recorded',
+        `Tooth ${implantToothNumber} already has an implant record. Would you like to edit it?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Edit', onPress: () => handleEditImplant(existingImplant) }
+        ]
+      );
+      return;
+    }
+
+    const newRecord: ImplantRecord = {
+      id: uuid.v4() as string,
+      toothNumber: implantToothNumber,
+      implantType: selectedImplantType,
+      notes: implantNotes.trim(),
+      addedAt: new Date(),
+    };
+
+    setImplantRecords([...implantRecords, newRecord]);
+
+    // Reset form
+    setImplantToothNumber('');
+    setSelectedImplantType('single-implant');
+    setImplantNotes('');
+
+    const odaInfo = ODA_FEES[selectedImplantType];
+    Alert.alert(
+      'Success',
+      `Implant recorded successfully\n\n${odaInfo.description}\nTooth: ${implantToothNumber}\nODA Code: ${odaInfo.code} - $${odaInfo.price}`
+    );
   };
 
-  const handleSaveCrown = () => {
-    // Validation
+  const handleAddCrown = () => {
     if (!crownToothNumber.trim()) {
-      Alert.alert('Validation Error', 'Please enter the tooth number for the implant crown.');
+      Alert.alert('Error', 'Please enter a tooth number');
       return;
     }
 
-    const recordData: ImplantCrownRecord = {
-      id: editingCrownId || uuid.v4() as string,
-      toothNumber: crownToothNumber.trim(),
-      crownType: crownType,
-      notes: crownNotes.trim(),
-      placedAt: new Date(),
-    };
-
-    if (editingCrownId) {
-      // Update existing record
-      setCrownRecords(prev => 
-        prev.map(record => record.id === editingCrownId ? recordData : record)
+    if (!validateToothNumber(crownToothNumber)) {
+      Alert.alert(
+        'Invalid Tooth Number',
+        'Please enter a valid tooth number (11-18, 21-28, 31-38, 41-48)'
       );
-    } else {
-      // Add new record
-      setCrownRecords(prev => [...prev, recordData]);
+      return;
     }
 
-    setCrownModalVisible(false);
+    const existingCrown = crownRecords.find(r => r.toothNumber === crownToothNumber);
+    if (existingCrown) {
+      Alert.alert(
+        'Tooth Already Recorded',
+        `Tooth ${crownToothNumber} already has a crown record. Would you like to edit it?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Edit', onPress: () => handleEditCrown(existingCrown) }
+        ]
+      );
+      return;
+    }
+
+    const newRecord: CrownRecord = {
+      id: uuid.v4() as string,
+      toothNumber: crownToothNumber,
+      notes: crownNotes.trim(),
+      addedAt: new Date(),
+    };
+
+    setCrownRecords([...crownRecords, newRecord]);
+
+    // Reset form
+    setCrownToothNumber('');
+    setCrownNotes('');
+
+    const odaInfo = ODA_FEES['implant-crown'];
+    Alert.alert(
+      'Success',
+      `Crown recorded successfully\n\nTooth: ${crownToothNumber}\nODA Code: ${odaInfo.code} - $${odaInfo.price}`
+    );
   };
 
-  const removeImplantRecord = (id: string) => {
+  const handleEditImplant = (record: ImplantRecord) => {
+    setEditingItem({ type: 'implant', data: record });
+    setModalVisible(true);
+  };
+
+  const handleEditCrown = (record: CrownRecord) => {
+    setEditingItem({ type: 'crown', data: record });
+    setModalVisible(true);
+  };
+
+  const handleUpdateItem = (updatedData: any) => {
+    if (!editingItem) return;
+
+    if (editingItem.type === 'implant') {
+      setImplantRecords(implantRecords.map(r =>
+        r.id === editingItem.data.id ? { ...r, ...updatedData } : r
+      ));
+    } else {
+      setCrownRecords(crownRecords.map(r =>
+        r.id === editingItem.data.id ? { ...r, ...updatedData } : r
+      ));
+    }
+
+    setModalVisible(false);
+    setEditingItem(null);
+  };
+
+  const handleRemoveImplant = (recordId: string) => {
+    const record = implantRecords.find(r => r.id === recordId);
+    if (!record) return;
+
     Alert.alert(
-      'Remove Record',
-      'Are you sure you want to remove this implant record?',
+      'Remove Implant',
+      `Remove implant record for tooth ${record.toothNumber}?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
+        {
+          text: 'Remove',
           style: 'destructive',
-          onPress: () => setImplantRecords(prev => prev.filter(record => record.id !== id))
+          onPress: () => setImplantRecords(implantRecords.filter(r => r.id !== recordId))
         }
       ]
     );
   };
 
-  const removeCrownRecord = (id: string) => {
+  const handleRemoveCrown = (recordId: string) => {
+    const record = crownRecords.find(r => r.id === recordId);
+    if (!record) return;
+
     Alert.alert(
-      'Remove Crown Record',
-      'Are you sure you want to remove this implant crown record?',
+      'Remove Crown',
+      `Remove crown record for tooth ${record.toothNumber}?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
+        {
+          text: 'Remove',
           style: 'destructive',
-          onPress: () => setCrownRecords(prev => prev.filter(record => record.id !== id))
+          onPress: () => setCrownRecords(crownRecords.filter(r => r.id !== recordId))
         }
       ]
     );
   };
 
-  // ✅ OPTIMIZED: Minimal data storage
   const saveTreatmentToDatabase = async () => {
     try {
-      const completedDate = new Date();
       const clinicianName = user?.email || 'Unknown Clinician';
+      const completedDate = new Date();
 
       await database.write(async () => {
         // Save implant records
         for (const record of implantRecords) {
           const treatmentId = uuid.v4();
-          
-          // ✅ OPTIMIZED: Minimal billing code (just code and price)
-          const minimalBilling = [{
-            code: ODA_FEES.implant.single.code,
-            price: ODA_FEES.implant.single.price
-          }];
-          
+          const odaInfo = ODA_FEES[record.implantType];
+
+          const notesText = record.notes
+            ? `${odaInfo.description} - Tooth ${record.toothNumber}. ${record.notes}`
+            : `${odaInfo.description} - Tooth ${record.toothNumber}`;
+
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
             treatment.patientId = patientId;
-            // ✅ visitId omitted (was empty string)
             treatment.type = 'implant';
             treatment.tooth = record.toothNumber;
-            // ✅ surface omitted (was N/A placeholder)
             treatment.units = 1;
-            treatment.value = ODA_FEES.implant.single.price;
-            treatment.billingCodes = JSON.stringify(minimalBilling);
-            // ✅ OPTIMIZED: Just store actual notes, no redundant description
-            treatment.notes = record.notes || `Implant at tooth ${record.toothNumber}`;
+            treatment.value = odaInfo.price;
+            treatment.billingCodes = JSON.stringify([{
+              code: odaInfo.code,
+              price: odaInfo.price,
+              description: odaInfo.description,
+              implantType: record.implantType
+            }]);
+            treatment.notes = notesText;
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
@@ -250,45 +306,61 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         // Save crown records
         for (const record of crownRecords) {
           const treatmentId = uuid.v4();
-          
-          // ✅ OPTIMIZED: Minimal billing code
-          const minimalBilling = [{
-            code: ODA_FEES.crown.implant.code,
-            price: ODA_FEES.crown.implant.price
-          }];
-          
+          const odaInfo = ODA_FEES['implant-crown'];
+
+          const notesText = record.notes
+            ? `${odaInfo.description} - Tooth ${record.toothNumber}. ${record.notes}`
+            : `${odaInfo.description} - Tooth ${record.toothNumber}`;
+
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
             treatment.patientId = patientId;
-            // ✅ visitId omitted
-            treatment.type = 'implant-crown';
+            treatment.type = 'implant';
             treatment.tooth = record.toothNumber;
-            // ✅ surface omitted
             treatment.units = 1;
-            treatment.value = ODA_FEES.crown.implant.price;
-            treatment.billingCodes = JSON.stringify(minimalBilling);
-            // ✅ OPTIMIZED: Store crown type compactly in notes
-            treatment.notes = `${record.crownType}: ${record.notes}`;
+            treatment.value = odaInfo.price;
+            treatment.billingCodes = JSON.stringify([{
+              code: odaInfo.code,
+              price: odaInfo.price,
+              description: odaInfo.description
+            }]);
+            treatment.notes = notesText;
+            treatment.clinicianName = clinicianName;
+            treatment.completedAt = completedDate;
+          });
+        }
+
+        // Save general notes if provided
+        if (generalNotes.trim()) {
+          const generalNotesId = uuid.v4();
+          await database.get<Treatment>('treatments').create(treatment => {
+            treatment._raw.id = generalNotesId;
+            treatment.patientId = patientId;
+            treatment.type = 'implant';
+            treatment.tooth = '';
+            treatment.units = 0;
+            treatment.value = 0;
+            treatment.billingCodes = JSON.stringify([]);
+            treatment.notes = `General Treatment Notes: ${generalNotes}`;
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
         }
       });
 
-      console.log('✅ Implant treatment saved (optimized):', {
+      console.log('✅ Implant treatment saved to database:', {
         patientId,
-        implants: implantRecords.length,
-        crowns: crownRecords.length,
+        implantsCount: implantRecords.length,
+        crownsCount: crownRecords.length,
         totalCost: `$${totalCost}`,
         clinician: clinicianName,
-        completedAt: completedDate.toISOString()
       });
 
       return true;
     } catch (error) {
       console.error('❌ Failed to save implant treatment:', error);
       Alert.alert(
-        'Save Error', 
+        'Save Error',
         'Failed to save treatment to database. Please try again.',
         [{ text: 'OK' }]
       );
@@ -300,30 +372,32 @@ const ImplantTreatmentScreen = ({ route }: any) => {
     if (implantRecords.length === 0 && crownRecords.length === 0) {
       Alert.alert(
         'No Records',
-        'Please add at least one implant or crown record before completing the treatment.',
+        'Please record at least one implant or crown before completing the treatment.',
         [{ text: 'OK' }]
       );
       return;
     }
 
-    const odaCodesText = billingCodes.map(code => `${code.code}: $${code.price} (${code.description})`).join('\n• ');
+    const odaCodesText = billingCodes.map(code =>
+      `${code.code}: $${code.price} (${code.description}${code.tooth ? ` - Tooth ${code.tooth}` : ''})`
+    ).join('\n• ');
 
     Alert.alert(
       'Complete Treatment',
-      `Complete implant treatment for this patient?\n\nTreatment Summary:\n• Single Implants: ${implantRecords.length}\n• Implant Crowns: ${crownRecords.length}\n\nODA Billing Codes:\n• ${odaCodesText}\n\nTotal Cost: $${totalCost.toFixed(2)}\n\nThis will save the treatment to the database.`,
+      `Complete implant treatment for this patient?\n\nTreatment Summary:\n• Total Implants: ${implantRecords.length}\n• Total Crowns: ${crownRecords.length}\n\nODA Billing Codes:\n• ${odaCodesText}\n\nTotal Cost: $${totalCost.toFixed(2)}\n\nThis will save all records to the database.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Complete & Save', 
+        {
+          text: 'Complete & Save',
           onPress: async () => {
             const saved = await saveTreatmentToDatabase();
-            
+
             if (saved) {
               setTreatmentCompleted(true);
               setCompletedAt(new Date());
               Alert.alert(
-                'Success', 
-                `✅ Implant treatment completed and saved to database!\n\nTotal ODA Billing: $${totalCost.toFixed(2)}`
+                'Success',
+                `✅ Implant treatment completed and saved!\n\nTotal ODA Billing: $${totalCost.toFixed(2)}\n\nTreatment Details:\n• Patient ID: ${patientId}\n• Total Implants: ${implantRecords.length}\n• Total Crowns: ${crownRecords.length}\n• Billing Codes: ${billingCodes.length}\n• Completed: ${new Date().toLocaleString()}`
               );
             }
           }
@@ -334,19 +408,20 @@ const ImplantTreatmentScreen = ({ route }: any) => {
 
   const handleReset = () => {
     Alert.alert(
-      'Reset Treatment',
-      'Are you sure you want to reset all treatment data? This cannot be undone.',
+      'Clear All Data',
+      'Are you sure you want to clear all treatment data? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Reset', 
-          style: 'destructive', 
+        {
+          text: 'Clear All',
+          style: 'destructive',
           onPress: () => {
             setImplantRecords([]);
             setCrownRecords([]);
             setGeneralNotes('');
             setTreatmentCompleted(false);
             setCompletedAt(null);
+            Alert.alert('Cleared', 'All treatment data has been cleared.');
           }
         }
       ]
@@ -358,16 +433,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
       <Text style={styles.header}>🦷 Implant Treatment</Text>
       <Text style={styles.subtext}>Patient ID: {patientId}</Text>
 
-      {/* Cost Summary Indicator */}
-      {(implantRecords.length > 0 || crownRecords.length > 0) && !treatmentCompleted && (
-        <View style={styles.costIndicator}>
-          <Text style={styles.costIndicatorText}>
-            💰 Current Total: ${totalCost.toFixed(2)} • Implants: {implantRecords.length} • Crowns: {crownRecords.length}
-          </Text>
-        </View>
-      )}
-
-      {treatmentCompleted && completedAt && (
+      {completedAt && (
         <View style={styles.completedBanner}>
           <Text style={styles.completedText}>✅ Treatment Completed</Text>
           <Text style={styles.completedDate}>
@@ -376,129 +442,284 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         </View>
       )}
 
-      {/* Implant Records Section */}
-      <View style={styles.recordsSection}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Single Implants ({implantRecords.length})</Text>
-          <Pressable style={styles.addButton} onPress={openNewImplantModal}>
-            <Text style={styles.addButtonText}>+ Add Implant</Text>
+      {/* Add Implant Form */}
+      {!treatmentCompleted && (
+        <View style={styles.addImplantSection}>
+          <Text style={styles.sectionTitle}>Add Implant</Text>
+
+          <View style={styles.formRow}>
+            <Text style={styles.formLabel}>Tooth Number:</Text>
+            <TextInput
+              style={styles.toothNumberInput}
+              value={implantToothNumber}
+              onChangeText={setImplantToothNumber}
+              placeholder="e.g., 11, 26, 48"
+              keyboardType="numeric"
+              maxLength={2}
+            />
+          </View>
+
+          <View style={styles.formColumn}>
+            <Text style={styles.formLabel}>Implant Type:</Text>
+            <View style={styles.implantTypeSelector}>
+              <Pressable
+                style={[
+                  styles.implantTypeButton,
+                  selectedImplantType === 'single-implant' && styles.implantTypeButtonSelected
+                ]}
+                onPress={() => setSelectedImplantType('single-implant')}
+              >
+                <Text style={[
+                  styles.implantTypeButtonText,
+                  selectedImplantType === 'single-implant' && styles.implantTypeButtonTextSelected
+                ]}>
+                  Single Implant
+                </Text>
+                <Text style={[
+                  styles.implantTypePrice,
+                  selectedImplantType === 'single-implant' && styles.implantTypePriceSelected
+                ]}>
+                  ${ODA_FEES['single-implant'].price}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.implantTypeButton,
+                  selectedImplantType === 'bone-grafting' && styles.implantTypeButtonSelected
+                ]}
+                onPress={() => setSelectedImplantType('bone-grafting')}
+              >
+                <Text style={[
+                  styles.implantTypeButtonText,
+                  selectedImplantType === 'bone-grafting' && styles.implantTypeButtonTextSelected
+                ]}>
+                  Bone Grafting
+                </Text>
+                <Text style={[
+                  styles.implantTypePrice,
+                  selectedImplantType === 'bone-grafting' && styles.implantTypePriceSelected
+                ]}>
+                  ${ODA_FEES['bone-grafting'].price}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.implantTypeButton,
+                  selectedImplantType === 'sinus-lift' && styles.implantTypeButtonSelected
+                ]}
+                onPress={() => setSelectedImplantType('sinus-lift')}
+              >
+                <Text style={[
+                  styles.implantTypeButtonText,
+                  selectedImplantType === 'sinus-lift' && styles.implantTypeButtonTextSelected
+                ]}>
+                  Sinus Lift
+                </Text>
+                <Text style={[
+                  styles.implantTypePrice,
+                  selectedImplantType === 'sinus-lift' && styles.implantTypePriceSelected
+                ]}>
+                  ${ODA_FEES['sinus-lift'].price}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.odaInfo}>
+            <Text style={styles.odaInfoText}>
+              💰 ODA Code: {ODA_FEES[selectedImplantType].code} - ${ODA_FEES[selectedImplantType].price}
+            </Text>
+          </View>
+
+          <View style={styles.formColumn}>
+            <Text style={styles.formLabel}>Notes (optional):</Text>
+            <TextInput
+              style={styles.notesInput}
+              value={implantNotes}
+              onChangeText={setImplantNotes}
+              placeholder="Details about the implant procedure..."
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+          </View>
+
+          <Pressable style={styles.addButton} onPress={handleAddImplant}>
+            <Text style={styles.addButtonText}>➕ Add Implant</Text>
           </Pressable>
         </View>
-        
-        <View style={styles.odaInfo}>
-          <Text style={styles.odaInfoText}>
-            💰 ODA Code: {ODA_FEES.implant.single.code} - ${ODA_FEES.implant.single.price} per implant
-          </Text>
-        </View>
+      )}
 
-        {implantRecords.length === 0 ? (
-          <Text style={styles.noRecordsText}>
-            No implant records yet. Tap "Add Implant" to record implant placement.
-          </Text>
-        ) : (
-          implantRecords.map((record) => (
-            <View key={record.id} style={styles.recordCard}>
-              <View style={styles.recordHeader}>
-                <Text style={styles.recordTitle}>
-                  Single Implant - Tooth {record.toothNumber}
-                </Text>
-                <View style={styles.recordActions}>
-                  <Text style={styles.recordPrice}>${ODA_FEES.implant.single.price}</Text>
-                  <Pressable 
-                    style={styles.editButton} 
-                    onPress={() => openEditImplantModal(record)}
-                  >
-                    <Text style={styles.editButtonText}>Edit</Text>
-                  </Pressable>
-                  <Pressable 
-                    style={styles.deleteButton} 
-                    onPress={() => removeImplantRecord(record.id)}
-                  >
-                    <Text style={styles.deleteButtonText}>×</Text>
-                  </Pressable>
-                </View>
-              </View>
-              
-              {record.notes && (
-                <Text style={styles.recordNotesText}>Notes: {record.notes}</Text>
-              )}
-              
-              <Text style={styles.placedAtText}>
-                Recorded: {record.placedAt.toLocaleString()}
-              </Text>
-            </View>
-          ))
-        )}
-      </View>
+      {/* Add Crown Form */}
+      {!treatmentCompleted && (
+        <View style={styles.addCrownSection}>
+          <Text style={styles.sectionTitle}>Add Implant Crown</Text>
 
-      {/* Implant Crown Records Section */}
-      <View style={styles.recordsSection}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Implant Crowns ({crownRecords.length})</Text>
-          <Pressable style={styles.addButton} onPress={openNewCrownModal}>
-            <Text style={styles.addButtonText}>+ Add Crown</Text>
+          <View style={styles.formRow}>
+            <Text style={styles.formLabel}>Tooth Number:</Text>
+            <TextInput
+              style={styles.toothNumberInput}
+              value={crownToothNumber}
+              onChangeText={setCrownToothNumber}
+              placeholder="e.g., 11, 26, 48"
+              keyboardType="numeric"
+              maxLength={2}
+            />
+          </View>
+
+          <View style={styles.odaInfo}>
+            <Text style={styles.odaInfoText}>
+              💰 ODA Code: {ODA_FEES['implant-crown'].code} - ${ODA_FEES['implant-crown'].price}
+            </Text>
+          </View>
+
+          <View style={styles.formColumn}>
+            <Text style={styles.formLabel}>Notes (optional):</Text>
+            <TextInput
+              style={styles.notesInput}
+              value={crownNotes}
+              onChangeText={setCrownNotes}
+              placeholder="Details about the crown placement..."
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+          </View>
+
+          <Pressable style={styles.addButton} onPress={handleAddCrown}>
+            <Text style={styles.addButtonText}>➕ Add Crown</Text>
           </Pressable>
         </View>
-        
-        <View style={styles.odaInfo}>
-          <Text style={styles.odaInfoText}>
-            💰 ODA Code: {ODA_FEES.crown.implant.code} - ${ODA_FEES.crown.implant.price} per crown
-          </Text>
-        </View>
+      )}
 
-        {crownRecords.length === 0 ? (
-          <Text style={styles.noRecordsText}>
-            No implant crown records yet. Tap "Add Crown" to record crown placement.
+      {/* Recorded Implants */}
+      {implantRecords.length > 0 && (
+        <View style={styles.recordsListSection}>
+          <Text style={styles.sectionTitle}>
+            Recorded Implants ({implantRecords.length})
           </Text>
-        ) : (
-          crownRecords.map((record) => (
-            <View key={record.id} style={styles.crownCard}>
-              <View style={styles.recordHeader}>
-                <Text style={styles.recordTitle}>
-                  {record.crownType === 'screw-retained' ? 'Screw-Retained' : 'Cemented'} Crown - Tooth {record.toothNumber}
-                </Text>
-                <View style={styles.recordActions}>
-                  <Text style={styles.recordPrice}>${ODA_FEES.crown.implant.price}</Text>
-                  <Pressable 
-                    style={styles.editButton} 
-                    onPress={() => openEditCrownModal(record)}
-                  >
-                    <Text style={styles.editButtonText}>Edit</Text>
-                  </Pressable>
-                  <Pressable 
-                    style={styles.deleteButton} 
-                    onPress={() => removeCrownRecord(record.id)}
-                  >
-                    <Text style={styles.deleteButtonText}>×</Text>
-                  </Pressable>
+
+          {implantRecords.map((record) => {
+            const odaInfo = ODA_FEES[record.implantType];
+            return (
+              <View key={record.id} style={styles.recordCard}>
+                <View style={styles.recordHeader}>
+                  <Text style={styles.toothNumberText}>Tooth {record.toothNumber}</Text>
+                  {!treatmentCompleted && (
+                    <View style={styles.actionButtons}>
+                      <Pressable
+                        style={styles.editButton}
+                        onPress={() => handleEditImplant(record)}
+                      >
+                        <Text style={styles.editButtonText}>✏️</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.deleteButton}
+                        onPress={() => handleRemoveImplant(record.id)}
+                      >
+                        <Text style={styles.deleteButtonText}>🗑️</Text>
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
-              </View>
-              
-              {record.notes && (
-                <Text style={styles.recordNotesText}>Notes: {record.notes}</Text>
-              )}
-              
-              <Text style={styles.placedAtText}>
-                Recorded: {record.placedAt.toLocaleString()}
-              </Text>
-            </View>
-          ))
-        )}
-      </View>
 
-      {/* General Notes */}
-      {generalNotes && (
-        <View style={styles.notesSection}>
-          <Text style={styles.sectionTitle}>Treatment Notes</Text>
+                <Text style={styles.implantTypeLabel}>{odaInfo.description}</Text>
+
+                <View style={styles.odaRow}>
+                  <Text style={styles.odaCode}>ODA: {odaInfo.code}</Text>
+                  <Text style={styles.odaPrice}>${odaInfo.price}</Text>
+                </View>
+
+                {record.notes && (
+                  <Text style={styles.recordNotes}>
+                    Notes: {record.notes}
+                  </Text>
+                )}
+
+                <Text style={styles.recordDate}>
+                  Added: {record.addedAt.toLocaleString()}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Recorded Crowns */}
+      {crownRecords.length > 0 && (
+        <View style={styles.recordsListSection}>
+          <Text style={styles.sectionTitle}>
+            Recorded Crowns ({crownRecords.length})
+          </Text>
+
+          {crownRecords.map((record) => {
+            const odaInfo = ODA_FEES['implant-crown'];
+            return (
+              <View key={record.id} style={styles.recordCard}>
+                <View style={styles.recordHeader}>
+                  <Text style={styles.toothNumberText}>Tooth {record.toothNumber}</Text>
+                  {!treatmentCompleted && (
+                    <View style={styles.actionButtons}>
+                      <Pressable
+                        style={styles.editButton}
+                        onPress={() => handleEditCrown(record)}
+                      >
+                        <Text style={styles.editButtonText}>✏️</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.deleteButton}
+                        onPress={() => handleRemoveCrown(record.id)}
+                      >
+                        <Text style={styles.deleteButtonText}>🗑️</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+
+                <Text style={styles.implantTypeLabel}>{odaInfo.description}</Text>
+
+                <View style={styles.odaRow}>
+                  <Text style={styles.odaCode}>ODA: {odaInfo.code}</Text>
+                  <Text style={styles.odaPrice}>${odaInfo.price}</Text>
+                </View>
+
+                {record.notes && (
+                  <Text style={styles.recordNotes}>
+                    Notes: {record.notes}
+                  </Text>
+                )}
+
+                <Text style={styles.recordDate}>
+                  Added: {record.addedAt.toLocaleString()}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* General Treatment Notes */}
+      {!treatmentCompleted && (
+        <View style={styles.generalNotesSection}>
+          <Text style={styles.sectionTitle}>General Treatment Notes</Text>
           <TextInput
-            style={styles.notesInput}
+            style={styles.generalNotesInput}
             value={generalNotes}
             onChangeText={setGeneralNotes}
-            placeholder="General notes about the implant treatment session..."
+            placeholder="Overall observations, follow-up instructions, or additional details..."
             multiline
-            numberOfLines={3}
+            numberOfLines={4}
             textAlignVertical="top"
           />
+        </View>
+      )}
+
+      {treatmentCompleted && generalNotes && (
+        <View style={styles.generalNotesDisplay}>
+          <Text style={styles.sectionTitle}>General Treatment Notes</Text>
+          <Text style={styles.generalNotesText}>{generalNotes}</Text>
         </View>
       )}
 
@@ -506,18 +727,19 @@ const ImplantTreatmentScreen = ({ route }: any) => {
       {billingCodes.length > 0 && (
         <View style={styles.billingSection}>
           <Text style={styles.sectionTitle}>ODA Billing Summary</Text>
-          
+
           {billingCodes.map((code, index) => (
             <View key={index} style={styles.billingCard}>
               <View style={styles.billingHeader}>
                 <Text style={styles.billingCode}>{code.code}</Text>
                 <Text style={styles.billingPrice}>${code.price}</Text>
               </View>
-              <Text style={styles.billingDescription}>{code.description}</Text>
-              <Text style={styles.billingCategory}>{code.category}</Text>
+              <Text style={styles.billingDescription}>
+                {code.description}{code.tooth ? ` - Tooth ${code.tooth}` : ''}
+              </Text>
             </View>
           ))}
-          
+
           <View style={styles.totalSection}>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total ODA Billing:</Text>
@@ -527,213 +749,48 @@ const ImplantTreatmentScreen = ({ route }: any) => {
         </View>
       )}
 
-      {/* Treatment Summary */}
-      <View style={styles.summarySection}>
-        <Text style={styles.sectionTitle}>Treatment Summary</Text>
-        <View style={styles.summaryGrid}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Implants:</Text>
-            <Text style={styles.summaryValue}>{implantRecords.length}</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Implant Crowns:</Text>
-            <Text style={styles.summaryValue}>{crownRecords.length}</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total Procedures:</Text>
-            <Text style={styles.summaryValue}>{implantRecords.length + crownRecords.length}</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Total ODA Cost:</Text>
-            <Text style={styles.summaryValue}>${totalCost.toFixed(2)}</Text>
-          </View>
-        </View>
-      </View>
-
       {/* Action Buttons */}
       <View style={styles.actionSection}>
-        <Pressable 
-          style={[styles.actionButton, styles.completeButton]} 
+        <Pressable
+          style={[styles.actionButton, styles.completeButton]}
           onPress={handleCompleteTreatment}
+          disabled={treatmentCompleted}
         >
           <Text style={styles.actionButtonText}>
             {treatmentCompleted ? '✅ Treatment Completed' : '🏁 Complete Treatment'}
           </Text>
         </Pressable>
-        
-        <Pressable 
-          style={[styles.actionButton, styles.resetButton]} 
+
+        <Pressable
+          style={[styles.actionButton, styles.resetButton]}
           onPress={handleReset}
         >
           <Text style={[styles.actionButtonText, styles.resetButtonText]}>
-            🔄 Reset Treatment
+            Clear All
           </Text>
         </Pressable>
       </View>
 
-      {/* Add/Edit Implant Modal */}
+      {/* Edit Modal */}
       <Modal
         animationType="slide"
         transparent={true}
-        visible={implantModalVisible}
-        onRequestClose={() => setImplantModalVisible(false)}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {editingId ? 'Edit Implant' : 'Add Single Implant'}
+              {editingItem?.type === 'implant' ? 'Edit Implant' : 'Edit Crown'}
             </Text>
-            
-            <View style={styles.modalOdaInfo}>
-              <Text style={styles.modalOdaText}>
-                💰 ODA Code: {ODA_FEES.implant.single.code} - ${ODA_FEES.implant.single.price}
-              </Text>
-            </View>
 
-            {/* Tooth Number Input */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Tooth Number</Text>
-              <TextInput
-                style={styles.textInput}
-                value={toothNumber}
-                onChangeText={setToothNumber}
-                placeholder="e.g., 11, 24, 36"
-                autoCapitalize="none"
+            {editingItem && (
+              <EditForm
+                item={editingItem}
+                onUpdate={handleUpdateItem}
+                onCancel={() => setModalVisible(false)}
               />
-            </View>
-
-            {/* Notes */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Notes (Brand, placement details, etc.)</Text>
-              <TextInput
-                style={styles.modalNotesInput}
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="e.g., Nobel Biocare 4.3x10mm, torque 35Ncm, primary stability excellent..."
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
-
-            {/* Modal Actions */}
-            <View style={styles.modalActions}>
-              <Pressable 
-                style={styles.modalCancelButton} 
-                onPress={() => setImplantModalVisible(false)}
-              >
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable 
-                style={styles.modalSaveButton} 
-                onPress={handleSaveImplant}
-              >
-                <Text style={styles.modalSaveButtonText}>
-                  {editingId ? 'Update' : 'Add'} Implant
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Add/Edit Crown Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={crownModalVisible}
-        onRequestClose={() => setCrownModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {editingCrownId ? 'Edit Crown' : 'Add Implant Crown'}
-            </Text>
-            
-            <View style={styles.modalOdaInfo}>
-              <Text style={styles.modalOdaText}>
-                💰 ODA Code: {ODA_FEES.crown.implant.code} - ${ODA_FEES.crown.implant.price}
-              </Text>
-            </View>
-
-            {/* Tooth Number Input */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Tooth Number</Text>
-              <TextInput
-                style={styles.textInput}
-                value={crownToothNumber}
-                onChangeText={setCrownToothNumber}
-                placeholder="e.g., 11, 24, 36"
-                autoCapitalize="none"
-              />
-            </View>
-
-            {/* Crown Type Selection */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Crown Type</Text>
-              <View style={styles.crownTypeButtons}>
-                <Pressable
-                  style={[
-                    styles.crownTypeButton,
-                    crownType === 'screw-retained' && styles.crownTypeButtonSelected
-                  ]}
-                  onPress={() => setCrownType('screw-retained')}
-                >
-                  <Text style={[
-                    styles.crownTypeButtonText,
-                    crownType === 'screw-retained' && styles.crownTypeButtonTextSelected
-                  ]}>
-                    Screw-Retained
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.crownTypeButton,
-                    crownType === 'cemented' && styles.crownTypeButtonSelected
-                  ]}
-                  onPress={() => setCrownType('cemented')}
-                >
-                  <Text style={[
-                    styles.crownTypeButtonText,
-                    crownType === 'cemented' && styles.crownTypeButtonTextSelected
-                  ]}>
-                    Cemented
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Notes */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Notes (Material, fit details, etc.)</Text>
-              <TextInput
-                style={styles.modalNotesInput}
-                value={crownNotes}
-                onChangeText={setCrownNotes}
-                placeholder="e.g., Zirconia crown, excellent fit, torqued to 15Ncm..."
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
-
-            {/* Modal Actions */}
-            <View style={styles.modalActions}>
-              <Pressable 
-                style={styles.modalCancelButton} 
-                onPress={() => setCrownModalVisible(false)}
-              >
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
-              </Pressable>
-              <Pressable 
-                style={styles.modalSaveButton} 
-                onPress={handleSaveCrown}
-              >
-                <Text style={styles.modalSaveButtonText}>
-                  {editingCrownId ? 'Update' : 'Add'} Crown
-                </Text>
-              </Pressable>
-            </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -741,9 +798,132 @@ const ImplantTreatmentScreen = ({ route }: any) => {
   );
 };
 
+// Edit Form Component
+const EditForm = ({ item, onUpdate, onCancel }: {
+  item: { type: 'implant' | 'crown'; data: any };
+  onUpdate: (data: any) => void;
+  onCancel: () => void;
+}) => {
+  const [implantType, setImplantType] = useState<'single-implant' | 'bone-grafting' | 'sinus-lift'>(
+    item.type === 'implant' ? item.data.implantType : 'single-implant'
+  );
+  const [notes, setNotes] = useState(item.data.notes);
+
+  const handleUpdate = () => {
+    if (item.type === 'implant') {
+      onUpdate({ implantType, notes: notes.trim() });
+    } else {
+      onUpdate({ notes: notes.trim() });
+    }
+  };
+
+  return (
+    <View>
+      {item.type === 'implant' && (
+        <>
+          <View style={styles.formColumn}>
+            <Text style={styles.formLabel}>Implant Type:</Text>
+            <View style={styles.implantTypeSelector}>
+              <Pressable
+                style={[
+                  styles.implantTypeButton,
+                  implantType === 'single-implant' && styles.implantTypeButtonSelected
+                ]}
+                onPress={() => setImplantType('single-implant')}
+              >
+                <Text style={[
+                  styles.implantTypeButtonText,
+                  implantType === 'single-implant' && styles.implantTypeButtonTextSelected
+                ]}>
+                  Single Implant
+                </Text>
+                <Text style={[
+                  styles.implantTypePrice,
+                  implantType === 'single-implant' && styles.implantTypePriceSelected
+                ]}>
+                  ${ODA_FEES['single-implant'].price}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.implantTypeButton,
+                  implantType === 'bone-grafting' && styles.implantTypeButtonSelected
+                ]}
+                onPress={() => setImplantType('bone-grafting')}
+              >
+                <Text style={[
+                  styles.implantTypeButtonText,
+                  implantType === 'bone-grafting' && styles.implantTypeButtonTextSelected
+                ]}>
+                  Bone Grafting
+                </Text>
+                <Text style={[
+                  styles.implantTypePrice,
+                  implantType === 'bone-grafting' && styles.implantTypePriceSelected
+                ]}>
+                  ${ODA_FEES['bone-grafting'].price}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.implantTypeButton,
+                  implantType === 'sinus-lift' && styles.implantTypeButtonSelected
+                ]}
+                onPress={() => setImplantType('sinus-lift')}
+              >
+                <Text style={[
+                  styles.implantTypeButtonText,
+                  implantType === 'sinus-lift' && styles.implantTypeButtonTextSelected
+                ]}>
+                  Sinus Lift
+                </Text>
+                <Text style={[
+                  styles.implantTypePrice,
+                  implantType === 'sinus-lift' && styles.implantTypePriceSelected
+                ]}>
+                  ${ODA_FEES['sinus-lift'].price}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.odaInfo}>
+            <Text style={styles.odaInfoText}>
+              💰 ODA Code: {ODA_FEES[implantType].code} - ${ODA_FEES[implantType].price}
+            </Text>
+          </View>
+        </>
+      )}
+
+      <View style={styles.formColumn}>
+        <Text style={styles.formLabel}>Notes:</Text>
+        <TextInput
+          style={styles.notesInput}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Details about the procedure..."
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
+      </View>
+
+      <View style={styles.modalActions}>
+        <Pressable style={styles.cancelButton} onPress={onCancel}>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
+        </Pressable>
+        <Pressable style={styles.updateButton} onPress={handleUpdate}>
+          <Text style={styles.updateButtonText}>Update</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+};
+
 export default ImplantTreatmentScreen;
 
-// Styles remain exactly the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -761,20 +941,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 20,
-    textAlign: 'center',
-  },
-  costIndicator: {
-    backgroundColor: '#fff3cd',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#ffc107',
-  },
-  costIndicatorText: {
-    fontSize: 14,
-    color: '#856404',
-    fontWeight: '600',
     textAlign: 'center',
   },
   completedBanner: {
@@ -795,44 +961,93 @@ const styles = StyleSheet.create({
     color: '#155724',
     marginTop: 4,
   },
-  recordsSection: {
-    backgroundColor: '#fff',
+  addImplantSection: {
+    backgroundColor: '#e7f3ff',
     borderRadius: 12,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#b3d9ff',
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+  addCrownSection: {
+    backgroundColor: '#fff3e0',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#ffe0b2',
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
+    marginBottom: 16,
     color: '#333',
   },
-  addButton: {
-    backgroundColor: '#007bff',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
+  formRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  addButtonText: {
-    color: '#fff',
+  formColumn: {
+    marginBottom: 16,
+  },
+  formLabel: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
+    color: '#495057',
+    minWidth: 100,
+    marginRight: 12,
+    marginBottom: 8,
+  },
+  toothNumberInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    minWidth: 80,
+    textAlign: 'center',
+  },
+  implantTypeSelector: {
+    gap: 8,
+  },
+  implantTypeButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    borderRadius: 8,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  implantTypeButtonSelected: {
+    backgroundColor: '#007bff',
+    borderColor: '#007bff',
+  },
+  implantTypeButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#495057',
+  },
+  implantTypeButtonTextSelected: {
+    color: '#fff',
+  },
+  implantTypePrice: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#28a745',
+  },
+  implantTypePriceSelected: {
+    color: '#fff',
   },
   odaInfo: {
     backgroundColor: '#fff3cd',
     borderRadius: 6,
     padding: 8,
-    marginBottom: 12,
+    marginBottom: 16,
     borderLeftWidth: 3,
     borderLeftColor: '#ffc107',
   },
@@ -842,86 +1057,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  noRecordsText: {
-    fontSize: 14,
-    color: '#6c757d',
-    textAlign: 'center',
-    fontStyle: 'italic',
-    padding: 20,
-  },
-  recordCard: {
-    backgroundColor: '#f8f9fa',
+  notesInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
     borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#007bff',
-  },
-  crownCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#28a745',
-  },
-  recordHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  recordTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    flex: 1,
-  },
-  recordActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  recordPrice: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 14,
-    fontWeight: 'bold',
-    color: '#28a745',
+    minHeight: 80,
   },
-  editButton: {
+  addButton: {
     backgroundColor: '#28a745',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  editButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  deleteButton: {
-    backgroundColor: '#dc3545',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-    minWidth: 24,
+    borderRadius: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     alignItems: 'center',
+    marginTop: 8,
   },
-  deleteButtonText: {
-    color: '#fff',
+  addButtonText: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: '#fff',
   },
-  recordNotesText: {
-    fontSize: 14,
-    color: '#6c757d',
-    fontStyle: 'italic',
-    marginBottom: 4,
-  },
-  placedAtText: {
-    fontSize: 12,
-    color: '#6c757d',
-  },
-  notesSection: {
+  recordsListSection: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 20,
@@ -932,7 +1091,97 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  notesInput: {
+  recordCard: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#17a2b8',
+  },
+  recordHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  toothNumberText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  implantTypeLabel: {
+    fontSize: 14,
+    color: '#495057',
+    marginBottom: 8,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  editButton: {
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#007bff',
+  },
+  editButtonText: {
+    fontSize: 14,
+  },
+  deleteButton: {
+    backgroundColor: '#fff',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+  },
+  deleteButtonText: {
+    fontSize: 14,
+  },
+  odaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  odaCode: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007bff',
+  },
+  odaPrice: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#28a745',
+  },
+  recordNotes: {
+    fontSize: 14,
+    color: '#495057',
+    fontStyle: 'italic',
+    marginBottom: 4,
+  },
+  recordDate: {
+    fontSize: 12,
+    color: '#6c757d',
+  },
+  generalNotesSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  generalNotesInput: {
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#e9ecef',
@@ -940,7 +1189,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
-    minHeight: 80,
+    minHeight: 100,
+  },
+  generalNotesDisplay: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  generalNotesText: {
+    fontSize: 14,
+    color: '#495057',
+    lineHeight: 20,
   },
   billingSection: {
     backgroundColor: '#fff',
@@ -959,7 +1224,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#007bff',
+    borderLeftColor: '#17a2b8',
   },
   billingHeader: {
     flexDirection: 'row',
@@ -970,7 +1235,7 @@ const styles = StyleSheet.create({
   billingCode: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#007bff',
+    color: '#17a2b8',
   },
   billingPrice: {
     fontSize: 16,
@@ -980,16 +1245,6 @@ const styles = StyleSheet.create({
   billingDescription: {
     fontSize: 14,
     color: '#495057',
-    marginBottom: 2,
-  },
-  billingCategory: {
-    fontSize: 12,
-    color: '#6c757d',
-    backgroundColor: '#e9ecef',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
   },
   totalSection: {
     borderTopWidth: 2,
@@ -1011,32 +1266,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#28a745',
-  },
-  summarySection: {
-    backgroundColor: '#e7f3ff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#b3d9ff',
-  },
-  summaryGrid: {
-    gap: 12,
-  },
-  summaryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: '#495057',
-    fontWeight: '500',
-  },
-  summaryValue: {
-    fontSize: 16,
-    color: '#007bff',
-    fontWeight: 'bold',
   },
   actionSection: {
     gap: 12,
@@ -1079,112 +1308,42 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 16,
-    color: '#333',
-  },
-  modalOdaInfo: {
-    backgroundColor: '#fff3cd',
-    borderRadius: 6,
-    padding: 8,
-    marginBottom: 16,
-    borderLeftWidth: 3,
-    borderLeftColor: '#ffc107',
-  },
-  modalOdaText: {
-    fontSize: 12,
-    color: '#856404',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  inputGroup: {
     marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#495057',
-  },
-  textInput: {
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    minHeight: 44,
-  },
-  modalNotesInput: {
-    backgroundColor: '#f8f9fa',
-    borderWidth: 1,
-    borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    minHeight: 100,
-    textAlignVertical: 'top',
+    color: '#333',
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 24,
+    gap: 12,
+    marginTop: 16,
   },
-  modalCancelButton: {
+  cancelButton: {
+    flex: 1,
     backgroundColor: '#6c757d',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    flex: 1,
-    marginRight: 8,
   },
-  modalCancelButtonText: {
-    color: '#fff',
-    fontSize: 16,
+  cancelButtonText: {
+    color: 'white',
+    fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
   },
-  modalSaveButton: {
+  updateButton: {
+    flex: 1,
     backgroundColor: '#007bff',
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    flex: 1,
-    marginLeft: 8,
   },
-  modalSaveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  crownTypeButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  crownTypeButton: {
-    flex: 1,
-    backgroundColor: '#f8f9fa',
-    borderWidth: 2,
-    borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  crownTypeButtonSelected: {
-    backgroundColor: '#28a745',
-    borderColor: '#28a745',
-  },
-  crownTypeButtonText: {
+  updateButtonText: {
+    color: 'white',
     fontSize: 14,
     fontWeight: '600',
-    color: '#495057',
-  },
-  crownTypeButtonTextSelected: {
-    color: '#fff',
+    textAlign: 'center',
   },
 });

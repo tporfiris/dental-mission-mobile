@@ -1,4 +1,4 @@
-// screens/PatientProfileScreen.tsx - UPDATED VERSION
+// screens/PatientProfileScreen.tsx - UPDATED VERSION WITH SMALLER QR AT BOTTOM
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -52,9 +52,6 @@ interface GroupedTreatment {
   date: string;
   treatments: TreatmentDetail[];
 }
-
-// ✅ REMOVED: All the local parseAssessmentData() function code (400+ lines)
-// ✅ REMOVED: All the local parseTreatmentDetails() function code
 
 // ✅ NEW: Simple wrapper to convert Treatment model to parseable format
 const convertTreatmentForParsing = (treatment: Treatment): TreatmentDetail => {
@@ -302,15 +299,6 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
         <Text style={styles.patientLocation}>📍 {patient.location}</Text>
       </View>
 
-      {/* QR Code */}
-      <View style={styles.qrSection}>
-        <Text style={styles.sectionTitle}>Patient QR Code</Text>
-        <View style={styles.qrContainer}>
-          <QRCode value={patient.id} size={200} />
-        </View>
-        <Text style={styles.qrIdText}>ID: {patient.id}</Text>
-      </View>
-
       {/* New Assessment Button */}
       <View style={styles.actionSection}>
         <TouchableOpacity
@@ -462,6 +450,15 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
           ))
         )}
       </View>
+
+      {/* QR Code Section - Moved to Bottom */}
+      <View style={styles.qrSection}>
+        <Text style={styles.qrSectionTitle}>Patient QR Code</Text>
+        <View style={styles.qrContainer}>
+          <QRCode value={patient.id} size={100} />
+        </View>
+        <Text style={styles.qrIdText}>ID: {patient.id.slice(0, 8)}...</Text>
+      </View>
     </ScrollView>
   );
 };
@@ -524,18 +521,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 24,
     alignItems: 'center',
-    marginTop: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    marginTop: 20,
+    marginBottom: 20,
+    marginHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  qrSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 16,
   },
   qrContainer: {
-    padding: 16,
+    padding: 12,
     backgroundColor: '#f9f9f9',
-    borderRadius: 12,
-    marginVertical: 16,
+    borderRadius: 8,
+    marginBottom: 12,
   },
   qrIdText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#888',
   },
   actionSection: {

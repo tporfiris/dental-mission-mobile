@@ -30,9 +30,7 @@ const DENTURE_LABELS = {
   'upper-partial-cast': 'Upper Partial Cast Denture',
   'lower-partial-acrylic': 'Lower Partial Acrylic Denture',
   'lower-partial-cast': 'Lower Partial Cast Denture',
-  // 'upper-immediate-complete': 'Upper Immediate Complete Denture',
   'upper-complete': 'Upper Complete Denture',
-  // 'lower-immediate-complete': 'Lower Immediate Complete Denture',
   'lower-complete': 'Lower Complete Denture',
 };
 
@@ -132,13 +130,12 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   const [showGate, setShowGate] = useState(true);
   
-  // ✅ Get saveAssessment from context
   const { 
     dentureState, 
     updateDentureType, 
     updateDentureOptions, 
     updateNotes,
-    saveAssessment,  // ✅ Added this
+    saveAssessment,
   } = useDentureAssessment();
 
   const { selectedDentureType, dentureOptions, notes } = dentureState;
@@ -148,13 +145,11 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
   };
 
   const handleGateCancel = () => {
-    // Navigate back to previous screen
     if (navigation?.goBack) {
       navigation.goBack();
     }
   };
 
-  // ✅ Simplified save function - just call context function
   const handleSaveAssessment = async () => {
     try {
       await saveAssessment(patientId);
@@ -174,7 +169,6 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
     updateDentureOptions(updatedOptions);
   };
 
-  // Show gate if not yet confirmed
   if (showGate) {
     return (
       <AssessmentGate 
@@ -184,7 +178,6 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
     );
   }
 
-  // Main assessment content
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.header}>🦷 Denture Assessment</Text>
@@ -262,9 +255,38 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
         </View>
       </View>
 
-      {/* Save Button - ✅ Updated to use new handler */}
+      {/* Save Button */}
       <Pressable style={styles.saveButton} onPress={handleSaveAssessment}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
+      </Pressable>
+
+      {/* Clear All Button */}
+      <Pressable 
+        style={styles.clearAllButton} 
+        onPress={() => {
+          Alert.alert(
+            'Clear All Data',
+            'Are you sure you want to clear all denture assessment data? This cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Clear All', 
+                style: 'destructive',
+                onPress: () => {
+                  updateDentureType('none');
+                  updateDentureOptions({
+                    'upper-soft-reline': false,
+                    'lower-soft-reline': false,
+                  });
+                  updateNotes('');
+                  Alert.alert('Cleared', 'All denture assessment data has been cleared.');
+                }
+              }
+            ]
+          );
+        }}
+      >
+        <Text style={styles.clearAllButtonText}>Clear All</Text>
       </Pressable>
     </ScrollView>
   );
@@ -273,7 +295,6 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
 export default DentureAssessmentScreen;
 
 const styles = StyleSheet.create({
-  // Main screen styles
   container: {
     padding: 20,
     alignItems: 'center',
@@ -289,7 +310,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   
-  // Voice Recording Section
   voiceRecordingSection: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -319,7 +339,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#6f42c1',
   },
   
-  // Completed Banner
   completedBanner: {
     backgroundColor: '#d4edda',
     borderRadius: 8,
@@ -336,7 +355,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // Modal Gate Styles
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -454,7 +472,6 @@ const styles = StyleSheet.create({
     color: 'white',
   },
 
-  // Original denture assessment styles
   cardTitle: {
     fontSize: 16,
     fontWeight: '600',
@@ -550,12 +567,29 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 24,
     borderRadius: 8,
-    marginBottom: 20,
+    marginBottom: 12,
+    width: '100%',
   },
   saveButtonText: {
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
     textAlign: 'center',
+  },
+  clearAllButton: { 
+    backgroundColor: '#fff', 
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    paddingVertical: 12, 
+    paddingHorizontal: 24, 
+    borderRadius: 8, 
+    marginBottom: 20,
+    width: '100%',
+  },
+  clearAllButtonText: { 
+    color: '#dc3545', 
+    fontWeight: 'bold', 
+    fontSize: 16, 
+    textAlign: 'center' 
   },
 });

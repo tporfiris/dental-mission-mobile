@@ -14,21 +14,8 @@ const HomeScreen = () => {
       case 'clinician':
         return (
           <>
-            <Text style={styles.roleSection}>🧪 Testing</Text>
-            <Button 
-              title="🧪 Hub Sync Test" 
-              onPress={() => navigation.navigate('HubTest')}
-              color="#6f42c1"
-            />
-            <View style={styles.spacer} />
             <Text style={styles.roleSection}>🦷 Clinician Tools</Text>
             <Button title="Add New Patient" onPress={() => navigation.navigate('NewPatient')} />
-            <View style={styles.spacer} />
-            <Button 
-              title="🏥 Begin Treatment" 
-              onPress={() => navigation.navigate('BeginTreatment')}
-              color="#28a745"
-            />
             <View style={styles.spacer} />
             <Button 
               title="🔍 Search Existing Patients" 
@@ -37,8 +24,21 @@ const HomeScreen = () => {
             />
             <View style={styles.spacer} />
             <Button 
+              title="🏥 Begin Treatment" 
+              onPress={() => navigation.navigate('BeginTreatment')}
+              color="#28a745"
+            />
+            <View style={styles.spacer} />
+            <Button 
               title="🎤 Voice Recordings" 
               onPress={() => navigation.navigate('VoiceRecordings')}
+              color="#6f42c1"
+            />
+            <View style={styles.spacer} />
+            <Text style={styles.roleSection}>🧪 Testing</Text>
+            <Button 
+              title="🧪 Hub Sync Test" 
+              onPress={() => navigation.navigate('HubTest')}
               color="#6f42c1"
             />
             <View style={styles.spacer} />

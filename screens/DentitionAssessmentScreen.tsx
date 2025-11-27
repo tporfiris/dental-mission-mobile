@@ -311,7 +311,10 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
         
         {/* Switch indicator for teeth that can toggle */}
         {canSwitch && (
-          <View style={styles.switchIndicator}>
+          <View style={[
+            styles.switchIndicator,
+            isCurrentlyPrimary ? styles.switchIndicatorPrimary : styles.switchIndicatorAdult
+          ]}>
             <Text style={styles.switchText}>
               {isCurrentlyPrimary ? 'P' : 'A'}
             </Text>
@@ -343,11 +346,6 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
       {/* Instructions */}
       <Text style={styles.chartInstructions}>
         Tap to cycle tooth status • Long press switchable teeth (11-15, 21-25, 31-35, 41-45) to toggle Primary/Adult
-      </Text>
-
-      {/* Debug Info - Remove this in production */}
-      <Text style={styles.debugText}>
-        Primary teeth: {Array.from(primaryTeeth).join(', ') || 'None'}
       </Text>
 
       {/* Dental Chart Container */}
@@ -384,16 +382,16 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
         </View>
       </View>
 
-      {/* Primary/Adult tooth legend */}
+      {/* Primary/Adult tooth legend - Updated with different colors */}
       <View style={styles.typeIndicatorLegend}>
         <View style={styles.legendItem}>
-          <View style={styles.switchIndicator}>
+          <View style={styles.switchIndicatorAdult}>
             <Text style={styles.switchText}>A</Text>
           </View>
           <Text style={styles.legendLabel}>Adult Tooth</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={styles.switchIndicator}>
+          <View style={styles.switchIndicatorPrimary}>
             <Text style={styles.switchText}>P</Text>
           </View>
           <Text style={styles.legendLabel}>Primary Tooth</Text>
@@ -402,6 +400,31 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
       
       <Pressable style={styles.saveButton} onPress={handleSave}>
         <Text style={styles.saveButtonText}>Save Assessment</Text>
+      </Pressable>
+
+      {/* Clear All Button */}
+      <Pressable 
+        style={styles.clearAllButton} 
+        onPress={() => {
+          Alert.alert(
+            'Clear All Data',
+            'Are you sure you want to clear all assessment data? This cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Clear All', 
+                style: 'destructive',
+                onPress: () => {
+                  setToothStates(initialToothStates);
+                  setPrimaryTeeth(new Set());
+                  Alert.alert('Cleared', 'All assessment data has been cleared.');
+                }
+              }
+            ]
+          );
+        }}
+      >
+        <Text style={styles.clearAllButtonText}>Clear All</Text>
       </Pressable>
     </ScrollView>
   );
@@ -460,13 +483,6 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     paddingHorizontal: 20,
   },
-  debugText: {
-    fontSize: 10,
-    color: '#999',
-    textAlign: 'center',
-    marginBottom: 10,
-    fontStyle: 'italic',
-  },
   dentalChart: {
     width: 360,
     height: 480,
@@ -502,27 +518,41 @@ const styles = StyleSheet.create({
   },
   toothLabel: {
     color: 'white',
-    fontWeight: '600',
-    fontSize: 10,
+    fontWeight: '700',
+    fontSize: 11,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   primaryToothLabel: {
-    color: '#ffd700', // Gold color for primary teeth
+    color: '#000000', // Black for maximum contrast against green background
     fontWeight: 'bold',
+    fontSize: 11,
+    textShadowColor: 'rgba(255, 255, 255, 0.8)', // White shadow for extra pop
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   switchIndicator: {
     position: 'absolute',
     top: -8,
     left: -8,
-    backgroundColor: '#28a745',
-    borderRadius: 6,
-    width: 12,
-    height: 12,
+    borderRadius: 7,
+    width: 14,
+    height: 14,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'white',
+  },
+  switchIndicatorAdult: {
+    backgroundColor: '#007bff', // Blue for Adult teeth
+  },
+  switchIndicatorPrimary: {
+    backgroundColor: '#ff6b35', // Orange for Primary teeth
   },
   switchText: {
     color: 'white',
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: 'bold',
   },
   toothPresent: {
@@ -582,5 +612,21 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
     textAlign: 'center',
+  },
+  clearAllButton: { 
+    backgroundColor: '#fff', 
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    paddingVertical: 12, 
+    paddingHorizontal: 24, 
+    borderRadius: 8, 
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  clearAllButtonText: { 
+    color: '#dc3545', 
+    fontWeight: 'bold', 
+    fontSize: 16, 
+    textAlign: 'center' 
   },  
 });

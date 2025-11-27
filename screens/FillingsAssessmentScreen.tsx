@@ -1,9 +1,10 @@
-// screens/FillingsAssessmentScreen.tsx - FIXED VERSION
+// screens/FillingsAssessmentScreen.tsx - FIXED VERSION with Cancel functionality
 // Main fixes:
 // 1. Removed useEffect that was causing excessive re-renders
 // 2. Added useCallback for state update functions
 // 3. Optimized modal rendering
 // 4. State is now only saved when user clicks "Save Assessment"
+// 5. Added Cancel button that reverts modal changes
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
@@ -163,6 +164,9 @@ const ComprehensiveDentalAssessmentScreen = ({ route, navigation }: any) => {
     }
     return getInitialState();
   });
+  
+  // Backup state for cancel functionality
+  const [toothBackup, setToothBackup] = useState<ToothAssessment | null>(null);
 
   // ✅ REMOVED THE PROBLEMATIC useEffect THAT WAS CAUSING FREEZING
   // State will only be saved when user clicks "Save Assessment"
@@ -348,19 +352,40 @@ const ComprehensiveDentalAssessmentScreen = ({ route, navigation }: any) => {
     }
   }, [enhancedState, getCurrentToothId, saveAssessment, patientId, restorationStates, navigation]);
 
+  // Modal control functions with backup/restore
   const openToothEditor = useCallback((toothId: string) => {
+    // Backup current tooth state before opening modal
+    setToothBackup({ ...enhancedState.teethStates[toothId] });
     updateState({ 
       selectedTooth: toothId, 
       modalVisible: true, 
       activeTab: 'fillings' 
     });
-  }, [updateState]);
+  }, [updateState, enhancedState.teethStates]);
+
+  const cancelToothEditor = useCallback(() => {
+    // Restore backed-up tooth state
+    if (enhancedState.selectedTooth && toothBackup) {
+      setEnhancedState(prev => ({
+        ...prev,
+        teethStates: {
+          ...prev.teethStates,
+          [enhancedState.selectedTooth!]: { ...toothBackup }
+        },
+        selectedTooth: null,
+        modalVisible: false
+      }));
+    }
+    setToothBackup(null);
+  }, [enhancedState.selectedTooth, toothBackup]);
 
   const closeToothEditor = useCallback(() => {
+    // Keep changes and close
     updateState({ 
       selectedTooth: null, 
       modalVisible: false 
     });
+    setToothBackup(null);
   }, [updateState]);
 
   const updateToothState = useCallback((toothId: string, updates: Partial<ToothAssessment>) => {
@@ -480,8 +505,12 @@ const ComprehensiveDentalAssessmentScreen = ({ route, navigation }: any) => {
           )}
         </Pressable>
         
+        {/* ✅ FIXED: Apply Adult/Primary styles conditionally */}
         {canSwitch && (
-          <View style={styles.switchIndicator}>
+          <View style={[
+            styles.switchIndicator,
+            isCurrentlyPrimary ? styles.switchIndicatorPrimary : styles.switchIndicatorAdult
+          ]}>
             <Text style={styles.switchText}>
               {isCurrentlyPrimary ? 'P' : 'A'}
             </Text>
@@ -676,13 +705,13 @@ ${teeth.map(([toothId, tooth]) => {
       {/* Primary/Adult tooth legend */}
       <View style={styles.typeIndicatorLegend}>
         <View style={styles.legendItem}>
-          <View style={styles.switchIndicator}>
+          <View style={[styles.switchIndicator, styles.switchIndicatorAdult]}>
             <Text style={styles.switchText}>A</Text>
           </View>
           <Text style={styles.legendLabel}>Adult Tooth</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={styles.switchIndicator}>
+          <View style={[styles.switchIndicator, styles.switchIndicatorPrimary]}>
             <Text style={styles.switchText}>P</Text>
           </View>
           <Text style={styles.legendLabel}>Primary Tooth</Text>
@@ -699,12 +728,36 @@ ${teeth.map(([toothId, tooth]) => {
         <Text style={styles.saveButtonText}>Save Assessment</Text>
       </Pressable>
 
-      {/* Tooth Assessment Modal - Simplified for better performance */}
+      {/* Clear All Button */}
+      <Pressable 
+        style={styles.clearAllButton} 
+        onPress={() => {
+          Alert.alert(
+            'Clear All Data',
+            'Are you sure you want to clear all assessment data? This cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { 
+                text: 'Clear All', 
+                style: 'destructive',
+                onPress: () => {
+                  setEnhancedState(getInitialState());
+                  Alert.alert('Cleared', 'All assessment data has been cleared.');
+                }
+              }
+            ]
+          );
+        }}
+      >
+        <Text style={styles.clearAllButtonText}>Clear All</Text>
+      </Pressable>
+
+      {/* Tooth Assessment Modal - Now with Cancel functionality */}
       <Modal
         animationType="slide"
         transparent={true}
         visible={enhancedState.modalVisible}
-        onRequestClose={closeToothEditor}
+        onRequestClose={cancelToothEditor}
       >
         <View style={styles.modalOverlay}>
           <ScrollView style={styles.modalScrollView}>
@@ -1059,8 +1112,11 @@ ${teeth.map(([toothId, tooth]) => {
                 )}
               </ScrollView>
 
-              {/* Modal Actions */}
+              {/* Modal Actions - Now with Cancel button */}
               <View style={styles.modalActions}>
+                <Pressable style={styles.cancelButton} onPress={cancelToothEditor}>
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </Pressable>
                 <Pressable style={styles.clearButton} onPress={clearTooth}>
                   <Text style={styles.clearButtonText}>Clear Tooth</Text>
                 </Pressable>
@@ -1078,7 +1134,6 @@ ${teeth.map(([toothId, tooth]) => {
 
 export default ComprehensiveDentalAssessmentScreen;
 
-// Styles remain the same
 const styles = StyleSheet.create({
   container: { padding: 20, alignItems: 'center' },
   header: { fontSize: 22, fontWeight: 'bold', marginBottom: 4 },
@@ -1113,11 +1168,58 @@ const styles = StyleSheet.create({
   dentalChart: { width: 360, height: 480, position: 'relative', marginBottom: 30 },
   upperArchLabel: { fontSize: 16, fontWeight: '600', color: '#333', textAlign: 'center', position: 'absolute', top: 50, left: 150, width: 60 },
   lowerArchLabel: { fontSize: 16, fontWeight: '600', color: '#333', textAlign: 'center', position: 'absolute', top: 390, left: 150, width: 60 },
-  toothCircle: { width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  toothLabel: { color: 'white', fontWeight: '600', fontSize: 10 },
-  primaryToothLabel: { color: '#ffd700', fontWeight: 'bold' },
-  switchIndicator: { position: 'absolute', top: -8, left: -8, backgroundColor: '#28a745', borderRadius: 6, width: 12, height: 12, justifyContent: 'center', alignItems: 'center' },
-  switchText: { color: 'white', fontSize: 8, fontWeight: 'bold' },
+  
+  // ✅ UPDATED: Enhanced tooth styling for better visibility
+  toothCircle: { 
+    width: 30, 
+    height: 30, 
+    borderRadius: 15, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    position: 'relative' 
+  },
+  toothLabel: { 
+    color: 'white', 
+    fontWeight: '700', // Bolder
+    fontSize: 11, // Larger
+    textShadowColor: 'rgba(0, 0, 0, 0.5)', // Added shadow
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  primaryToothLabel: { 
+    color: '#000000', // Black for maximum contrast
+    fontWeight: 'bold',
+    fontSize: 11,
+    textShadowColor: 'rgba(255, 255, 255, 0.8)', // White shadow for extra pop
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  
+  // ✅ UPDATED: Different colors for Adult/Primary indicators
+  switchIndicator: { 
+    position: 'absolute', 
+    top: -8, 
+    left: -8, 
+    borderRadius: 7, 
+    width: 14, // Slightly larger
+    height: 14, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    borderWidth: 1.5, // Added border
+    borderColor: 'white',
+  },
+  switchIndicatorAdult: {
+    backgroundColor: '#007bff', // Blue for Adult teeth
+  },
+  switchIndicatorPrimary: {
+    backgroundColor: '#ff6b35', // Orange for Primary teeth
+  },
+  switchText: { 
+    color: 'white', 
+    fontSize: 9, // Slightly larger
+    fontWeight: 'bold' 
+  },
+  
   statusIndicator: { position: 'absolute', bottom: -16, backgroundColor: 'rgba(0, 0, 0, 0.8)', borderRadius: 6, paddingHorizontal: 2, paddingVertical: 1, maxWidth: 50 },
   statusText: { color: 'white', fontSize: 7, fontWeight: '600' },
   toothNormal: { backgroundColor: '#28a745' },
@@ -1135,6 +1237,16 @@ const styles = StyleSheet.create({
   surfaceNote: { fontSize: 12, color: '#665', fontStyle: 'italic', textAlign: 'center', marginBottom: 20 },
   saveButton: { backgroundColor: '#007bff', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, marginBottom: 20 },
   saveButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16, textAlign: 'center' },
+  clearAllButton: { 
+    backgroundColor: '#fff', 
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    paddingVertical: 12, 
+    paddingHorizontal: 24, 
+    borderRadius: 8, 
+    marginBottom: 20 
+  },
+  clearAllButtonText: { color: '#dc3545', fontWeight: 'bold', fontSize: 16, textAlign: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
   modalScrollView: { width: '95%', maxHeight: '80%' },
   modalContent: { backgroundColor: 'white', borderRadius: 16, padding: 24 },
@@ -1168,9 +1280,38 @@ const styles = StyleSheet.create({
   diagnosisButtonSelected: { backgroundColor: '#dc3545', borderColor: '#dc3545' },
   diagnosisButtonText: { fontSize: 12, fontWeight: '600', textAlign: 'center', color: '#333' },
   diagnosisButtonTextSelected: { color: 'white' },
-  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 },
-  clearButton: { backgroundColor: '#6c757d', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 24 },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, gap: 8 },
+  cancelButton: { 
+    flex: 1,
+    backgroundColor: '#fff', 
+    borderWidth: 2,
+    borderColor: '#6c757d',
+    borderRadius: 8, 
+    paddingVertical: 12, 
+    paddingHorizontal: 16,
+    alignItems: 'center'
+  },
+  cancelButtonText: { 
+    color: '#6c757d', 
+    fontSize: 14, 
+    fontWeight: '600' 
+  },
+  clearButton: { 
+    flex: 1,
+    backgroundColor: '#6c757d', 
+    borderRadius: 8, 
+    paddingVertical: 12, 
+    paddingHorizontal: 16,
+    alignItems: 'center'
+  },
   clearButtonText: { color: 'white', fontSize: 14, fontWeight: '600' },
-  doneButton: { backgroundColor: '#28a745', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 24 },
+  doneButton: { 
+    flex: 1,
+    backgroundColor: '#28a745', 
+    borderRadius: 8, 
+    paddingVertical: 12, 
+    paddingHorizontal: 16,
+    alignItems: 'center'
+  },
   doneButtonText: { color: 'white', fontSize: 14, fontWeight: '600' },
 });
