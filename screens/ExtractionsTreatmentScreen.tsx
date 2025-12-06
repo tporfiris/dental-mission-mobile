@@ -1,11 +1,20 @@
 // screens/ExtractionsTreatmentScreen.tsx - OPTIMIZED VERSION with Clear All
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal, Dimensions } from 'react-native';
 import { useExtractionsTreatment } from '../contexts/ExtractionsTreatmentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
+
+// Get screen dimensions for responsive scaling
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Responsive scaling functions
+const scaleWidth = (size: number) => (SCREEN_WIDTH / 390) * size;
+const scaleHeight = (size: number) => (SCREEN_HEIGHT / 844) * size;
+const scaleFontSize = (size: number) => Math.round(scaleWidth(size));
+
 
 // ODA Fee Structure for Extractions
 const ODA_FEES = {
@@ -294,7 +303,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
             />
           </View>
 
-          <View style={styles.formRow}>
+          <View style={styles.formColumn}>
             <Text style={styles.formLabel}>Extraction Type:</Text>
             <View style={styles.complexitySelector}>
               <Pressable
@@ -512,19 +521,19 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
 
   return (
     <View>
-      <View style={styles.formRow}>
+      <View style={styles.formColumn}>
         <Text style={styles.formLabel}>Extraction Type:</Text>
         <View style={styles.complexitySelector}>
           <Pressable
             style={[
               styles.complexityButton,
-              complexity === 'simple' && styles.complexityButtonSelected
+              selectedComplexity === 'simple' && styles.complexityButtonSelected
             ]}
-            onPress={() => setComplexity('simple')}
+            onPress={() => updateSelectedComplexity('simple')}
           >
             <Text style={[
               styles.complexityButtonText,
-              complexity === 'simple' && styles.complexityButtonTextSelected
+              selectedComplexity === 'simple' && styles.complexityButtonTextSelected
             ]}>
               Simple
             </Text>
@@ -532,13 +541,13 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
           <Pressable
             style={[
               styles.complexityButton,
-              complexity === 'complicated' && styles.complexityButtonSelected
+              selectedComplexity === 'complicated' && styles.complexityButtonSelected
             ]}
-            onPress={() => setComplexity('complicated')}
+            onPress={() => updateSelectedComplexity('complicated')}
           >
             <Text style={[
               styles.complexityButtonText,
-              complexity === 'complicated' && styles.complexityButtonTextSelected
+              selectedComplexity === 'complicated' && styles.complexityButtonTextSelected
             ]}>
               Complicated
             </Text>
@@ -583,92 +592,92 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
-    padding: 20,
+    padding: scaleWidth(20),
   },
   header: {
-    fontSize: 24,
+    fontSize: scaleFontSize(24),
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
     color: '#333',
     textAlign: 'center',
   },
   subtext: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#666',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     textAlign: 'center',
   },
   completedBanner: {
     backgroundColor: '#d4edda',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
+    marginBottom: scaleHeight(20),
     borderLeftWidth: 4,
     borderLeftColor: '#28a745',
   },
   completedText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#155724',
   },
   completedDate: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#155724',
-    marginTop: 4,
+    marginTop: scaleHeight(4),
   },
   addExtractionSection: {
     backgroundColor: '#e7f3ff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(20),
+    marginBottom: scaleHeight(20),
     borderWidth: 1,
     borderColor: '#b3d9ff',
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: '600',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
     color: '#333',
   },
   formRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
   },
   formColumn: {
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
   },
   formLabel: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '500',
     color: '#495057',
-    minWidth: 100,
-    marginRight: 12,
+    minWidth: scaleWidth(100),
+    marginRight: scaleWidth(12),
   },
   toothNumberInput: {
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    minWidth: 80,
+    borderRadius: scaleWidth(8),
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(10),
+    fontSize: scaleFontSize(16),
+    minWidth: scaleWidth(80),
     textAlign: 'center',
   },
   complexitySelector: {
     flexDirection: 'row',
     flex: 1,
-    gap: 8,
+    gap: scaleWidth(8),
   },
   complexityButton: {
     flex: 1,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(10),
+    paddingHorizontal: scaleWidth(16),
     alignItems: 'center',
   },
   complexityButtonSelected: {
@@ -676,7 +685,7 @@ const styles = StyleSheet.create({
     borderColor: '#007bff',
   },
   complexityButtonText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(11),
     fontWeight: '500',
     color: '#495057',
   },
@@ -685,14 +694,14 @@ const styles = StyleSheet.create({
   },
   odaInfo: {
     backgroundColor: '#fff3cd',
-    borderRadius: 6,
-    padding: 8,
-    marginBottom: 16,
+    borderRadius: scaleWidth(6),
+    padding: scaleWidth(8),
+    marginBottom: scaleHeight(16),
     borderLeftWidth: 3,
     borderLeftColor: '#ffc107',
   },
   odaInfoText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#856404',
     fontWeight: '600',
     textAlign: 'center',
@@ -701,30 +710,30 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    minHeight: 80,
+    borderRadius: scaleWidth(8),
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(10),
+    fontSize: scaleFontSize(14),
+    minHeight: scaleHeight(80),
   },
   addButton: {
     backgroundColor: '#28a745',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(14),
+    paddingHorizontal: scaleWidth(20),
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: scaleHeight(8),
   },
   addButtonText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#fff',
   },
   extractionsListSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(20),
+    marginBottom: scaleHeight(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -732,17 +741,17 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   noExtractionsText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#6c757d',
     textAlign: 'center',
     fontStyle: 'italic',
-    padding: 20,
+    padding: scaleWidth(20),
   },
   extractionCard: {
     backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(12),
     borderLeftWidth: 4,
     borderLeftColor: '#dc3545',
   },
@@ -750,24 +759,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
   },
   toothNumberText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: 'bold',
     color: '#333',
   },
   extractionActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: scaleWidth(8),
   },
   complexityBadge: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '600',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingHorizontal: scaleWidth(8),
+    paddingVertical: scaleHeight(4),
+    borderRadius: scaleWidth(4),
   },
   simpleBadge: {
     backgroundColor: '#d1ecf1',
@@ -779,59 +788,59 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 4,
+    gap: scaleWidth(4),
   },
   editButton: {
     backgroundColor: '#fff',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderRadius: scaleWidth(6),
+    paddingHorizontal: scaleWidth(8),
+    paddingVertical: scaleHeight(4),
     borderWidth: 1,
     borderColor: '#007bff',
   },
   editButtonText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
   },
   deleteButton: {
     backgroundColor: '#fff',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderRadius: scaleWidth(6),
+    paddingHorizontal: scaleWidth(8),
+    paddingVertical: scaleHeight(4),
     borderWidth: 1,
     borderColor: '#dc3545',
   },
   deleteButtonText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
   },
   odaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
-    paddingTop: 8,
+    marginBottom: scaleHeight(8),
+    paddingTop: scaleHeight(8),
     borderTopWidth: 1,
     borderTopColor: '#e9ecef',
   },
   odaCode: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#007bff',
   },
   odaPrice: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: 'bold',
     color: '#28a745',
   },
   extractionNotes: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#495057',
     fontStyle: 'italic',
   },
   billingSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(20),
+    marginBottom: scaleHeight(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -840,9 +849,9 @@ const styles = StyleSheet.create({
   },
   billingCard: {
     backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
+    marginBottom: scaleHeight(8),
     borderLeftWidth: 4,
     borderLeftColor: '#dc3545',
   },
@@ -850,33 +859,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   billingCode: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: 'bold',
     color: '#dc3545',
   },
   billingPrice: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: 'bold',
     color: '#28a745',
   },
   billingDescription: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#495057',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   billingDetails: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#6c757d',
     fontWeight: '500',
   },
   totalSection: {
     borderTopWidth: 2,
     borderTopColor: '#e9ecef',
-    paddingTop: 12,
-    marginTop: 8,
+    paddingTop: scaleHeight(12),
+    marginTop: scaleHeight(8),
   },
   totalRow: {
     flexDirection: 'row',
@@ -884,23 +893,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   totalLabel: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: 'bold',
     color: '#333',
   },
   totalAmount: {
-    fontSize: 20,
+    fontSize: scaleFontSize(20),
     fontWeight: 'bold',
     color: '#28a745',
   },
   actionSection: {
-    gap: 12,
-    marginBottom: 20,
+    gap: scaleHeight(12),
+    marginBottom: scaleHeight(20),
   },
   actionButton: {
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(14),
+    paddingHorizontal: scaleWidth(20),
     alignItems: 'center',
   },
   completeButton: {
@@ -912,7 +921,7 @@ const styles = StyleSheet.create({
     borderColor: '#dc3545',
   },
   actionButtonText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#fff',
   },
@@ -927,47 +936,47 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: scaleWidth(16),
+    padding: scaleWidth(24),
     width: '90%',
-    maxWidth: 400,
+    maxWidth: scaleWidth(400),
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     color: '#333',
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
-    marginTop: 16,
+    gap: scaleWidth(12),
+    marginTop: scaleHeight(16),
   },
   cancelButton: {
     flex: 1,
     backgroundColor: '#6c757d',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
   },
   cancelButtonText: {
     color: 'white',
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     textAlign: 'center',
   },
   updateButton: {
     flex: 1,
     backgroundColor: '#007bff',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
   },
   updateButtonText: {
     color: 'white',
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     textAlign: 'center',
   },

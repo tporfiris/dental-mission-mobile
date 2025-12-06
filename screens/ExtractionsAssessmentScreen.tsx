@@ -1,5 +1,3 @@
-// screens/ExtractionsAssessmentScreen.tsx - FIXED with Clear All button
-
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -9,9 +7,22 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { useExtractionsAssessment } from '../contexts/ExtractionsAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
+
+// Get screen dimensions for responsive scaling
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Responsive scaling functions
+const scaleWidth = (size: number) => (SCREEN_WIDTH / 390) * size;
+const scaleHeight = (size: number) => (SCREEN_HEIGHT / 844) * size;
+const scaleFontSize = (size: number) => Math.round(scaleWidth(size));
+
+// Chart dimensions that scale with screen size
+const CHART_WIDTH = Math.min(SCREEN_WIDTH * 0.92, 360);
+const CHART_HEIGHT = CHART_WIDTH * 1.33;
 
 const EXTRACTION_REASONS = ['none', 'loose', 'root-tip', 'non-restorable'] as const;
 type ExtractionReason = typeof EXTRACTION_REASONS[number];
@@ -46,9 +57,8 @@ const ExtractionTreatmentPlanningScreen = ({ route, navigation }: any) => {
   const [selectedTooth, setSelectedTooth] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  // Updated tooth positions - same as other assessment screens
+  // Updated tooth positions
   const toothOffsets: Record<string, { x: number; y: number }> = {
-    // Upper arch - symmetric pairs
     '21': { x: 20, y: -120 },
     '11': { x: -20, y: -120 },
     '22': { x: 55, y: -110 },
@@ -65,8 +75,6 @@ const ExtractionTreatmentPlanningScreen = ({ route, navigation }: any) => {
     '17': { x: -125, y: 45 },
     '28': { x: 125, y: 80 },
     '18': { x: -125, y: 80 },
-    
-    // Lower arch - symmetric pairs
     '31': { x: 20, y: 330 },
     '41': { x: -20, y: 330 },
     '32': { x: 55, y: 320 },
@@ -85,15 +93,10 @@ const ExtractionTreatmentPlanningScreen = ({ route, navigation }: any) => {
     '48': { x: -125, y: 130 },
   };
 
-  // ✅ FIXED: Pass extractionStates directly (not wrapped)
   const handleSaveAssessment = async () => {
     try {
       console.log('💾 Saving extractions assessment');
-      
-      // ✅ Pass extractionStates directly to saveAssessment
-      // The context will handle filtering out "none" values
       await saveAssessment(patientId, extractionStates);
-      
       Alert.alert('Success', 'Extractions assessment saved successfully!');
       navigation.goBack();
     } catch (error) {
@@ -143,12 +146,14 @@ const ExtractionTreatmentPlanningScreen = ({ route, navigation }: any) => {
   };
 
   const getToothPosition = (toothId: string) => {
-    const chartCenter = { x: 180, y: 135 };
+    const chartCenter = { x: CHART_WIDTH / 2, y: CHART_HEIGHT / 2.85 };
     const offset = toothOffsets[toothId];
+    const scale = CHART_WIDTH / 360;
+    const toothSize = scaleWidth(30);
     
     return {
-      left: chartCenter.x + offset.x - 15,
-      top: chartCenter.y + offset.y - 15
+      left: chartCenter.x + (offset.x * scale) - (toothSize / 2),
+      top: chartCenter.y + (offset.y * scale) - (toothSize / 2)
     };
   };
 
@@ -188,7 +193,6 @@ const ExtractionTreatmentPlanningScreen = ({ route, navigation }: any) => {
     );
   };
 
-  // Calculate extraction summary
   const extractionSummary = useMemo(() => {
     const extractionList = Object.entries(extractionStates).filter(([_, reason]) => reason !== 'none');
     
@@ -312,10 +316,14 @@ ${extractionSummary.byReason['root-tip'].length > 0 ? '⚠️ Root tips should b
       </View>
 
       {/* Dental Chart Container */}
-      <View style={styles.dentalChart}>
-        <Text style={styles.upperArchLabel}>Upper Arch</Text>
-        <Text style={styles.lowerArchLabel}>Lower Arch</Text>
-        <Text style={styles.centerInstructions}>Tap to mark{'\n'}for extraction{'\n'}Long press for{'\n'}quick toggle</Text>
+      <View style={[styles.dentalChart, { width: CHART_WIDTH, height: CHART_HEIGHT }]}>
+
+        <Text style={[styles.centerInstructions, { 
+          top: CHART_HEIGHT / 2 - scaleHeight(30), 
+          left: CHART_WIDTH / 2 - scaleWidth(75) 
+        }]}>
+          Tap to mark{'\n'}for extraction{'\n'}Long press for{'\n'}quick toggle
+        </Text>
         
         {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
           renderTooth(toothId)
@@ -432,24 +440,24 @@ export default ExtractionTreatmentPlanningScreen;
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
+    padding: scaleWidth(20),
     alignItems: 'center',
   },
   header: {
-    fontSize: 22,
+    fontSize: scaleFontSize(22),
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   subtext: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#665',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
   },
   voiceRecordingSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -460,120 +468,113 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   voiceRecordingTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   voiceRecordingSubtitle: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#666',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
+    lineHeight: scaleFontSize(16),
   },
   voiceRecorderButton: {
     backgroundColor: '#6f42c1',
   },
   summaryCard: {
     backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
     width: '100%',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     borderWidth: 1,
     borderColor: '#e9ecef',
   },
   summaryTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     color: '#333',
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
   },
   summaryLabel: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#665',
   },
   summaryValue: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#333',
   },
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 12,
+    marginTop: scaleHeight(12),
+    gap: scaleWidth(8),
   },
   reportButton: {
     backgroundColor: '#007bff',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(8),
+    paddingHorizontal: scaleWidth(12),
     flex: 1,
-    marginRight: 8,
   },
   reportButtonText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '600',
     textAlign: 'center',
   },
   clearButton: {
     backgroundColor: '#dc3545',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(8),
+    paddingHorizontal: scaleWidth(12),
     flex: 1,
-    marginLeft: 8,
   },
   clearButtonText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '600',
     textAlign: 'center',
   },
   dentalChart: {
-    width: 360,
-    height: 480,
     position: 'relative',
-    marginBottom: 30,
+    marginBottom: scaleHeight(30),
   },
   upperArchLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-    top: 50,
-    left: 150,
-    width: 60,
+    width: scaleWidth(60),
   },
   lowerArchLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-    top: 390,
-    left: 150,
-    width: 60,
+    width: scaleWidth(60),
   },
   centerInstructions: {
-    fontSize: 10,
+    fontSize: scaleFontSize(10),
     color: '#999',
     textAlign: 'center',
     position: 'absolute',
-    top: 215,
-    left: 105,
-    width: 150,
+    width: scaleWidth(150),
+    lineHeight: scaleFontSize(14),
   },
   toothCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: scaleWidth(30),
+    height: scaleWidth(30),
+    borderRadius: scaleWidth(15),
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -581,35 +582,35 @@ const styles = StyleSheet.create({
   toothLabel: {
     color: 'white',
     fontWeight: '600',
-    fontSize: 10,
+    fontSize: scaleFontSize(10),
   },
   reasonIndicator: {
     position: 'absolute',
-    bottom: -12,
+    bottom: scaleHeight(-12),
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    borderRadius: 6,
-    paddingHorizontal: 3,
-    paddingVertical: 1,
+    borderRadius: scaleWidth(6),
+    paddingHorizontal: scaleWidth(3),
+    paddingVertical: scaleHeight(1),
   },
   reasonText: {
     color: 'white',
-    fontSize: 7,
+    fontSize: scaleFontSize(7),
     fontWeight: '600',
   },
   extractionFlag: {
     position: 'absolute',
-    top: -8,
-    right: -8,
+    top: scaleHeight(-8),
+    right: scaleWidth(-8),
     backgroundColor: '#dc3545',
-    borderRadius: 8,
-    width: 16,
-    height: 16,
+    borderRadius: scaleWidth(8),
+    width: scaleWidth(16),
+    height: scaleWidth(16),
     justifyContent: 'center',
     alignItems: 'center',
   },
   extractionText: {
     color: 'white',
-    fontSize: 10,
+    fontSize: scaleFontSize(10),
     fontWeight: 'bold',
   },
   toothNormal: {
@@ -627,57 +628,61 @@ const styles = StyleSheet.create({
   legend: {
     width: '100%',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
+    marginTop: scaleHeight(16)
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 3,
+    marginVertical: scaleHeight(3),
     width: '100%',
   },
   legendCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    marginRight: 12,
+    width: scaleWidth(18),
+    height: scaleWidth(18),
+    borderRadius: scaleWidth(9),
+    marginRight: scaleWidth(12),
   },
   legendLabel: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     color: '#333',
   },
   instructionNote: {
-    fontSize: 12,
+    fontSize: scaleFontSize(11),
     color: '#665',
     fontStyle: 'italic',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
+    lineHeight: scaleFontSize(16),
   },
   saveButton: {
     backgroundColor: '#007bff',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginBottom: 12,
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
+    borderRadius: scaleWidth(8),
+    marginBottom: scaleHeight(12),
+    width: '90%',
   },
   saveButtonText: {
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     textAlign: 'center',
   },
   clearAllButton: { 
     backgroundColor: '#fff', 
     borderWidth: 2,
     borderColor: '#dc3545',
-    paddingVertical: 12, 
-    paddingHorizontal: 24, 
-    borderRadius: 8, 
-    marginBottom: 20,
+    paddingVertical: scaleHeight(12), 
+    paddingHorizontal: scaleWidth(24), 
+    borderRadius: scaleWidth(8), 
+    marginBottom: scaleHeight(20),
+    width: '90%',
   },
   clearAllButtonText: { 
     color: '#dc3545', 
     fontWeight: 'bold', 
-    fontSize: 16, 
+    fontSize: scaleFontSize(16), 
     textAlign: 'center' 
   },
   modalOverlay: {
@@ -688,29 +693,29 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: scaleWidth(16),
+    padding: scaleWidth(24),
     width: '90%',
-    maxWidth: 400,
+    maxWidth: scaleWidth(400),
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     color: '#333',
   },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
     color: '#333',
   },
   reasonButton: {
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(16),
+    marginBottom: scaleHeight(12),
     borderWidth: 2,
   },
   reasonButtonNone: {
@@ -730,26 +735,26 @@ const styles = StyleSheet.create({
     borderColor: '#dc3545',
   },
   reasonButtonText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   reasonDescription: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#665',
     fontStyle: 'italic',
   },
   cancelButton: {
     backgroundColor: '#6c757d',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    marginTop: 8,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
+    marginTop: scaleHeight(8),
   },
   cancelButtonText: {
     color: 'white',
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     textAlign: 'center',
   },

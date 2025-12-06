@@ -6,10 +6,24 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { useDentitionAssessment } from '../contexts/DentitionAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
 import { Timestamp } from 'firebase/firestore';
+
+// Get screen dimensions for responsive scaling
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Responsive scaling functions
+const scaleWidth = (size: number) => (SCREEN_WIDTH / 390) * size; // Base width: iPhone 12/13/14 (390px)
+const scaleHeight = (size: number) => (SCREEN_HEIGHT / 844) * size; // Base height: iPhone 12/13/14 (844px)
+const scaleFontSize = (size: number) => Math.round(scaleWidth(size));
+
+// Chart dimensions that scale with screen size
+const CHART_WIDTH = Math.min(SCREEN_WIDTH * 0.92, 360);
+const CHART_HEIGHT = CHART_WIDTH * 1.33; // Maintain aspect ratio
 
 const TOOTH_STATES = ['present', 'crown-missing', 'roots-only', 'fully-missing'] as const;
 type ToothState = typeof TOOTH_STATES[number];
@@ -137,6 +151,7 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
     
     return () => {};
   }, [patientId]);
+  
   // Function to get the current display tooth ID (permanent or primary)
   const getCurrentToothId = (originalToothId: string): string => {
     if (primaryTeeth.has(originalToothId) && PRIMARY_TOOTH_MAPPINGS[originalToothId]) {
@@ -164,43 +179,27 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
     });
   };
 
-  // Updated tooth positions - centered around origin with offset applied
+  // Updated tooth positions - scaled proportionally to chart size
   const toothOffsets: Record<string, { x: number; y: number }> = {
-    // Upper arch - symmetric pairs
-    '21': { x: 20, y: -120 },   // Upper right central
-    '11': { x: -20, y: -120 },  // Upper left central (mirrored)
-    '22': { x: 55, y: -110 },   // Upper right lateral  
-    '12': { x: -55, y: -110 },  // Upper left lateral (mirrored)
-    '23': { x: 90, y: -90 },    // Upper right canine
-    '13': { x: -90, y: -90 },   // Upper left canine (mirrored)
-    '24': { x: 110, y: -60 },   // Upper right first premolar
-    '14': { x: -110, y: -60 },  // Upper left first premolar (mirrored)
-    '25': { x: 120, y: -25 },   // Upper right second premolar
-    '15': { x: -120, y: -25 },  // Upper left second premolar (mirrored)
-    '26': { x: 125, y: 10 },    // Upper right first molar
-    '16': { x: -125, y: 10 },   // Upper left first molar (mirrored)
-    '27': { x: 125, y: 45 },    // Upper right second molar
-    '17': { x: -125, y: 45 },   // Upper left second molar (mirrored)
-    '28': { x: 125, y: 80 },    // Upper right third molar (wisdom)
-    '18': { x: -125, y: 80 },   // Upper left third molar (mirrored)
+    // Upper arch - symmetric pairs (scaled to chart width/height)
+    '21': { x: 20, y: -120 },   '11': { x: -20, y: -120 },
+    '22': { x: 55, y: -110 },   '12': { x: -55, y: -110 },
+    '23': { x: 90, y: -90 },    '13': { x: -90, y: -90 },
+    '24': { x: 110, y: -60 },   '14': { x: -110, y: -60 },
+    '25': { x: 120, y: -25 },   '15': { x: -120, y: -25 },
+    '26': { x: 125, y: 10 },    '16': { x: -125, y: 10 },
+    '27': { x: 125, y: 45 },    '17': { x: -125, y: 45 },
+    '28': { x: 125, y: 80 },    '18': { x: -125, y: 80 },
     
     // Lower arch - symmetric pairs
-    '31': { x: 20, y: 330 },    // Lower right central
-    '41': { x: -20, y: 330 },   // Lower left central (mirrored)
-    '32': { x: 55, y: 320 },    // Lower right lateral
-    '42': { x: -55, y: 320 },   // Lower left lateral (mirrored)
-    '33': { x: 90, y: 300 },    // Lower right canine
-    '43': { x: -90, y: 300 },   // Lower left canine (mirrored)
-    '34': { x: 110, y: 270 },   // Lower right first premolar
-    '44': { x: -110, y: 270 },  // Lower left first premolar (mirrored)
-    '35': { x: 120, y: 235 },   // Lower right second premolar
-    '45': { x: -120, y: 235 },  // Lower left second premolar (mirrored)
-    '36': { x: 125, y: 200 },   // Lower right first molar
-    '46': { x: -125, y: 200 },  // Lower left first molar (mirrored)
-    '37': { x: 125, y: 165 },   // Lower right second molar
-    '47': { x: -125, y: 165 },  // Lower left second molar (mirrored)
-    '38': { x: 125, y: 130 },   // Lower right third molar (wisdom)
-    '48': { x: -125, y: 130 },  // Lower left third molar (mirrored)
+    '31': { x: 20, y: 330 },    '41': { x: -20, y: 330 },
+    '32': { x: 55, y: 320 },    '42': { x: -55, y: 320 },
+    '33': { x: 90, y: 300 },    '43': { x: -90, y: 300 },
+    '34': { x: 110, y: 270 },   '44': { x: -110, y: 270 },
+    '35': { x: 120, y: 235 },   '45': { x: -120, y: 235 },
+    '36': { x: 125, y: 200 },   '46': { x: -125, y: 200 },
+    '37': { x: 125, y: 165 },   '47': { x: -125, y: 165 },
+    '38': { x: 125, y: 130 },   '48': { x: -125, y: 130 },
   };
 
   const cycleToothState = (toothId: string) => {
@@ -211,7 +210,6 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
     });
   };
 
-  // ✅ NEW: Use context's saveAssessment function
   const handleSave = async () => {
     try {
       // Build exceptions map - only store teeth that are NOT "present"
@@ -266,13 +264,17 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
     }
   };
 
+  // Scale tooth positions based on chart size
   const getToothPosition = (toothId: string) => {
-    const chartCenter = { x: 180, y: 135 }; // Center of the chart container
+    const chartCenter = { x: CHART_WIDTH / 2, y: CHART_HEIGHT / 2.85 };
     const offset = toothOffsets[toothId];
+    const scale = CHART_WIDTH / 360; // Scale based on original 360px width
+    
+    const toothSize = scaleWidth(30);
     
     return {
-      left: chartCenter.x + offset.x - 15, // -15 to center the 30px circle
-      top: chartCenter.y + offset.y - 15
+      left: chartCenter.x + (offset.x * scale) - (toothSize / 2),
+      top: chartCenter.y + (offset.y * scale) - (toothSize / 2)
     };
   };
 
@@ -298,7 +300,7 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
               console.log('❌ Cannot switch tooth:', toothId);
             }
           }}
-          delayLongPress={500} // 500ms long press delay
+          delayLongPress={500}
           style={[
             styles.toothCircle,
             getToothStyle(toothStates[toothId]),
@@ -349,12 +351,8 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
       </Text>
 
       {/* Dental Chart Container */}
-      <View style={styles.dentalChart}>
-        {/* Upper Arch Label */}
-        <Text style={styles.upperArchLabel}>Upper Arch</Text>
-        
-        {/* Lower Arch Label */}
-        <Text style={styles.lowerArchLabel}>Lower Arch</Text>
+      <View style={[styles.dentalChart, { width: CHART_WIDTH, height: CHART_HEIGHT }]}>
+
         
         {/* Render all teeth */}
         {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
@@ -382,7 +380,7 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
         </View>
       </View>
 
-      {/* Primary/Adult tooth legend - Updated with different colors */}
+      {/* Primary/Adult tooth legend */}
       <View style={styles.typeIndicatorLegend}>
         <View style={styles.legendItem}>
           <View style={styles.switchIndicatorAdult}>
@@ -434,24 +432,24 @@ export default DentitionAssessmentScreen;
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
+    padding: scaleWidth(20),
     alignItems: 'center',
   },
   header: {
-    fontSize: 22,
+    fontSize: scaleFontSize(22),
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   subtext: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#665',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   voiceRecordingSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -462,97 +460,92 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   voiceRecordingTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   voiceRecordingSubtitle: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#666',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
   },
   voiceRecorderButton: {
     backgroundColor: '#6f42c1',
   },
   chartInstructions: {
-    fontSize: 12,
+    fontSize: scaleFontSize(11),
     color: '#666',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     fontStyle: 'italic',
-    paddingHorizontal: 20,
+    paddingHorizontal: scaleWidth(20),
+    lineHeight: scaleFontSize(16),
   },
   dentalChart: {
-    width: 360,
-    height: 480,
     position: 'relative',
-    marginBottom: 30,
+    marginBottom: scaleHeight(70),
   },
   upperArchLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-    top: 50,
-    left: 150,
-    width: 60,
+    width: scaleWidth(60),
   },
   lowerArchLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-    top: 390,
-    left: 150,
-    width: 60,
+    width: scaleWidth(60),
   },
   toothCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: scaleWidth(30),
+    height: scaleWidth(30),
+    borderRadius: scaleWidth(15),
     justifyContent: 'center',
     alignItems: 'center',
   },
   toothLabel: {
     color: 'white',
     fontWeight: '700',
-    fontSize: 11,
+    fontSize: scaleFontSize(11),
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
   primaryToothLabel: {
-    color: '#000000', // Black for maximum contrast against green background
+    color: '#000000',
     fontWeight: 'bold',
-    fontSize: 11,
-    textShadowColor: 'rgba(255, 255, 255, 0.8)', // White shadow for extra pop
+    fontSize: scaleFontSize(11),
+    textShadowColor: 'rgba(255, 255, 255, 0.8)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
   switchIndicator: {
     position: 'absolute',
-    top: -8,
-    left: -8,
-    borderRadius: 7,
-    width: 14,
-    height: 14,
+    top: scaleWidth(-8),
+    left: scaleWidth(-8),
+    borderRadius: scaleWidth(7),
+    width: scaleWidth(14),
+    height: scaleWidth(14),
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: 'white',
   },
   switchIndicatorAdult: {
-    backgroundColor: '#007bff', // Blue for Adult teeth
+    backgroundColor: '#007bff',
   },
   switchIndicatorPrimary: {
-    backgroundColor: '#ff6b35', // Orange for Primary teeth
+    backgroundColor: '#ff6b35',
   },
   switchText: {
     color: 'white',
-    fontSize: 9,
+    fontSize: scaleFontSize(9),
     fontWeight: 'bold',
   },
   toothPresent: {
@@ -562,71 +555,74 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFC107',
   },
   toothRootsOnly: {
-    backgroundColor: '#FF5722', // Deep orange/red to indicate roots remaining
+    backgroundColor: '#FF5722',
   },
   toothFullyMissing: {
-    backgroundColor: 'rgba(108, 117, 125, 0.3)', // Transparent gray
+    backgroundColor: 'rgba(108, 117, 125, 0.3)',
     borderWidth: 2,
-    borderColor: '#6c757d', // Gray border for definition
+    borderColor: '#6c757d',
   },
   legend: {
-    width: '90%',
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
     flexWrap: 'wrap',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
+    paddingHorizontal: scaleWidth(10),
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 4,
-    marginHorizontal: 8,
+    marginVertical: scaleHeight(4),
+    marginHorizontal: scaleWidth(4),
   },
   legendCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    marginRight: 8,
+    width: scaleWidth(18),
+    height: scaleWidth(18),
+    borderRadius: scaleWidth(9),
+    marginRight: scaleWidth(8),
   },
   legendLabel: {
-    fontSize: 14,
+    fontSize: scaleFontSize(12),
     color: '#333',
   },
   typeIndicatorLegend: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
-    gap: 20,
+    marginBottom: scaleHeight(20),
+    gap: scaleWidth(20),
   },
   saveButton: {
     backgroundColor: '#007bff',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginTop: 20,
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
+    borderRadius: scaleWidth(8),
+    marginTop: scaleHeight(20),
+    width: '90%',
   },
   saveButtonText: {
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     textAlign: 'center',
   },
   clearAllButton: { 
     backgroundColor: '#fff', 
     borderWidth: 2,
     borderColor: '#dc3545',
-    paddingVertical: 12, 
-    paddingHorizontal: 24, 
-    borderRadius: 8, 
-    marginTop: 12,
-    marginBottom: 20,
+    paddingVertical: scaleHeight(12), 
+    paddingHorizontal: scaleWidth(24), 
+    borderRadius: scaleWidth(8), 
+    marginTop: scaleHeight(12),
+    marginBottom: scaleHeight(20),
+    width: '90%',
   },
   clearAllButtonText: { 
     color: '#dc3545', 
     fontWeight: 'bold', 
-    fontSize: 16, 
+    fontSize: scaleFontSize(16), 
     textAlign: 'center' 
-  },  
+  },
 });

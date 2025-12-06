@@ -15,9 +15,23 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { useFillingsAssessment } from '../contexts/FillingsAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
+
+// Get screen dimensions for responsive scaling
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Responsive scaling functions
+const scaleWidth = (size: number) => (SCREEN_WIDTH / 390) * size;
+const scaleHeight = (size: number) => (SCREEN_HEIGHT / 844) * size;
+const scaleFontSize = (size: number) => Math.round(scaleWidth(size));
+
+// Chart dimensions that scale with screen size
+const CHART_WIDTH = Math.min(SCREEN_WIDTH * 0.92, 360);
+const CHART_HEIGHT = CHART_WIDTH * 1.33;
+
 
 const TOOTH_IDS = [
   '11','12','13','14','15','16','17','18',
@@ -440,12 +454,14 @@ const ComprehensiveDentalAssessmentScreen = ({ route, navigation }: any) => {
   }, [enhancedState.teethStates]);
 
   const getToothPosition = useCallback((toothId: string) => {
-    const chartCenter = { x: 180, y: 135 };
+    const chartCenter = { x: CHART_WIDTH / 2, y: CHART_HEIGHT / 2.85 };
     const offset = toothOffsets[toothId];
+    const scale = CHART_WIDTH / 360;
+    const toothSize = scaleWidth(30);
     
     return {
-      left: chartCenter.x + offset.x - 15,
-      top: chartCenter.y + offset.y - 15
+      left: chartCenter.x + (offset.x * scale) - (toothSize / 2),
+      top: chartCenter.y + (offset.y * scale) - (toothSize / 2)
     };
   }, [toothOffsets]);
 
@@ -623,47 +639,8 @@ ${teeth.map(([toothId, tooth]) => {
         Primary teeth: {Array.from(enhancedState.primaryTeeth).join(', ') || 'None'}
       </Text>
 
-      {/* Assessment Summary */}
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Assessment Summary</Text>
-        <View style={styles.summaryGrid}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{assessmentSummary.totalFillings}</Text>
-            <Text style={styles.summaryLabel}>Fillings</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{assessmentSummary.totalCrowns}</Text>
-            <Text style={styles.summaryLabel}>Crowns</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{assessmentSummary.totalExistingRootCanals}</Text>
-            <Text style={styles.summaryLabel}>Existing RCT</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{assessmentSummary.totalCavities}</Text>
-            <Text style={styles.summaryLabel}>Cavities</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{assessmentSummary.totalBroken}</Text>
-            <Text style={styles.summaryLabel}>Broken</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{assessmentSummary.totalRootCanals}</Text>
-            <Text style={styles.summaryLabel}>RCT Needed</Text>
-          </View>
-        </View>
-        
-        {(assessmentSummary.totalFillings + assessmentSummary.totalCrowns + assessmentSummary.totalExistingRootCanals + assessmentSummary.totalCavities + assessmentSummary.totalBroken + assessmentSummary.totalRootCanals) > 0 && (
-          <Pressable style={styles.reportButton} onPress={showDetailedReport}>
-            <Text style={styles.reportButtonText}>View Detailed Report</Text>
-          </Pressable>
-        )}
-      </View>
-
       {/* Dental Chart Container */}
-      <View style={styles.dentalChart}>
-        <Text style={styles.upperArchLabel}>Upper Arch</Text>
-        <Text style={styles.lowerArchLabel}>Lower Arch</Text>
+      <View style={[styles.dentalChart, { width: CHART_WIDTH, height: CHART_HEIGHT }]}>
         
         {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
           renderTooth(toothId)
@@ -705,13 +682,13 @@ ${teeth.map(([toothId, tooth]) => {
       {/* Primary/Adult tooth legend */}
       <View style={styles.typeIndicatorLegend}>
         <View style={styles.legendItem}>
-          <View style={[styles.switchIndicator, styles.switchIndicatorAdult]}>
+          <View style={styles.switchIndicatorAdult}>
             <Text style={styles.switchText}>A</Text>
           </View>
           <Text style={styles.legendLabel}>Adult Tooth</Text>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.switchIndicator, styles.switchIndicatorPrimary]}>
+          <View style={styles.switchIndicatorPrimary}>
             <Text style={styles.switchText}>P</Text>
           </View>
           <Text style={styles.legendLabel}>Primary Tooth</Text>
@@ -1135,14 +1112,14 @@ ${teeth.map(([toothId, tooth]) => {
 export default ComprehensiveDentalAssessmentScreen;
 
 const styles = StyleSheet.create({
-  container: { padding: 20, alignItems: 'center' },
-  header: { fontSize: 22, fontWeight: 'bold', marginBottom: 4 },
-  subtext: { fontSize: 12, color: '#665', marginBottom: 16 },
+  container: { padding: scaleWidth(20), alignItems: 'center' },
+  header: { fontSize: scaleFontSize(22), fontWeight: 'bold', marginBottom: scaleHeight(4) },
+  subtext: { fontSize: scaleFontSize(12), color: '#665', marginBottom: scaleHeight(16) },
   voiceRecordingSection: { 
     backgroundColor: '#fff', 
-    borderRadius: 12, 
-    padding: 16, 
-    marginBottom: 20, 
+    borderRadius: scaleWidth(12), 
+    padding: scaleWidth(16), 
+    marginBottom: scaleHeight(20), 
     shadowColor: '#000', 
     shadowOffset: { width: 0, height: 2 }, 
     shadowOpacity: 0.1, 
@@ -1152,76 +1129,74 @@ const styles = StyleSheet.create({
     borderLeftColor: '#6f42c1', 
     width: '100%' 
   },
-  voiceRecordingTitle: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 4 },
-  voiceRecordingSubtitle: { fontSize: 12, color: '#666', marginBottom: 12 },
+  voiceRecordingTitle: { fontSize: scaleFontSize(16), fontWeight: '600', color: '#333', marginBottom: scaleHeight(4) },
+  voiceRecordingSubtitle: { fontSize: scaleFontSize(12), color: '#666', marginBottom: scaleHeight(12), lineHeight: scaleFontSize(16) },
   voiceRecorderButton: { backgroundColor: '#6f42c1' },
-  chartInstructions: { fontSize: 12, color: '#666', textAlign: 'center', marginBottom: 10, fontStyle: 'italic', paddingHorizontal: 20 },
-  debugText: { fontSize: 10, color: '#999', textAlign: 'center', marginBottom: 16, fontStyle: 'italic' },
-  summaryCard: { backgroundColor: '#f8f9fa', borderRadius: 12, padding: 16, width: '100%', marginBottom: 20, borderWidth: 1, borderColor: '#e9ecef' },
-  summaryTitle: { fontSize: 16, fontWeight: '600', marginBottom: 12, color: '#333' },
-  summaryGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  chartInstructions: { fontSize: scaleFontSize(12), color: '#666', textAlign: 'center', marginBottom: scaleHeight(10), fontStyle: 'italic', paddingHorizontal: scaleWidth(20), lineHeight: scaleFontSize(16) },
+  debugText: { fontSize: scaleFontSize(10), color: '#999', textAlign: 'center', marginBottom: scaleHeight(16), fontStyle: 'italic' },
+  summaryCard: { backgroundColor: '#f8f9fa', borderRadius: scaleWidth(12), padding: scaleWidth(16), width: '100%', marginBottom: scaleHeight(20), borderWidth: 1, borderColor: '#e9ecef' },
+  summaryTitle: { fontSize: scaleFontSize(16), fontWeight: '600', marginBottom: scaleHeight(12), color: '#333' },
+  summaryGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: scaleHeight(12) },
   summaryItem: { alignItems: 'center' },
-  summaryValue: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  summaryLabel: { fontSize: 12, color: '#665', textAlign: 'center' },
-  reportButton: { backgroundColor: '#007bff', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 16, marginTop: 12, alignSelf: 'flex-start' },
-  reportButtonText: { color: 'white', fontSize: 12, fontWeight: '600' },
-  dentalChart: { width: 360, height: 480, position: 'relative', marginBottom: 30 },
-  upperArchLabel: { fontSize: 16, fontWeight: '600', color: '#333', textAlign: 'center', position: 'absolute', top: 50, left: 150, width: 60 },
-  lowerArchLabel: { fontSize: 16, fontWeight: '600', color: '#333', textAlign: 'center', position: 'absolute', top: 390, left: 150, width: 60 },
+  summaryValue: { fontSize: scaleFontSize(18), fontWeight: 'bold', color: '#333' },
+  summaryLabel: { fontSize: scaleFontSize(12), color: '#665', textAlign: 'center' },
+  reportButton: { backgroundColor: '#007bff', borderRadius: scaleWidth(8), paddingVertical: scaleHeight(8), paddingHorizontal: scaleWidth(16), marginTop: scaleHeight(12), alignSelf: 'flex-start' },
+  reportButtonText: { color: 'white', fontSize: scaleFontSize(12), fontWeight: '600' },
+  dentalChart: { position: 'relative', marginBottom: scaleHeight(60) },
+  upperArchLabel: { fontSize: scaleFontSize(16), fontWeight: '600', color: '#333', textAlign: 'center', position: 'absolute', width: scaleWidth(60) },
+  lowerArchLabel: { fontSize: scaleFontSize(16), fontWeight: '600', color: '#333', textAlign: 'center', position: 'absolute', width: scaleWidth(60) },
   
-  // ✅ UPDATED: Enhanced tooth styling for better visibility
   toothCircle: { 
-    width: 30, 
-    height: 30, 
-    borderRadius: 15, 
+    width: scaleWidth(30), 
+    height: scaleWidth(30), 
+    borderRadius: scaleWidth(15), 
     justifyContent: 'center', 
     alignItems: 'center', 
     position: 'relative' 
   },
   toothLabel: { 
     color: 'white', 
-    fontWeight: '700', // Bolder
-    fontSize: 11, // Larger
-    textShadowColor: 'rgba(0, 0, 0, 0.5)', // Added shadow
+    fontWeight: '700',
+    fontSize: scaleFontSize(11),
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
   primaryToothLabel: { 
-    color: '#000000', // Black for maximum contrast
+    color: '#000000',
     fontWeight: 'bold',
-    fontSize: 11,
-    textShadowColor: 'rgba(255, 255, 255, 0.8)', // White shadow for extra pop
+    fontSize: scaleFontSize(11),
+    textShadowColor: 'rgba(255, 255, 255, 0.8)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
   },
   
-  // ✅ UPDATED: Different colors for Adult/Primary indicators
   switchIndicator: { 
     position: 'absolute', 
-    top: -8, 
-    left: -8, 
-    borderRadius: 7, 
-    width: 14, // Slightly larger
-    height: 14, 
+    top: scaleWidth(-8), 
+    left: scaleWidth(-8), 
+    borderRadius: scaleWidth(7), 
+    width: scaleWidth(14),
+    height: scaleWidth(14), 
     justifyContent: 'center', 
     alignItems: 'center',
-    borderWidth: 1.5, // Added border
+    borderWidth: 1.5,
     borderColor: 'white',
   },
   switchIndicatorAdult: {
-    backgroundColor: '#007bff', // Blue for Adult teeth
+    backgroundColor: '#007bff',
   },
   switchIndicatorPrimary: {
-    backgroundColor: '#ff6b35', // Orange for Primary teeth
+    backgroundColor: '#ff6b35',
   },
-  switchText: { 
-    color: 'white', 
-    fontSize: 9, // Slightly larger
-    fontWeight: 'bold' 
+  switchText: {
+    color: 'white',
+    fontSize: scaleFontSize(9),
+    fontWeight: 'bold',
   },
   
-  statusIndicator: { position: 'absolute', bottom: -16, backgroundColor: 'rgba(0, 0, 0, 0.8)', borderRadius: 6, paddingHorizontal: 2, paddingVertical: 1, maxWidth: 50 },
-  statusText: { color: 'white', fontSize: 7, fontWeight: '600' },
+  statusIndicator: { position: 'absolute', bottom: scaleHeight(-16), backgroundColor: 'rgba(0, 0, 0, 0.8)', borderRadius: scaleWidth(6), paddingHorizontal: scaleWidth(2), paddingVertical: scaleHeight(1), maxWidth: scaleWidth(50) },
+  statusText: { color: 'white', fontSize: scaleFontSize(7), fontWeight: '600' },
   toothNormal: { backgroundColor: '#28a745' },
   toothFillings: { backgroundColor: '#007bff' },
   toothCrowns: { backgroundColor: '#ffc107' },
@@ -1229,89 +1204,90 @@ const styles = StyleSheet.create({
   toothCavities: { backgroundColor: '#fd7e14' },
   toothBroken: { backgroundColor: '#e83e8c' },
   toothRootCanal: { backgroundColor: '#dc3545' },
-  legend: { width: '100%', alignItems: 'flex-start', marginBottom: 16 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', marginVertical: 3, width: '100%' },
-  legendCircle: { width: 18, height: 18, borderRadius: 9, marginRight: 12 },
-  legendLabel: { fontSize: 13, color: '#333' },
-  typeIndicatorLegend: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 16, gap: 20 },
-  surfaceNote: { fontSize: 12, color: '#665', fontStyle: 'italic', textAlign: 'center', marginBottom: 20 },
-  saveButton: { backgroundColor: '#007bff', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8, marginBottom: 20 },
-  saveButtonText: { color: 'white', fontWeight: 'bold', fontSize: 16, textAlign: 'center' },
+  legend: { width: '100%', alignItems: 'flex-start', marginBottom: scaleHeight(16) },
+  legendItem: { flexDirection: 'row', alignItems: 'center', marginVertical: scaleHeight(3), width: '100%' },
+  legendCircle: { width: scaleWidth(18), height: scaleWidth(18), borderRadius: scaleWidth(9), marginRight: scaleWidth(12) },
+  legendLabel: { fontSize: scaleFontSize(13), color: '#333' },
+  typeIndicatorLegend: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: scaleHeight(16), gap: scaleWidth(20) },
+  surfaceNote: { fontSize: scaleFontSize(12), color: '#665', fontStyle: 'italic', textAlign: 'center', marginBottom: scaleHeight(20), lineHeight: scaleFontSize(16) },
+  saveButton: { backgroundColor: '#007bff', paddingVertical: scaleHeight(12), paddingHorizontal: scaleWidth(24), borderRadius: scaleWidth(8), marginBottom: scaleHeight(20), width: '90%' },
+  saveButtonText: { color: 'white', fontWeight: 'bold', fontSize: scaleFontSize(16), textAlign: 'center' },
   clearAllButton: { 
     backgroundColor: '#fff', 
     borderWidth: 2,
     borderColor: '#dc3545',
-    paddingVertical: 12, 
-    paddingHorizontal: 24, 
-    borderRadius: 8, 
-    marginBottom: 20 
+    paddingVertical: scaleHeight(12), 
+    paddingHorizontal: scaleWidth(24), 
+    borderRadius: scaleWidth(8), 
+    marginBottom: scaleHeight(20),
+    width: '90%'
   },
-  clearAllButtonText: { color: '#dc3545', fontWeight: 'bold', fontSize: 16, textAlign: 'center' },
+  clearAllButtonText: { color: '#dc3545', fontWeight: 'bold', fontSize: scaleFontSize(16), textAlign: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
   modalScrollView: { width: '95%', maxHeight: '80%' },
-  modalContent: { backgroundColor: 'white', borderRadius: 16, padding: 24 },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', textAlign: 'center', marginBottom: 8, color: '#333' },
-  toothTypeIndicator: { fontSize: 14, fontWeight: 'normal', color: '#666' },
-  switchButton: { backgroundColor: '#007bff', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 12, marginBottom: 16, alignSelf: 'center' },
-  switchButtonText: { color: 'white', fontSize: 12, fontWeight: '600' },
-  tabScrollContainer: { marginBottom: 20 },
-  tabContainer: { flexDirection: 'row', backgroundColor: '#f8f9fa', borderRadius: 8, padding: 2, minWidth: 480 },
-  tab: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, alignItems: 'center', minWidth: 75 },
+  modalContent: { backgroundColor: 'white', borderRadius: scaleWidth(16), padding: scaleWidth(24) },
+  modalTitle: { fontSize: scaleFontSize(18), fontWeight: 'bold', textAlign: 'center', marginBottom: scaleHeight(8), color: '#333' },
+  toothTypeIndicator: { fontSize: scaleFontSize(14), fontWeight: 'normal', color: '#666' },
+  switchButton: { backgroundColor: '#007bff', borderRadius: scaleWidth(6), paddingVertical: scaleHeight(6), paddingHorizontal: scaleWidth(12), marginBottom: scaleHeight(16), alignSelf: 'center' },
+  switchButtonText: { color: 'white', fontSize: scaleFontSize(12), fontWeight: '600' },
+  tabScrollContainer: { marginBottom: scaleHeight(20) },
+  tabContainer: { flexDirection: 'row', backgroundColor: '#f8f9fa', borderRadius: scaleWidth(8), padding: scaleWidth(2), minWidth: scaleWidth(480) },
+  tab: { paddingVertical: scaleHeight(8), paddingHorizontal: scaleWidth(12), borderRadius: scaleWidth(6), alignItems: 'center', minWidth: scaleWidth(75) },
   activeTab: { backgroundColor: '#007bff' },
-  tabText: { fontSize: 11, fontWeight: '600', color: '#666' },
+  tabText: { fontSize: scaleFontSize(11), fontWeight: '600', color: '#666' },
   activeTabText: { color: 'white' },
-  tabContent: { maxHeight: 300, marginBottom: 20 },
-  sectionTitle: { fontSize: 14, fontWeight: '600', marginBottom: 12, marginTop: 16, color: '#333' },
-  toggleButton: { backgroundColor: '#f8f9fa', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, borderWidth: 2, borderColor: '#e9ecef', marginBottom: 8 },
+  tabContent: { maxHeight: scaleHeight(300), marginBottom: scaleHeight(20) },
+  sectionTitle: { fontSize: scaleFontSize(14), fontWeight: '600', marginBottom: scaleHeight(12), marginTop: scaleHeight(16), color: '#333' },
+  toggleButton: { backgroundColor: '#f8f9fa', borderRadius: scaleWidth(8), paddingVertical: scaleHeight(12), paddingHorizontal: scaleWidth(16), borderWidth: 2, borderColor: '#e9ecef', marginBottom: scaleHeight(8) },
   toggleButtonActive: { backgroundColor: '#007bff', borderColor: '#007bff' },
-  toggleButtonText: { fontSize: 14, fontWeight: '600', textAlign: 'center', color: '#333' },
+  toggleButtonText: { fontSize: scaleFontSize(14), fontWeight: '600', textAlign: 'center', color: '#333' },
   toggleButtonActiveText: { color: 'white' },
-  fillingTypeButtons: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  fillingTypeButton: { backgroundColor: '#f8f9fa', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 2, borderColor: '#e9ecef', flex: 1, marginHorizontal: 2 },
+  fillingTypeButtons: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: scaleHeight(16), gap: scaleWidth(4) },
+  fillingTypeButton: { backgroundColor: '#f8f9fa', borderRadius: scaleWidth(8), paddingVertical: scaleHeight(10), paddingHorizontal: scaleWidth(12), borderWidth: 2, borderColor: '#e9ecef', flex: 1, marginHorizontal: scaleWidth(2) },
   fillingTypeButtonSelected: { backgroundColor: '#28a745', borderColor: '#28a745' },
-  fillingTypeButtonText: { fontSize: 12, fontWeight: '600', textAlign: 'center', color: '#333' },
+  fillingTypeButtonText: { fontSize: scaleFontSize(12), fontWeight: '600', textAlign: 'center', color: '#333' },
   fillingTypeButtonTextSelected: { color: 'white' },
-  surfaceButtons: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 16 },
-  surfaceButton: { backgroundColor: '#f8f9fa', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 16, borderWidth: 2, borderColor: '#e9ecef' },
+  surfaceButtons: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: scaleHeight(16), gap: scaleWidth(4) },
+  surfaceButton: { backgroundColor: '#f8f9fa', borderRadius: scaleWidth(8), paddingVertical: scaleHeight(12), paddingHorizontal: scaleWidth(16), borderWidth: 2, borderColor: '#e9ecef', minWidth: scaleWidth(50) },
   surfaceButtonSelected: { backgroundColor: '#007bff', borderColor: '#007bff' },
-  surfaceButtonText: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  surfaceButtonText: { fontSize: scaleFontSize(16), fontWeight: 'bold', color: '#333' },
   surfaceButtonTextSelected: { color: 'white' },
-  diagnosisButton: { backgroundColor: '#f8f9fa', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 2, borderColor: '#e9ecef', marginBottom: 8 },
+  diagnosisButton: { backgroundColor: '#f8f9fa', borderRadius: scaleWidth(8), paddingVertical: scaleHeight(10), paddingHorizontal: scaleWidth(12), borderWidth: 2, borderColor: '#e9ecef', marginBottom: scaleHeight(8) },
   diagnosisButtonSelected: { backgroundColor: '#dc3545', borderColor: '#dc3545' },
-  diagnosisButtonText: { fontSize: 12, fontWeight: '600', textAlign: 'center', color: '#333' },
+  diagnosisButtonText: { fontSize: scaleFontSize(12), fontWeight: '600', textAlign: 'center', color: '#333' },
   diagnosisButtonTextSelected: { color: 'white' },
-  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 16, gap: 8 },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: scaleHeight(16), gap: scaleWidth(8) },
   cancelButton: { 
     flex: 1,
     backgroundColor: '#fff', 
     borderWidth: 2,
     borderColor: '#6c757d',
-    borderRadius: 8, 
-    paddingVertical: 12, 
-    paddingHorizontal: 16,
+    borderRadius: scaleWidth(8), 
+    paddingVertical: scaleHeight(12), 
+    paddingHorizontal: scaleWidth(16),
     alignItems: 'center'
   },
   cancelButtonText: { 
     color: '#6c757d', 
-    fontSize: 14, 
+    fontSize: scaleFontSize(14), 
     fontWeight: '600' 
   },
   clearButton: { 
     flex: 1,
     backgroundColor: '#6c757d', 
-    borderRadius: 8, 
-    paddingVertical: 12, 
-    paddingHorizontal: 16,
+    borderRadius: scaleWidth(8), 
+    paddingVertical: scaleHeight(12), 
+    paddingHorizontal: scaleWidth(16),
     alignItems: 'center'
   },
-  clearButtonText: { color: 'white', fontSize: 14, fontWeight: '600' },
+  clearButtonText: { color: 'white', fontSize: scaleFontSize(14), fontWeight: '600' },
   doneButton: { 
     flex: 1,
     backgroundColor: '#28a745', 
-    borderRadius: 8, 
-    paddingVertical: 12, 
-    paddingHorizontal: 16,
+    borderRadius: scaleWidth(8), 
+    paddingVertical: scaleHeight(12), 
+    paddingHorizontal: scaleWidth(16),
     alignItems: 'center'
   },
-  doneButtonText: { color: 'white', fontSize: 14, fontWeight: '600' },
+  doneButtonText: { color: 'white', fontSize: scaleFontSize(14), fontWeight: '600' },
 });

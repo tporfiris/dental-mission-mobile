@@ -6,9 +6,22 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  Dimensions,
 } from 'react-native';
 import { useHygieneAssessment } from '../contexts/HygieneAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
+
+// Get screen dimensions for responsive scaling
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Responsive scaling functions
+const scaleWidth = (size: number) => (SCREEN_WIDTH / 390) * size;
+const scaleHeight = (size: number) => (SCREEN_HEIGHT / 844) * size;
+const scaleFontSize = (size: number) => Math.round(scaleWidth(size));
+
+// Chart dimensions that scale with screen size
+const CHART_WIDTH = Math.min(SCREEN_WIDTH * 0.92, 360);
+const CHART_HEIGHT = CHART_WIDTH * 1.33;
 
 const HYGIENE_LEVELS = ['none', 'light', 'moderate', 'heavy'] as const;
 type HygieneLevel = typeof HYGIENE_LEVELS[number];
@@ -88,30 +101,17 @@ const AAP_GRADE_DESCRIPTIONS = {
 
 // Enhanced Hygiene Assessment State Interface
 interface EnhancedHygieneState {
-  // Assessment mode
   assessmentMode: 'calculus' | 'plaque' | 'probing' | 'bleeding' | 'aap';
-  
-  // Calculus assessment
   calculusLevel: HygieneLevel;
   calculusDistribution: DistributionType;
   calculusQuadrants: Quadrant[];
-  
-  // Plaque assessment
   plaqueLevel: HygieneLevel;
   plaqueDistribution: DistributionType;
   plaqueQuadrants: Quadrant[];
-  
-  // Probing depths
   probingDepths: Record<string, ProbingDepth>;
-  
-  // Bleeding on probing
   bleedingOnProbing: Record<string, boolean>;
-  
-  // AAP Classification
   aapStage: AAPStage | null;
   aapGrade: AAPGrade | null;
-  
-  // UI state
   selectedTooth: string | null;
   showDepthSelector: boolean;
 }
@@ -119,7 +119,6 @@ interface EnhancedHygieneState {
 const HygieneAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   
-  // ✅ Get saveAssessment and other functions from context
   const { 
     hygieneStates, 
     setHygieneStates,
@@ -127,7 +126,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     loadLatestAssessment,
   } = useHygieneAssessment();
 
-  // Create a comprehensive state object that gets preserved in the context
   const getInitialState = (): EnhancedHygieneState => {
     const initialProbingDepths: Record<string, ProbingDepth> = {};
     const initialBleedingOnProbing: Record<string, boolean> = {};
@@ -153,16 +151,13 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     };
   };
 
-  // Initialize state from context or defaults
   const [enhancedState, setEnhancedState] = useState<EnhancedHygieneState>(() => {
-    // Try to get saved state from hygieneStates context
     if (hygieneStates && typeof hygieneStates === 'object' && 'enhancedAssessment' in hygieneStates) {
       return { ...getInitialState(), ...hygieneStates.enhancedAssessment };
     }
     return getInitialState();
   });
 
-  // Load previous assessment on mount (optional - for pre-filling)
   useEffect(() => {
     const loadPrevious = async () => {
       await loadLatestAssessment(patientId);
@@ -170,12 +165,9 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     
     loadPrevious();
     
-    // Reset on unmount
-    return () => {
-    };
+    return () => {};
   }, [patientId]);
 
-  // Save state to context whenever it changes
   useEffect(() => {
     setHygieneStates({
       ...hygieneStates,
@@ -183,7 +175,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     });
   }, [enhancedState]);
 
-  // Helper function to update state
   const updateState = (updates: Partial<EnhancedHygieneState>) => {
     setEnhancedState(prev => ({ ...prev, ...updates }));
   };
@@ -208,10 +199,8 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     '38': { x: 125, y: 130 },   '48': { x: -125, y: 130 },
   };
 
-  // ✅ UPDATED: Use context's saveAssessment function
   const handleSaveAssessment = async () => {
     try {
-      // ✅ OPTIMIZED: Transform data before saving
       const optimizedData = optimizeHygieneData(enhancedState);
       
       console.log('💾 Saving optimized hygiene assessment:', optimizedData);
@@ -228,7 +217,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     }
   };
   
-  // ✅ NEW: Helper function to build legacy format (for comparison)
   const buildLegacyData = (state: EnhancedHygieneState) => {
     return {
       calculusLevel: state.calculusLevel,
@@ -244,9 +232,7 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     };
   };
   
-  // ✅ NEW: Optimization function
   const optimizeHygieneData = (state: EnhancedHygieneState) => {
-    // Find the most common probing depth (usually 2mm)
     const depthCounts = new Map<ProbingDepth, number>();
     Object.values(state.probingDepths).forEach(depth => {
       depthCounts.set(depth, (depthCounts.get(depth) || 0) + 1);
@@ -261,7 +247,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
       }
     });
     
-    // Build exceptions object (only teeth that differ from default)
     const depthExceptions: Record<string, ProbingDepth> = {};
     Object.entries(state.probingDepths).forEach(([toothId, depth]) => {
       if (depth !== defaultDepth) {
@@ -269,12 +254,10 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
       }
     });
     
-    // Get only teeth that DO bleed (instead of all teeth with boolean)
     const bleedingTeeth = Object.entries(state.bleedingOnProbing)
       .filter(([_, bleeds]) => bleeds)
       .map(([toothId, _]) => toothId);
     
-    // Shorten quadrant names
     const shortenQuadrant = (q: string) => {
       const map: Record<string, string> = {
         'upper-right': 'UR',
@@ -286,7 +269,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     };
     
     return {
-      // Calculus (optimized structure)
       calculus: {
         level: state.calculusLevel,
         distribution: state.calculusDistribution,
@@ -295,8 +277,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
           : {}
         )
       },
-      
-      // Plaque (optimized structure)
       plaque: {
         level: state.plaqueLevel,
         distribution: state.plaqueDistribution,
@@ -305,8 +285,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
           : {}
         )
       },
-      
-      // ✅ OPTIMIZED: Probing depths with exceptions
       probingDepths: {
         default: defaultDepth,
         ...(Object.keys(depthExceptions).length > 0
@@ -314,14 +292,10 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
           : {}
         )
       },
-      
-      // ✅ OPTIMIZED: Only bleeding teeth (not booleans for all)
       ...(bleedingTeeth.length > 0
         ? { bleedingTeeth }
         : {}
       ),
-      
-      // AAP Classification (compact structure)
       ...(state.aapStage || state.aapGrade
         ? {
             aap: {
@@ -334,7 +308,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     };
   };
 
-  // Assessment handler functions
   const handleCalculusLevelChange = (level: HygieneLevel) => {
     const updates: Partial<EnhancedHygieneState> = { calculusLevel: level };
     if (level === 'none') {
@@ -387,7 +360,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     updateState({ plaqueQuadrants: newQuadrants });
   };
 
-  // AAP Classification handlers
   const handleAAPStageChange = (stage: AAPStage) => {
     updateState({ aapStage: stage });
   };
@@ -396,7 +368,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     updateState({ aapGrade: grade });
   };
 
-  // Probing and bleeding handler functions
   const onToothPress = (toothId: string) => {
     if (enhancedState.assessmentMode === 'probing') {
       updateState({ selectedTooth: toothId, showDepthSelector: true });
@@ -438,7 +409,6 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     updateState({ bleedingOnProbing: newBleeding });
   };
 
-  // Utility functions for tooth rendering
   const getProbingToothStyle = (depth: ProbingDepth) => {
     if (depth <= 3) return styles.probingHealthy;
     if (depth === 4) return styles.probingMild;
@@ -451,11 +421,14 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
   };
 
   const getToothPosition = (toothId: string) => {
-    const chartCenter = { x: 180, y: 135 };
+    const chartCenter = { x: CHART_WIDTH / 2, y: CHART_HEIGHT / 2.85 };
     const offset = toothOffsets[toothId];
+    const scale = CHART_WIDTH / 360;
+    const toothSize = scaleWidth(36);
+    
     return {
-      left: chartCenter.x + offset.x - 18,
-      top: chartCenter.y + offset.y - 18
+      left: chartCenter.x + (offset.x * scale) - (toothSize / 2),
+      top: chartCenter.y + (offset.y * scale) - (toothSize / 2)
     };
   };
 
@@ -937,10 +910,12 @@ BLEEDING ON PROBING:
 
       {/* Dental Chart - Only for probing and bleeding modes */}
       {(enhancedState.assessmentMode === 'probing' || enhancedState.assessmentMode === 'bleeding') && (
-        <View style={styles.dentalChart}>
-          <Text style={styles.upperArchLabel}>Upper Arch</Text>
-          <Text style={styles.lowerArchLabel}>Lower Arch</Text>
-          <Text style={styles.centerInstructions}>
+        <View style={[styles.dentalChart, { width: CHART_WIDTH, height: CHART_HEIGHT }]}>
+
+          <Text style={[styles.centerInstructions, { 
+            top: CHART_HEIGHT / 2 - scaleHeight(25), 
+            left: CHART_WIDTH / 2 - scaleWidth(50) 
+          }]}>
             {enhancedState.assessmentMode === 'probing' ? 'Tap to set\nprobing depth' : 'Tap to toggle\nbleeding status'}
           </Text>
           
@@ -1068,24 +1043,24 @@ export default HygieneAssessmentScreen;
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
+    padding: scaleWidth(20),
     alignItems: 'center',
   },
   header: {
-    fontSize: 22,
+    fontSize: scaleFontSize(22),
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   subtext: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#666',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   voiceRecordingSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1096,43 +1071,46 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   voiceRecordingTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   voiceRecordingSubtitle: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#666',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
+    lineHeight: scaleFontSize(16),
   },
   voiceRecorderButton: {
     backgroundColor: '#6f42c1',
   },
   modeToggleContainer: {
     backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(20),
     width: '100%',
     alignItems: 'center',
   },
   modeToggleTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     color: '#333',
   },
   modeToggleButtons: {
     flexDirection: 'row',
-    gap: 8,
+    gap: scaleWidth(6),
     width: '100%',
+    flexWrap: 'wrap',
   },
   modeToggleButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 8,
+    minWidth: scaleWidth(65),
+    paddingVertical: scaleHeight(10),
+    paddingHorizontal: scaleWidth(4),
+    borderRadius: scaleWidth(8),
     backgroundColor: '#fff',
     borderWidth: 2,
     borderColor: '#e9ecef',
@@ -1143,7 +1121,7 @@ const styles = StyleSheet.create({
     borderColor: '#007bff',
   },
   modeToggleButtonText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(10),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
@@ -1153,76 +1131,78 @@ const styles = StyleSheet.create({
   },
   currentAssessmentCard: {
     backgroundColor: '#e7f3ff',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(20),
     width: '100%',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     borderWidth: 2,
     borderColor: '#b3d9ff',
     alignItems: 'center',
   },
   currentTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: '600',
     color: '#0056b3',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
   },
   currentLevelContainer: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
   },
   currentLevel: {
-    fontSize: 24,
+    fontSize: scaleFontSize(22),
     fontWeight: 'bold',
     color: '#0056b3',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
+    textAlign: 'center',
   },
   currentDescription: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#0056b3',
     textAlign: 'center',
     fontStyle: 'italic',
   },
   selectionCard: {
     backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(20),
     width: '100%',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     borderWidth: 1,
     borderColor: '#e9ecef',
   },
   selectionTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: '600',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
     color: '#333',
     textAlign: 'center',
   },
   aapSection: {
-    marginBottom: 24,
+    marginBottom: scaleHeight(24),
   },
   aapSectionTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
     textAlign: 'center',
   },
   aapSectionSubtitle: {
-    fontSize: 14,
+    fontSize: scaleFontSize(13),
     color: '#666',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
     textAlign: 'center',
     fontStyle: 'italic',
+    lineHeight: scaleFontSize(18),
   },
   aapOptions: {
-    gap: 12,
+    gap: scaleHeight(12),
   },
   aapOption: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
     borderWidth: 2,
     borderColor: '#e9ecef',
   },
@@ -1233,61 +1213,61 @@ const styles = StyleSheet.create({
   aapStageOption: {},
   aapGradeOption: {},
   aapOptionHeader: {
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
   },
   aapOptionTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 2,
+    marginBottom: scaleHeight(2),
   },
   aapOptionLabel: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#007bff',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   aapOptionDescription: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#666',
-    lineHeight: 16,
+    lineHeight: scaleFontSize(16),
   },
   aapSummary: {
     backgroundColor: '#e7f3ff',
-    borderRadius: 8,
-    padding: 16,
-    marginTop: 20,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(16),
+    marginTop: scaleHeight(20),
     borderWidth: 1,
     borderColor: '#b3d9ff',
   },
   aapSummaryTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: 'bold',
     color: '#0056b3',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     textAlign: 'center',
   },
   aapSummaryItem: {
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
   },
   aapSummaryLabel: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#0056b3',
-    marginBottom: 2,
+    marginBottom: scaleHeight(2),
   },
   aapSummaryValue: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     color: '#333',
-    lineHeight: 18,
+    lineHeight: scaleFontSize(18),
   },
   levelOptions: {
-    gap: 12,
+    gap: scaleHeight(12),
   },
   levelOption: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
     borderWidth: 2,
     borderColor: '#e9ecef',
   },
@@ -1296,28 +1276,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9ff',
   },
   levelOptionTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
   },
   distributionTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
-    marginTop: 20,
-    marginBottom: 12,
+    marginTop: scaleHeight(20),
+    marginBottom: scaleHeight(12),
   },
   distributionOptions: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
+    gap: scaleWidth(12),
+    marginBottom: scaleHeight(20),
   },
   distributionOption: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
     borderWidth: 2,
     borderColor: '#e9ecef',
     flex: 1,
@@ -1327,37 +1307,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fff8',
   },
   distributionOptionTitle: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
   },
   quadrantSection: {
-    marginTop: 20,
-    paddingTop: 20,
+    marginTop: scaleHeight(20),
+    paddingTop: scaleHeight(20),
     borderTopWidth: 1,
     borderTopColor: '#e9ecef',
   },
   quadrantTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
     textAlign: 'center',
   },
   quadrantSelector: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: scaleWidth(12),
     justifyContent: 'center',
   },
   quadrantButton: {
     backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
     borderWidth: 2,
     borderColor: '#e9ecef',
-    minWidth: 80,
+    minWidth: scaleWidth(80),
     alignItems: 'center',
   },
   quadrantButtonSelected: {
@@ -1365,32 +1345,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff5f5',
   },
   quadrantButtonText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
   },
   quickSetContainer: {
     backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(16),
     alignItems: 'center',
   },
   quickSetTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     color: '#333',
   },
   quickSetButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: scaleWidth(12),
+    flexWrap: 'wrap',
+    justifyContent: 'center',
   },
   quickSetButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    minWidth: 70,
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(8),
+    borderRadius: scaleWidth(8),
+    minWidth: scaleWidth(70),
     alignItems: 'center',
   },
   quickSetHealthy: {
@@ -1411,47 +1393,40 @@ const styles = StyleSheet.create({
   quickSetButtonText: {
     color: 'white',
     fontWeight: '600',
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
   },
   dentalChart: {
-    width: 360,
-    height: 480,
     position: 'relative',
-    marginBottom: 30,
+    marginBottom: scaleHeight(30),
   },
   upperArchLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-    top: 50,
-    left: 150,
-    width: 60,
+    width: scaleWidth(60),
   },
   lowerArchLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-    top: 390,
-    left: 150,
-    width: 60,
+    width: scaleWidth(60),
   },
   centerInstructions: {
-    fontSize: 12,
+    fontSize: scaleFontSize(11),
     color: '#999',
     textAlign: 'center',
     position: 'absolute',
-    top: 200,
-    left: 130,
-    width: 100,
+    width: scaleWidth(100),
+    lineHeight: scaleFontSize(15),
   },
   toothCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: scaleWidth(36),
+    height: scaleWidth(36),
+    borderRadius: scaleWidth(18),
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
@@ -1467,9 +1442,9 @@ const styles = StyleSheet.create({
   toothLabel: {
     color: 'white',
     fontWeight: '600',
-    fontSize: 8,
+    fontSize: scaleFontSize(8),
     textAlign: 'center',
-    lineHeight: 10,
+    lineHeight: scaleFontSize(10),
   },
   probingHealthy: {
     backgroundColor: '#4CAF50',
@@ -1502,36 +1477,36 @@ const styles = StyleSheet.create({
   },
   depthSelectorContainer: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
-    margin: 20,
-    maxWidth: 400,
+    borderRadius: scaleWidth(16),
+    padding: scaleWidth(24),
+    margin: scaleWidth(20),
+    maxWidth: scaleWidth(400),
     width: '90%',
   },
   depthSelectorTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
     color: '#333',
   },
   depthSelectorSubtitle: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     color: '#666',
   },
   depthGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: scaleWidth(12),
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   depthOption: {
-    width: 80,
-    height: 50,
-    borderRadius: 8,
+    width: scaleWidth(80),
+    height: scaleHeight(50),
+    borderRadius: scaleWidth(8),
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
@@ -1544,34 +1519,35 @@ const styles = StyleSheet.create({
   depthOptionText: {
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
   },
   cancelButton: {
     backgroundColor: '#6c757d',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
+    borderRadius: scaleWidth(8),
     alignItems: 'center',
   },
   cancelButtonText: {
     color: 'white',
     fontWeight: '600',
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
   },
   legend: {
     width: '100%',
     backgroundColor: '#f8f9fa',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
+    padding: scaleWidth(16),
+    borderRadius: scaleWidth(12),
+    marginTop: scaleHeight(20),
+    marginBottom: scaleHeight(20),
     borderWidth: 1,
     borderColor: '#e9ecef',
   },
   legendTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     color: '#333',
   },
   legendItems: {
@@ -1583,68 +1559,69 @@ const styles = StyleSheet.create({
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 4,
+    marginVertical: scaleHeight(4),
+    marginHorizontal: scaleWidth(4),
   },
   legendCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    marginRight: 8,
+    width: scaleWidth(18),
+    height: scaleWidth(18),
+    borderRadius: scaleWidth(9),
+    marginRight: scaleWidth(8),
   },
   legendLabel: {
-    fontSize: 12,
+    fontSize: scaleFontSize(11),
     color: '#333',
     fontWeight: '500',
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 16,
+    gap: scaleWidth(16),
     width: '100%',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   saveButton: {
     backgroundColor: '#28a745',
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 12,
+    paddingVertical: scaleHeight(15),
+    paddingHorizontal: scaleWidth(30),
+    borderRadius: scaleWidth(12),
     flex: 1,
-    maxWidth: 150,
+    maxWidth: scaleWidth(150),
   },
   saveButtonText: {
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: scaleFontSize(15),
     textAlign: 'center',
   },
   reportButton: {
     backgroundColor: '#007bff',
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 12,
+    paddingVertical: scaleHeight(15),
+    paddingHorizontal: scaleWidth(30),
+    borderRadius: scaleWidth(12),
     flex: 1,
-    maxWidth: 150,
+    maxWidth: scaleWidth(150),
   },
   reportButtonText: {
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     textAlign: 'center',
   },
   clearAllButton: { 
     backgroundColor: '#fff', 
     borderWidth: 2,
     borderColor: '#dc3545',
-    paddingVertical: 12, 
-    paddingHorizontal: 24, 
-    borderRadius: 8, 
-    marginBottom: 20,
-    width: '100%',
+    paddingVertical: scaleHeight(12), 
+    paddingHorizontal: scaleWidth(24), 
+    borderRadius: scaleWidth(8), 
+    marginBottom: scaleHeight(20),
+    width: '90%',
   },
   clearAllButtonText: { 
     color: '#dc3545', 
     fontWeight: 'bold', 
-    fontSize: 16, 
+    fontSize: scaleFontSize(16), 
     textAlign: 'center' 
   },
 });

@@ -1,5 +1,5 @@
-// screens/TreatmentPatientSearchScreen.tsx
-import React, { useState } from 'react';
+// screens/TreatmentPatientSearchScreen.tsx - ENHANCED VERSION
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,16 @@ import {
   Button,
   Platform,
   ActivityIndicator,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
 import { Q } from '@nozbe/watermelondb';
 import { Picker } from '@react-native-picker/picker';
+import { useFocusEffect } from '@react-navigation/native';
 import Patient from '../db/models/Patient';
 import { SmartImage } from '../components/SmartImage';
+import { searchHistoryManager, SearchHistoryItem } from '../utils/SearchHistoryManager';
 
 const TreatmentPatientSearchScreen = ({ navigation }: any) => {
   const db = useDatabase();
@@ -31,6 +35,37 @@ const TreatmentPatientSearchScreen = ({ navigation }: any) => {
   const [hasSearched, setHasSearched] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Smart search features
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([]);
+  const [frequentlySearched, setFrequentlySearched] = useState<SearchHistoryItem[]>([]);
+  const [showHistory, setShowHistory] = useState(true);
+  const [activeSearch, setActiveSearch] = useState(false);
+
+  // Load search history and frequently searched when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadSearchData();
+    }, [])
+  );
+
+  const loadSearchData = async () => {
+    const history = await searchHistoryManager.loadHistory();
+    const frequent = await searchHistoryManager.getFrequentlySearched();
+    setSearchHistory(history);
+    setFrequentlySearched(frequent);
+  };
+
+  // Track if user is actively typing
+  useEffect(() => {
+    const hasInput = firstName.trim() || lastName.trim() || age.trim() || gender || location.trim();
+    setActiveSearch(hasInput);
+    
+    // Hide history when user starts typing
+    if (hasInput) {
+      setShowHistory(false);
+    }
+  }, [firstName, lastName, age, gender, location]);
+
   const handleSearch = async () => {
     // Check if at least one field has input
     const hasInput = firstName.trim() || lastName.trim() || age.trim() || gender || location.trim();
@@ -38,11 +73,13 @@ const TreatmentPatientSearchScreen = ({ navigation }: any) => {
     if (!hasInput) {
       setSearchResults([]);
       setHasSearched(false);
+      setShowHistory(true);
       return;
     }
 
     setIsSearching(true);
     setHasSearched(true);
+    setShowHistory(false);
 
     try {
       // Build query conditions dynamically
@@ -107,11 +144,103 @@ const TreatmentPatientSearchScreen = ({ navigation }: any) => {
     setLocation('');
     setSearchResults([]);
     setHasSearched(false);
+    setShowHistory(true);
+    setActiveSearch(false);
   };
 
-  const handleBeginTreatment = (patient: Patient) => {
+  const handleBeginTreatment = async (patient: Patient) => {
+    // Add to search history
+    await searchHistoryManager.addToHistory({
+      id: patient.id,
+      firstName: patient.firstName,
+      lastName: patient.lastName,
+      age: patient.age,
+      gender: patient.gender,
+      location: patient.location,
+    });
+
     navigation.navigate('Treatment', { patientId: patient.id });
   };
+
+  const handleHistoryItemSelect = async (item: SearchHistoryItem) => {
+    // Add to history again (updates timestamp and count)
+    await searchHistoryManager.addToHistory(item);
+    navigation.navigate('Treatment', { patientId: item.id });
+  };
+
+  const handleRemoveFromHistory = async (patientId: string) => {
+    Alert.alert(
+      'Remove from History',
+      'Remove this patient from search history?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            await searchHistoryManager.removeFromHistory(patientId);
+            await loadSearchData();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearHistory = () => {
+    Alert.alert(
+      'Clear Search History',
+      'Are you sure you want to clear all search history?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: async () => {
+            await searchHistoryManager.clearHistory();
+            await loadSearchData();
+          },
+        },
+      ]
+    );
+  };
+
+  const renderHistoryItem = ({ item }: { item: SearchHistoryItem }) => (
+    <View style={styles.historyCard}>
+      <View style={styles.historyCardContent}>
+        <View style={styles.historyInfo}>
+          <Text style={styles.historyName}>
+            {item.firstName} {item.lastName}
+          </Text>
+          <Text style={styles.historyDetails}>
+            Age: {item.age} • {item.gender}
+          </Text>
+          <Text style={styles.historyLocation}>📍 {item.location}</Text>
+          {item.searchCount > 1 && (
+            <Text style={styles.searchCount}>
+              🔍 Searched {item.searchCount} times
+            </Text>
+          )}
+        </View>
+
+        <TouchableOpacity
+          style={styles.removeButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            handleRemoveFromHistory(item.id);
+          }}
+        >
+          <Text style={styles.removeButtonText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity
+        style={styles.treatmentButton}
+        onPress={() => handleHistoryItemSelect(item)}
+      >
+        <Text style={styles.treatmentButtonText}>Begin Treatment</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   const renderPatientItem = ({ item }: { item: Patient }) => (
     <View style={styles.patientCard}>
@@ -152,9 +281,19 @@ const TreatmentPatientSearchScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
+      {/* Search Form */}
       <View style={styles.searchForm}>
-        <Text style={styles.formTitle}>Search Patient for Treatment</Text>
-        <Text style={styles.formSubtitle}>Enter patient information to find them</Text>
+        <View style={styles.formHeader}>
+          <View>
+            <Text style={styles.formTitle}>Search Patient for Treatment</Text>
+            <Text style={styles.formSubtitle}>Enter patient information to find them</Text>
+          </View>
+          {activeSearch && (
+            <View style={styles.activeSearchBadge}>
+              <Text style={styles.activeSearchText}>🔴 Active</Text>
+            </View>
+          )}
+        </View>
         
         <TextInput
           placeholder="First Name"
@@ -207,28 +346,87 @@ const TreatmentPatientSearchScreen = ({ navigation }: any) => {
         </View>
       </View>
 
+      {/* Results or History */}
       <View style={styles.resultsContainer}>
         {isSearching ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#007bff" />
             <Text style={styles.statusText}>Searching...</Text>
           </View>
-        ) : !hasSearched ? (
-          <Text style={styles.statusText}>Fill in search criteria above</Text>
-        ) : searchResults.length === 0 ? (
-          <Text style={styles.statusText}>No patients found</Text>
-        ) : (
+        ) : showHistory && !hasSearched ? (
+          <ScrollView style={styles.historyContainer}>
+            {/* Frequently Searched Section */}
+            {frequentlySearched.length > 0 && (
+              <View style={styles.historySection}>
+                <View style={styles.historySectionHeader}>
+                  <Text style={styles.historySectionTitle}>⭐ Frequently Treated</Text>
+                  <Text style={styles.historySectionSubtitle}>Quick access to common patients</Text>
+                </View>
+                {frequentlySearched.map((item) => (
+                  <View key={item.id}>
+                    {renderHistoryItem({ item })}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Recent Searches Section */}
+            {searchHistory.length > 0 && (
+              <View style={styles.historySection}>
+                <View style={styles.historySectionHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.historySectionTitle}>🕐 Recent Searches</Text>
+                    <Text style={styles.historySectionSubtitle}>Recently accessed patients</Text>
+                  </View>
+                  <TouchableOpacity onPress={handleClearHistory}>
+                    <Text style={styles.clearHistoryButton}>Clear All</Text>
+                  </TouchableOpacity>
+                </View>
+                {searchHistory.slice(0, 5).map((item) => (
+                  <View key={item.id}>
+                    {renderHistoryItem({ item })}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {searchHistory.length === 0 && frequentlySearched.length === 0 && (
+              <View style={styles.emptyHistoryContainer}>
+                <Text style={styles.emptyHistoryIcon}>🔍</Text>
+                <Text style={styles.emptyHistoryText}>No search history yet</Text>
+                <Text style={styles.emptyHistorySubtext}>
+                  Search for patients to see them here for quick treatment access
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        ) : hasSearched && searchResults.length === 0 ? (
+          <View style={styles.emptyResultsContainer}>
+            <Text style={styles.emptyResultsIcon}>😕</Text>
+            <Text style={styles.statusText}>No patients found</Text>
+            <Text style={styles.emptyResultsSubtext}>Try adjusting your search criteria</Text>
+          </View>
+        ) : hasSearched ? (
           <FlatList
             data={searchResults}
             renderItem={renderPatientItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContainer}
             ListHeaderComponent={
-              <Text style={styles.resultsCount}>
-                {searchResults.length} patient{searchResults.length !== 1 ? 's' : ''} found
-              </Text>
+              <View style={styles.resultsHeader}>
+                <Text style={styles.resultsCount}>
+                  {searchResults.length} patient{searchResults.length !== 1 ? 's' : ''} found
+                </Text>
+                <Text style={styles.resultsSubtext}>Select a patient to begin treatment</Text>
+              </View>
             }
           />
+        ) : (
+          <View style={styles.emptyStateContainer}>
+            <Text style={styles.emptyStateIcon}>👆</Text>
+            <Text style={styles.statusText}>Fill in search criteria above</Text>
+            <Text style={styles.emptyStateSubtext}>Or select from recent searches below</Text>
+          </View>
         )}
       </View>
     </View>
@@ -248,16 +446,34 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
+  formHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
   formTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 4,
     color: '#333',
   },
   formSubtitle: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 16,
+    marginTop: 2,
+  },
+  activeSearchBadge: {
+    backgroundColor: '#d4edda',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#28a745',
+  },
+  activeSearchText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#155724',
   },
   input: {
     borderWidth: 1,
@@ -290,6 +506,161 @@ const styles = StyleSheet.create({
   resultsContainer: {
     flex: 1,
   },
+  historyContainer: {
+    flex: 1,
+  },
+  historySection: {
+    marginBottom: 20,
+  },
+  historySectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  historySectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#495057',
+  },
+  historySectionSubtitle: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 2,
+  },
+  clearHistoryButton: {
+    fontSize: 14,
+    color: '#dc3545',
+    fontWeight: '500',
+  },
+  historyCard: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginVertical: 6,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    overflow: 'hidden',
+  },
+  historyCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  historyInfo: {
+    flex: 1,
+  },
+  historyName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+    color: '#333',
+  },
+  historyDetails: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 2,
+  },
+  historyLocation: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 2,
+  },
+  searchCount: {
+    fontSize: 11,
+    color: '#007bff',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  removeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  removeButtonText: {
+    fontSize: 16,
+    color: '#6c757d',
+    fontWeight: 'bold',
+  },
+  treatmentButton: {
+    backgroundColor: '#28a745',
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  treatmentButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  emptyHistoryContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 40,
+  },
+  emptyHistoryIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyHistoryText: {
+    fontSize: 16,
+    color: '#999',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyHistorySubtext: {
+    fontSize: 14,
+    color: '#bbb',
+    textAlign: 'center',
+  },
+  emptyStateContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 40,
+  },
+  emptyStateIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#bbb',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  emptyResultsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 40,
+  },
+  emptyResultsIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyResultsSubtext: {
+    fontSize: 14,
+    color: '#bbb',
+    textAlign: 'center',
+    marginTop: 8,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -298,18 +669,25 @@ const styles = StyleSheet.create({
   },
   statusText: {
     textAlign: 'center',
-    marginTop: 40,
+    marginTop: 16,
     fontSize: 16,
     color: '#666',
   },
   listContainer: {
     padding: 16,
   },
+  resultsHeader: {
+    marginBottom: 12,
+  },
   resultsCount: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 12,
     fontWeight: '600',
+  },
+  resultsSubtext: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 2,
   },
   patientCard: {
     backgroundColor: '#fff',
@@ -364,17 +742,5 @@ const styles = StyleSheet.create({
   patientLocation: {
     fontSize: 14,
     color: '#666',
-  },
-  treatmentButton: {
-    backgroundColor: '#28a745',
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  treatmentButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
 });

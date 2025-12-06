@@ -1,10 +1,18 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Dimensions, Alert } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useHygieneTreatment, FluorideType } from '../contexts/HygieneTreatmentContext';
 import { database } from '../db';
 import Treatment from '../db/models/Treatment';
 import uuid from 'react-native-uuid';
+
+// Get screen dimensions for responsive scaling
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Responsive scaling functions
+const scaleWidth = (size: number) => (SCREEN_WIDTH / 390) * size;
+const scaleHeight = (size: number) => (SCREEN_HEIGHT / 844) * size;
+const scaleFontSize = (size: number) => Math.round(scaleWidth(size));
 
 // ODA Fee Structure for Hygiene Treatments
 const ODA_FEES = {
@@ -446,63 +454,62 @@ const HygieneTreatmentScreen = ({ route }: any) => {
 };
 
 export default HygieneTreatmentScreen;
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
-    padding: 20,
+    padding: scaleWidth(20),
   },
   header: {
-    fontSize: 24,
+    fontSize: scaleFontSize(24),
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
     color: '#333',
     textAlign: 'center',
   },
   subtext: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#666',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     textAlign: 'center',
   },
   stateIndicator: {
     backgroundColor: '#d4edda',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
+    marginBottom: scaleHeight(16),
     borderLeftWidth: 4,
     borderLeftColor: '#28a745',
   },
   stateIndicatorText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#155724',
     fontWeight: '600',
     textAlign: 'center',
   },
   completedBanner: {
     backgroundColor: '#d4edda',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
+    marginBottom: scaleHeight(20),
     borderLeftWidth: 4,
     borderLeftColor: '#28a745',
   },
   completedText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#155724',
   },
   completedDate: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#155724',
-    marginTop: 4,
+    marginTop: scaleHeight(4),
   },
   inputSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(20),
+    marginBottom: scaleHeight(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -510,33 +517,33 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: '600',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
     color: '#333',
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   inputLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '500',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
     color: '#495057',
   },
   unitOptionsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
   },
   unitOptionButton: {
     backgroundColor: '#f8f9fa',
     borderWidth: 2,
     borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minWidth: 50,
+    borderRadius: scaleWidth(8),
+    paddingHorizontal: scaleWidth(16),
+    paddingVertical: scaleHeight(12),
+    minWidth: scaleWidth(50),
     alignItems: 'center',
   },
   unitOptionButtonSelected: {
@@ -544,7 +551,7 @@ const styles = StyleSheet.create({
     borderColor: '#007bff',
   },
   unitOptionText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#495057',
   },
@@ -554,16 +561,16 @@ const styles = StyleSheet.create({
   fluorideContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: scaleHeight(8),
+    gap: scaleWidth(8),
   },
   fluorideButton: {
     backgroundColor: '#f8f9fa',
     borderWidth: 2,
     borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderRadius: scaleWidth(8),
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(12),
     flex: 1,
     alignItems: 'center',
   },
@@ -572,7 +579,7 @@ const styles = StyleSheet.create({
     borderColor: '#6f42c1',
   },
   fluorideButtonText: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     fontWeight: '600',
     color: '#495057',
     textAlign: 'center',
@@ -582,33 +589,34 @@ const styles = StyleSheet.create({
   },
   fluorideInfo: {
     backgroundColor: '#e7f3ff',
-    borderRadius: 6,
-    padding: 12,
-    marginTop: 8,
+    borderRadius: scaleWidth(6),
+    padding: scaleWidth(12),
+    marginTop: scaleHeight(8),
     borderLeftWidth: 3,
     borderLeftColor: '#6f42c1',
   },
   fluorideInfoText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#495057',
     fontStyle: 'italic',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
+    lineHeight: scaleFontSize(16),
   },
   odaInfo: {
     backgroundColor: '#fff3cd',
-    borderRadius: 6,
-    padding: 8,
-    marginTop: 8,
+    borderRadius: scaleWidth(6),
+    padding: scaleWidth(8),
+    marginTop: scaleHeight(8),
     borderLeftWidth: 3,
     borderLeftColor: '#ffc107',
   },
   odaInfoText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#856404',
     fontWeight: '600',
   },
   inputHint: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#6c757d',
     textAlign: 'center',
     fontStyle: 'italic',
@@ -617,27 +625,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    minHeight: 60,
+    borderRadius: scaleWidth(8),
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(10),
+    fontSize: scaleFontSize(14),
+    minHeight: scaleHeight(60),
   },
   notesInput: {
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    minHeight: 80,
+    borderRadius: scaleWidth(8),
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(10),
+    fontSize: scaleFontSize(14),
+    minHeight: scaleHeight(80),
   },
   billingSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(20),
+    marginBottom: scaleHeight(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -646,9 +654,9 @@ const styles = StyleSheet.create({
   },
   billingCard: {
     backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
+    marginBottom: scaleHeight(8),
     borderLeftWidth: 4,
     borderLeftColor: '#007bff',
   },
@@ -656,27 +664,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   billingCode: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: 'bold',
     color: '#007bff',
   },
   billingPrice: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: 'bold',
     color: '#28a745',
   },
   billingDescription: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#495057',
   },
   totalSection: {
     borderTopWidth: 2,
     borderTopColor: '#e9ecef',
-    paddingTop: 12,
-    marginTop: 8,
+    paddingTop: scaleHeight(12),
+    marginTop: scaleHeight(8),
   },
   totalRow: {
     flexDirection: 'row',
@@ -684,23 +692,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   totalLabel: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: 'bold',
     color: '#333',
   },
   totalAmount: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: scaleFontSize(20),
+    fontWeight: 'bold', 
     color: '#28a745',
   },
   actionSection: {
-    gap: 12,
-    marginBottom: 20,
+    gap: scaleHeight(12),
+    marginBottom: scaleHeight(20),
   },
   actionButton: {
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(14),
+    paddingHorizontal: scaleWidth(20),
     alignItems: 'center',
   },
   completeButton: {
@@ -712,7 +720,7 @@ const styles = StyleSheet.create({
     borderColor: '#dc3545',
   },
   actionButtonText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#fff',
   },

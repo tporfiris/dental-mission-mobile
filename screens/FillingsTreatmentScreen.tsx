@@ -11,6 +11,7 @@ import {
   Modal,
   TextInput,
   SafeAreaView,
+  Dimensions,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { database } from '../db';
@@ -19,7 +20,17 @@ import uuid from 'react-native-uuid';
 
 import { useFillingsTreatment } from '../contexts/FillingsTreatmentContext';
 
+// Get screen dimensions for responsive scaling
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+// Responsive scaling functions
+const scaleWidth = (size: number) => (SCREEN_WIDTH / 390) * size;
+const scaleHeight = (size: number) => (SCREEN_HEIGHT / 844) * size;
+const scaleFontSize = (size: number) => Math.round(scaleWidth(size));
+
+// Chart dimensions that scale with screen size
+const CHART_WIDTH = Math.min(SCREEN_WIDTH * 0.92, 360);
+const CHART_HEIGHT = CHART_WIDTH * 1.33;
 
 
 // ODA Fee Structure for Filling Treatments
@@ -470,14 +481,16 @@ const FillingsTreatmentScreen = ({ route }: any) => {
   };
 
   const getToothPosition = (toothId: string) => {
-    const chartCenter = { x: 180, y: 135 };
+    const chartCenter = { x: CHART_WIDTH / 2, y: CHART_HEIGHT / 2.85 };
     const offset = toothOffsets[toothId];
+    const scale = CHART_WIDTH / 360;
+    const toothSize = scaleWidth(30);
+    
     return {
-      left: chartCenter.x + offset.x - 15,
-      top: chartCenter.y + offset.y - 15
+      left: chartCenter.x + (offset.x * scale) - (toothSize / 2),
+      top: chartCenter.y + (offset.y * scale) - (toothSize / 2)
     };
   };
-
   const getToothStyle = (toothId: string) => {
     const treatment = treatments[toothId];
     if (treatment.completed) return styles.toothCompleted;
@@ -712,9 +725,7 @@ const FillingsTreatmentScreen = ({ route }: any) => {
           <Text style={styles.chartInstructions}>
             Tap to treat • Long press switchable teeth (11-15, 21-25, 31-35, 41-45) to toggle Primary/Adult
           </Text>
-          <View style={styles.dentalChart}>
-            <Text style={styles.upperArchLabel}>Upper Arch</Text>
-            <Text style={styles.lowerArchLabel}>Lower Arch</Text>
+          <View style={[styles.dentalChart, { width: CHART_WIDTH, height: CHART_HEIGHT }]}>
             
             {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
               renderTooth(toothId)
@@ -1102,8 +1113,6 @@ const FillingsTreatmentScreen = ({ route }: any) => {
 
 export default FillingsTreatmentScreen;
 
-// FillingsTreatmentScreen.tsx - PART 8 (StyleSheet)
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1111,44 +1120,44 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-    padding: 20,
+    padding: scaleWidth(20),
   },
   header: {
-    fontSize: 24,
+    fontSize: scaleFontSize(24),
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
     color: '#333',
   },
   subtext: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#666',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   completedBanner: {
     backgroundColor: '#d4edda',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
+    marginBottom: scaleHeight(20),
     borderLeftWidth: 4,
     borderLeftColor: '#28a745',
   },
   completedBannerText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#155724',
   },
   completedDate: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#155724',
-    marginTop: 4,
+    marginTop: scaleHeight(4),
   },
   summaryCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(16),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1156,20 +1165,20 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     color: '#333',
   },
   summaryText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#495057',
   },
   chartCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(16),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1177,42 +1186,38 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   chartInstructions: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#666',
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     fontStyle: 'italic',
+    lineHeight: scaleFontSize(16),
   },
   dentalChart: {
-    width: 360,
-    height: 480,
     position: 'relative',
     alignSelf: 'center',
+    marginBottom: scaleHeight(20),
   },
   upperArchLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-    top: 50,
-    left: 150,
-    width: 60,
+    width: scaleWidth(60),
   },
   lowerArchLabel: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
     position: 'absolute',
-    top: 390,
-    left: 150,
-    width: 60,
+    width: scaleWidth(60),
   },
   toothCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: scaleWidth(30),
+    height: scaleWidth(30),
+    borderRadius: scaleWidth(15),
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -1220,7 +1225,7 @@ const styles = StyleSheet.create({
   toothLabel: {
     color: 'white',
     fontWeight: '700',
-    fontSize: 11,
+    fontSize: scaleFontSize(11),
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
@@ -1228,18 +1233,18 @@ const styles = StyleSheet.create({
   primaryToothLabel: {
     color: '#000000',
     fontWeight: '700',
-    fontSize: 11,
+    fontSize: scaleFontSize(11),
     textShadowColor: 'rgba(255, 255, 255, 0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
   switchIndicator: {
     position: 'absolute',
-    top: -10,
-    left: -10,
-    borderRadius: 7,
-    width: 14,
-    height: 14,
+    top: scaleWidth(-10),
+    left: scaleWidth(-10),
+    borderRadius: scaleWidth(7),
+    width: scaleWidth(14),
+    height: scaleWidth(14),
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1.5,
@@ -1253,37 +1258,37 @@ const styles = StyleSheet.create({
   },
   switchText: {
     color: 'white',
-    fontSize: 8,
+    fontSize: scaleFontSize(8),
     fontWeight: 'bold',
   },
   statusIndicator: {
     position: 'absolute',
-    bottom: -16,
+    bottom: scaleHeight(-16),
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    borderRadius: 6,
-    paddingHorizontal: 2,
-    paddingVertical: 1,
-    maxWidth: 60,
+    borderRadius: scaleWidth(6),
+    paddingHorizontal: scaleWidth(2),
+    paddingVertical: scaleHeight(1),
+    maxWidth: scaleWidth(60),
   },
   statusText: {
     color: 'white',
-    fontSize: 7,
+    fontSize: scaleFontSize(7),
     fontWeight: '600',
   },
   completedFlag: {
     position: 'absolute',
-    top: -8,
-    right: -8,
+    top: scaleWidth(-8),
+    right: scaleWidth(-8),
     backgroundColor: '#28a745',
-    borderRadius: 8,
-    width: 16,
-    height: 16,
+    borderRadius: scaleWidth(8),
+    width: scaleWidth(16),
+    height: scaleWidth(16),
     justifyContent: 'center',
     alignItems: 'center',
   },
   completedText: {
     color: 'white',
-    fontSize: 10,
+    fontSize: scaleFontSize(10),
     fontWeight: 'bold',
   },
   toothNormal: {
@@ -1296,27 +1301,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#28a745',
   },
   legendContainer: {
-    marginTop: 20,
-    paddingTop: 16,
+    marginTop: scaleHeight(20),
+    paddingTop: scaleHeight(16),
     borderTopWidth: 1,
     borderTopColor: '#e9ecef',
   },
   legendTitle: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
     textAlign: 'center',
   },
   legendRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 24,
+    gap: scaleWidth(24),
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: scaleWidth(8),
   },
   legendIndicator: {
     position: 'relative',
@@ -1324,14 +1329,14 @@ const styles = StyleSheet.create({
     left: 0,
   },
   legendText: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     color: '#495057',
   },
   billingSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(16),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1340,9 +1345,9 @@ const styles = StyleSheet.create({
   },
   codeCard: {
     backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
+    marginBottom: scaleHeight(8),
     borderLeftWidth: 4,
     borderLeftColor: '#007bff',
   },
@@ -1350,38 +1355,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   codeNumber: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: 'bold',
     color: '#007bff',
     flex: 1,
   },
   codePrice: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: 'bold',
     color: '#28a745',
   },
   codeDescription: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     color: '#495057',
-    marginBottom: 2,
+    marginBottom: scaleHeight(2),
   },
   codeCategory: {
-    fontSize: 11,
+    fontSize: scaleFontSize(11),
     color: '#6c757d',
     backgroundColor: '#e9ecef',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 3,
+    paddingHorizontal: scaleWidth(6),
+    paddingVertical: scaleHeight(2),
+    borderRadius: scaleWidth(3),
     alignSelf: 'flex-start',
   },
   totalSection: {
     borderTopWidth: 2,
     borderTopColor: '#e9ecef',
-    paddingTop: 12,
-    marginTop: 8,
+    paddingTop: scaleHeight(12),
+    marginTop: scaleHeight(8),
   },
   totalRow: {
     flexDirection: 'row',
@@ -1389,20 +1394,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   totalLabel: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: 'bold',
     color: '#333',
   },
   totalAmount: {
-    fontSize: 20,
+    fontSize: scaleFontSize(20),
     fontWeight: 'bold',
     color: '#28a745',
   },
   notesSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(16),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -1413,21 +1418,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#e9ecef',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    minHeight: 80,
+    borderRadius: scaleWidth(8),
+    paddingHorizontal: scaleWidth(12),
+    paddingVertical: scaleHeight(10),
+    fontSize: scaleFontSize(14),
+    minHeight: scaleHeight(80),
   },
   actionSection: {
-    gap: 12,
-    marginBottom: 20,
+    gap: scaleHeight(12),
+    marginBottom: scaleHeight(20),
   },
   completeButton: {
     backgroundColor: '#28a745',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(14),
+    paddingHorizontal: scaleWidth(20),
     alignItems: 'center',
   },
   completedButton: {
@@ -1437,18 +1442,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 2,
     borderColor: '#dc3545',
-    borderRadius: 8,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(14),
+    paddingHorizontal: scaleWidth(20),
     alignItems: 'center',
   },
   actionButtonText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#fff',
   },
   resetButtonText: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#dc3545',
   },
@@ -1461,52 +1466,52 @@ const styles = StyleSheet.create({
   },
   modal: {
     backgroundColor: 'white',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: scaleWidth(20),
+    borderTopRightRadius: scaleWidth(20),
     maxHeight: '90%',
     minHeight: '50%',
   },
   modalHeader: {
-    padding: 20,
+    padding: scaleWidth(20),
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
     alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: 'bold',
     color: '#333',
   },
   toothTypeIndicator: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: 'normal',
     color: '#666',
   },
   switchButton: {
     backgroundColor: '#007bff',
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginTop: 8,
+    borderRadius: scaleWidth(6),
+    paddingVertical: scaleHeight(6),
+    paddingHorizontal: scaleWidth(12),
+    marginTop: scaleHeight(8),
   },
   switchButtonText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '600',
   },
   modalScroll: {
     flex: 1,
   },
   modalScrollContent: {
-    padding: 20,
+    padding: scaleWidth(20),
   },
   modalSection: {
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
   },
   modalLabel: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
     color: '#333',
   },
   surfaceRow: {
@@ -1517,10 +1522,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#dee2e6',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    minWidth: 50,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(10),
+    paddingHorizontal: scaleWidth(14),
+    minWidth: scaleWidth(50),
     alignItems: 'center',
   },
   surfaceBtnActive: {
@@ -1528,7 +1533,7 @@ const styles = StyleSheet.create({
     borderColor: '#007bff',
   },
   surfaceBtnText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#495057',
   },
@@ -1538,15 +1543,15 @@ const styles = StyleSheet.create({
   materialGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: scaleWidth(8),
   },
   materialBtn: {
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#dee2e6',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(10),
+    paddingHorizontal: scaleWidth(12),
     alignItems: 'center',
     width: '48%',
   },
@@ -1555,7 +1560,7 @@ const styles = StyleSheet.create({
     borderColor: '#28a745',
   },
   materialBtnText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '500',
     color: '#495057',
     textAlign: 'center',
@@ -1565,15 +1570,15 @@ const styles = StyleSheet.create({
   },
   optionRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: scaleWidth(10),
   },
   optionBtn: {
     flex: 1,
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#dee2e6',
-    borderRadius: 8,
-    paddingVertical: 10,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(10),
     alignItems: 'center',
   },
   optionBtnActive: {
@@ -1581,7 +1586,7 @@ const styles = StyleSheet.create({
     borderColor: '#28a745',
   },
   optionBtnText: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     fontWeight: '500',
     color: '#495057',
   },
@@ -1590,15 +1595,15 @@ const styles = StyleSheet.create({
   },
   yesNoRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: scaleWidth(10),
   },
   yesNoBtn: {
     flex: 1,
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#dee2e6',
-    borderRadius: 8,
-    paddingVertical: 10,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(10),
     alignItems: 'center',
   },
   yesBtn: {
@@ -1610,7 +1615,7 @@ const styles = StyleSheet.create({
     borderColor: '#28a745',
   },
   yesNoBtnText: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     fontWeight: '500',
     color: '#495057',
   },
@@ -1622,15 +1627,15 @@ const styles = StyleSheet.create({
   },
   crownMaterialRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: scaleWidth(8),
   },
   crownMaterialBtn: {
     flex: 1,
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#dee2e6',
-    borderRadius: 8,
-    paddingVertical: 10,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(10),
     alignItems: 'center',
   },
   crownMaterialBtnActive: {
@@ -1638,7 +1643,7 @@ const styles = StyleSheet.create({
     borderColor: '#6f42c1',
   },
   crownMaterialBtnText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '500',
     color: '#495057',
     textAlign: 'center',
@@ -1648,14 +1653,14 @@ const styles = StyleSheet.create({
   },
   primaryToothNotice: {
     backgroundColor: '#e1f5fe',
-    borderRadius: 6,
-    padding: 8,
-    marginBottom: 8,
+    borderRadius: scaleWidth(6),
+    padding: scaleWidth(8),
+    marginBottom: scaleHeight(8),
     borderLeftWidth: 3,
     borderLeftColor: '#29b6f6',
   },
   primaryToothNoticeText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#0277bd',
     fontWeight: '500',
   },
@@ -1663,17 +1668,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#dee2e6',
-    borderRadius: 8,
-    paddingVertical: 12,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(12),
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: scaleHeight(10),
   },
   toggleBtnActive: {
     backgroundColor: '#007bff',
     borderColor: '#007bff',
   },
   toggleBtnText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '500',
     color: '#495057',
   },
@@ -1681,31 +1686,31 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   canalSection: {
-    marginTop: 10,
-    paddingTop: 10,
+    marginTop: scaleHeight(10),
+    paddingTop: scaleHeight(10),
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
   },
   canalRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: scaleWidth(10),
   },
   canalBtn: {
     backgroundColor: '#f8f9fa',
     borderWidth: 1,
     borderColor: '#dee2e6',
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(10),
+    paddingHorizontal: scaleWidth(16),
     alignItems: 'center',
-    minWidth: 50,
+    minWidth: scaleWidth(50),
   },
   canalBtnActive: {
     backgroundColor: '#6f42c1',
     borderColor: '#6f42c1',
   },
   canalBtnText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#495057',
   },
@@ -1714,63 +1719,63 @@ const styles = StyleSheet.create({
   },
   treatmentSummary: {
     backgroundColor: '#e7f3ff',
-    borderRadius: 8,
-    padding: 12,
-    marginTop: 10,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
+    marginTop: scaleHeight(10),
   },
   summaryTitle: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '600',
     color: '#007bff',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   summaryFormat: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: 'bold',
     color: '#007bff',
   },
   modalFooter: {
     flexDirection: 'row',
-    padding: 20,
+    padding: scaleWidth(20),
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
-    gap: 12,
+    gap: scaleWidth(12),
   },
   cancelBtn: {
     flex: 1,
     backgroundColor: '#fff',
     borderWidth: 2,
     borderColor: '#6c757d',
-    borderRadius: 8,
-    paddingVertical: 12,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(12),
     alignItems: 'center',
   },
   cancelBtnText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: '#6c757d',
   },
   clearBtn: {
     flex: 1,
     backgroundColor: '#6c757d',
-    borderRadius: 8,
-    paddingVertical: 12,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(12),
     alignItems: 'center',
   },
   clearBtnText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: 'white',
   },
   doneBtn: {
     flex: 2,
     backgroundColor: '#007bff',
-    borderRadius: 8,
-    paddingVertical: 12,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(12),
     alignItems: 'center',
   },
   doneBtnText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     fontWeight: '600',
     color: 'white',
   },

@@ -51,6 +51,7 @@ interface Treatment {
   notes: string;
   clinicianName: string;
   completedAt: Date;
+  syncedAt?: Date; // ✅ ADD THIS LINE
 }
 
 interface Assessment {
@@ -60,6 +61,7 @@ interface Assessment {
   data: string;
   clinicianEmail: string;
   createdAt: Date;
+  syncedAt?: Date; // ✅ ADD THIS LINE
 }
 
 interface DashboardFilters {
@@ -145,7 +147,8 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           billingCodes: typeof data.billingCodes === 'string' ? data.billingCodes : JSON.stringify(data.billingCodes || []),
           notes: typeof data.notes === 'string' ? data.notes : JSON.stringify(data.notes || {}),
           clinicianName: data.clinicianName || 'Unknown',
-          completedAt: safeToDate(data.completedAt || data.createdAt || data.syncedAt)
+          completedAt: safeToDate(data.completedAt || data.createdAt || data.syncedAt),
+          syncedAt: safeToDate(data.syncedAt) // ✅ ADD THIS LINE
         };
       });
 
@@ -158,7 +161,8 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           assessmentType: data.assessmentType || 'unknown',
           data: typeof data.data === 'string' ? data.data : JSON.stringify(data.data || {}),
           clinicianEmail: data.clinicianEmail || data.clinicianId || 'Unknown',
-          createdAt: safeToDate(data.createdAt || data.syncedAt)
+          createdAt: safeToDate(data.createdAt || data.syncedAt),
+          syncedAt: safeToDate(data.syncedAt) // ✅ ADD THIS LINE
         };
       });
 

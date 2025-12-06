@@ -1,7 +1,9 @@
 // utils/SearchHistoryManager.ts
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// WatermelonDB VERSION (uses your existing database)
 
-const SEARCH_HISTORY_KEY = '@patient_search_history';
+import { database } from '../db';
+import { Q } from '@nozbe/watermelondb';
+
 const MAX_HISTORY_ITEMS = 10;
 
 export interface SearchHistoryItem {
@@ -12,22 +14,48 @@ export interface SearchHistoryItem {
   gender: string;
   location: string;
   timestamp: number;
-  searchCount: number; // Track how many times this patient was searched
+  searchCount: number;
 }
 
+// You'll need to create a SearchHistory model and add it to your schema
+// For now, we'll use a hybrid approach with in-memory + Patient queries
+
 class SearchHistoryManager {
-  // Load search history from storage
+  private recentSearchIds: string[] = [];
+  private searchCounts: Map<string, number> = new Map();
+
+  // Load search history from recent IDs + fetch from database
   async loadHistory(): Promise<SearchHistoryItem[]> {
     try {
-      const historyJson = await AsyncStorage.getItem(SEARCH_HISTORY_KEY);
-      if (historyJson) {
-        const history = JSON.parse(historyJson);
-        // Sort by timestamp (most recent first)
-        return history.sort((a: SearchHistoryItem, b: SearchHistoryItem) => 
-          b.timestamp - a.timestamp
-        );
+      if (this.recentSearchIds.length === 0) {
+        return [];
       }
-      return [];
+
+      // Fetch patients from database based on recent search IDs
+      const patients = await database.get('patients')
+        .query(Q.where('id', Q.oneOf(this.recentSearchIds)))
+        .fetch();
+
+      // Map to SearchHistoryItem with preserved order
+      const historyItems: SearchHistoryItem[] = this.recentSearchIds
+        .map(id => {
+          const patient = patients.find(p => p.id === id);
+          if (!patient) return null;
+
+          return {
+            id: patient.id,
+            firstName: (patient as any).firstName,
+            lastName: (patient as any).lastName,
+            age: (patient as any).age,
+            gender: (patient as any).gender,
+            location: (patient as any).location,
+            timestamp: Date.now(), // Could be improved by storing actual timestamps
+            searchCount: this.searchCounts.get(id) || 1,
+          };
+        })
+        .filter((item): item is SearchHistoryItem => item !== null);
+
+      return historyItems;
     } catch (error) {
       console.error('Error loading search history:', error);
       return [];
@@ -44,32 +72,18 @@ class SearchHistoryManager {
     location: string;
   }): Promise<void> {
     try {
-      const history = await this.loadHistory();
+      // Update search count
+      const currentCount = this.searchCounts.get(patient.id) || 0;
+      this.searchCounts.set(patient.id, currentCount + 1);
+
+      // Remove if already exists (to move to front)
+      this.recentSearchIds = this.recentSearchIds.filter(id => id !== patient.id);
       
-      // Check if patient already exists in history
-      const existingIndex = history.findIndex(item => item.id === patient.id);
-      
-      if (existingIndex !== -1) {
-        // Update existing entry
-        history[existingIndex] = {
-          ...history[existingIndex],
-          ...patient,
-          timestamp: Date.now(),
-          searchCount: history[existingIndex].searchCount + 1,
-        };
-      } else {
-        // Add new entry
-        history.unshift({
-          ...patient,
-          timestamp: Date.now(),
-          searchCount: 1,
-        });
-      }
-      
+      // Add to front
+      this.recentSearchIds.unshift(patient.id);
+
       // Keep only the most recent MAX_HISTORY_ITEMS
-      const trimmedHistory = history.slice(0, MAX_HISTORY_ITEMS);
-      
-      await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(trimmedHistory));
+      this.recentSearchIds = this.recentSearchIds.slice(0, MAX_HISTORY_ITEMS);
     } catch (error) {
       console.error('Error adding to search history:', error);
     }
@@ -79,6 +93,7 @@ class SearchHistoryManager {
   async getFrequentlySearched(): Promise<SearchHistoryItem[]> {
     try {
       const history = await this.loadHistory();
+      
       // Sort by search count (highest first), then by timestamp
       return history
         .filter(item => item.searchCount > 1)
@@ -98,7 +113,8 @@ class SearchHistoryManager {
   // Clear search history
   async clearHistory(): Promise<void> {
     try {
-      await AsyncStorage.removeItem(SEARCH_HISTORY_KEY);
+      this.recentSearchIds = [];
+      this.searchCounts.clear();
     } catch (error) {
       console.error('Error clearing search history:', error);
     }
@@ -107,9 +123,8 @@ class SearchHistoryManager {
   // Remove a specific item from history
   async removeFromHistory(patientId: string): Promise<void> {
     try {
-      const history = await this.loadHistory();
-      const filteredHistory = history.filter(item => item.id !== patientId);
-      await AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(filteredHistory));
+      this.recentSearchIds = this.recentSearchIds.filter(id => id !== patientId);
+      this.searchCounts.delete(patientId);
     } catch (error) {
       console.error('Error removing from history:', error);
     }

@@ -1,3 +1,5 @@
+// DentureAssessmentScreen.tsx
+
 import React, { useState } from 'react';
 import {
   View,
@@ -7,9 +9,18 @@ import {
   ScrollView,
   Alert,
   Modal,
+  Dimensions,
 } from 'react-native';
 import { useDentureAssessment } from '../contexts/DentureAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
+
+// Get screen dimensions for responsive scaling
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Responsive scaling functions
+const scaleWidth = (size: number) => (SCREEN_WIDTH / 390) * size;
+const scaleHeight = (size: number) => (SCREEN_HEIGHT / 844) * size;
+const scaleFontSize = (size: number) => Math.round(scaleWidth(size));
 
 const DENTURE_TYPES = [
   'none',
@@ -296,25 +307,25 @@ export default DentureAssessmentScreen;
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
+    padding: scaleWidth(20),
     alignItems: 'center',
   },
   header: {
-    fontSize: 22,
+    fontSize: scaleFontSize(22),
     fontWeight: 'bold',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   subtext: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#665',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
   },
   
   voiceRecordingSection: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
+    marginBottom: scaleHeight(20),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -325,15 +336,16 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   voiceRecordingTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   voiceRecordingSubtitle: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#666',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
+    lineHeight: scaleFontSize(16),
   },
   voiceRecorderButton: {
     backgroundColor: '#6f42c1',
@@ -341,15 +353,15 @@ const styles = StyleSheet.create({
   
   completedBanner: {
     backgroundColor: '#d4edda',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 20,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
+    marginBottom: scaleHeight(20),
     width: '100%',
     borderLeftWidth: 4,
     borderLeftColor: '#28a745',
   },
   completedText: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#155724',
     fontWeight: '500',
     textAlign: 'center',
@@ -360,57 +372,61 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: scaleWidth(20),
   },
   modal: {
     backgroundColor: 'white',
-    borderRadius: 16,
+    borderRadius: scaleWidth(16),
     width: '100%',
-    maxWidth: 380,
+    maxWidth: scaleWidth(380),
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
   },
+  header: {
+    padding: scaleWidth(20),
+  },
   title: {
-    fontSize: 20,
+    fontSize: scaleFontSize(20),
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: scaleHeight(4),
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: scaleFontSize(14),
     color: '#666',
     fontWeight: '500',
   },
   content: {
-    padding: 20,
+    padding: scaleWidth(20),
   },
   instruction: {
-    fontSize: 15,
+    fontSize: scaleFontSize(15),
     color: '#495057',
-    marginBottom: 20,
+    marginBottom: scaleHeight(20),
     textAlign: 'center',
+    lineHeight: scaleFontSize(20),
   },
   checkItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-    padding: 12,
+    marginBottom: scaleHeight(16),
+    padding: scaleWidth(12),
     backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+    borderRadius: scaleWidth(8),
   },
   checkButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
+    width: scaleWidth(28),
+    height: scaleWidth(28),
+    borderRadius: scaleWidth(6),
     borderWidth: 2,
     borderColor: '#dee2e6',
     backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: scaleWidth(12),
   },
   checkButtonActive: {
     backgroundColor: '#28a745',
@@ -418,46 +434,47 @@ const styles = StyleSheet.create({
   },
   checkMark: {
     color: 'white',
-    fontSize: 18,
+    fontSize: scaleFontSize(18),
     fontWeight: 'bold',
   },
   checkTextContainer: {
     flex: 1,
   },
   checkTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
     color: '#333',
-    marginBottom: 2,
+    marginBottom: scaleHeight(2),
   },
   checkDescription: {
-    fontSize: 13,
+    fontSize: scaleFontSize(13),
     color: '#6c757d',
+    lineHeight: scaleFontSize(17),
   },
   actions: {
     flexDirection: 'row',
-    padding: 20,
+    padding: scaleWidth(20),
     borderTopWidth: 1,
     borderTopColor: '#e9ecef',
-    gap: 12,
+    gap: scaleWidth(12),
   },
   cancelButton: {
     flex: 1,
     backgroundColor: '#6c757d',
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(14),
     alignItems: 'center',
   },
   cancelButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
   },
   proceedButton: {
     flex: 1,
     backgroundColor: '#e9ecef',
-    borderRadius: 8,
-    paddingVertical: 14,
+    borderRadius: scaleWidth(8),
+    paddingVertical: scaleHeight(14),
     alignItems: 'center',
   },
   proceedButtonEnabled: {
@@ -465,7 +482,7 @@ const styles = StyleSheet.create({
   },
   proceedButtonText: {
     color: '#6c757d',
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
   },
   proceedButtonTextEnabled: {
@@ -473,17 +490,17 @@ const styles = StyleSheet.create({
   },
 
   cardTitle: {
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     color: '#333',
   },
   dentureTypeCard: {
     backgroundColor: '#f8f9fa',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
     width: '100%',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
     borderWidth: 1,
     borderColor: '#e9ecef',
   },
@@ -494,10 +511,10 @@ const styles = StyleSheet.create({
   },
   dentureOption: {
     backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(10),
     width: '48%',
-    marginBottom: 8,
+    marginBottom: scaleHeight(8),
     borderWidth: 2,
     borderColor: '#e9ecef',
     alignItems: 'center',
@@ -510,7 +527,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   dentureOptionText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '600',
     color: '#333',
     textAlign: 'center',
@@ -523,17 +540,17 @@ const styles = StyleSheet.create({
   },
   relineCard: {
     backgroundColor: '#fff3cd',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: scaleWidth(12),
+    padding: scaleWidth(16),
     width: '100%',
-    marginBottom: 16,
+    marginBottom: scaleHeight(16),
     borderWidth: 1,
     borderColor: '#ffeaa7',
   },
   relineSubtext: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     color: '#856404',
-    marginBottom: 12,
+    marginBottom: scaleHeight(12),
     fontStyle: 'italic',
   },
   relineGrid: {
@@ -542,8 +559,8 @@ const styles = StyleSheet.create({
   },
   relineOption: {
     backgroundColor: 'white',
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: scaleWidth(8),
+    padding: scaleWidth(12),
     width: '48%',
     borderWidth: 2,
     borderColor: '#ffeaa7',
@@ -554,7 +571,7 @@ const styles = StyleSheet.create({
     borderColor: '#ffc107',
   },
   relineOptionText: {
-    fontSize: 12,
+    fontSize: scaleFontSize(12),
     fontWeight: '600',
     color: '#856404',
     textAlign: 'center',
@@ -564,32 +581,32 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: '#007bff',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    marginBottom: 12,
+    paddingVertical: scaleHeight(12),
+    paddingHorizontal: scaleWidth(24),
+    borderRadius: scaleWidth(8),
+    marginBottom: scaleHeight(12),
     width: '100%',
   },
   saveButtonText: {
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: scaleFontSize(16),
     textAlign: 'center',
   },
   clearAllButton: { 
     backgroundColor: '#fff', 
     borderWidth: 2,
     borderColor: '#dc3545',
-    paddingVertical: 12, 
-    paddingHorizontal: 24, 
-    borderRadius: 8, 
-    marginBottom: 20,
+    paddingVertical: scaleHeight(12), 
+    paddingHorizontal: scaleWidth(24), 
+    borderRadius: scaleWidth(8), 
+    marginBottom: scaleHeight(20),
     width: '100%',
   },
   clearAllButtonText: { 
     color: '#dc3545', 
     fontWeight: 'bold', 
-    fontSize: 16, 
+    fontSize: scaleFontSize(16), 
     textAlign: 'center' 
   },
 });
