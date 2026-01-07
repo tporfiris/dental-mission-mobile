@@ -1,4 +1,4 @@
-// screens/DentureTreatmentScreen.tsx - COMPLETE VERSION with Clear All
+// screens/DentureTreatmentScreen.tsx - FIXED VERSION with proper JSON notes format
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal, Dimensions } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
@@ -147,9 +147,21 @@ const DentureTreatmentScreen = ({ route }: any) => {
           const treatmentId = uuid.v4();
           const odaInfo = ODA_FEES[placement.dentureType];
 
-          const notesText = placement.notes
-            ? `${odaInfo.description}. ${placement.notes}`
-            : odaInfo.description;
+          // ✅ FIXED: Store treatment data in proper JSON format
+          const treatmentData: any = {
+            dentureType: placement.dentureType,
+            description: odaInfo.description
+          };
+
+          // Add placement-specific notes if present
+          if (placement.notes && placement.notes.trim()) {
+            treatmentData.placementNotes = placement.notes.trim();
+          }
+
+          // Add general treatment notes if present
+          if (generalNotes && generalNotes.trim()) {
+            treatmentData.notes = generalNotes.trim();
+          }
 
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
@@ -164,24 +176,7 @@ const DentureTreatmentScreen = ({ route }: any) => {
               description: odaInfo.description,
               dentureType: placement.dentureType
             }]);
-            treatment.notes = notesText;
-            treatment.clinicianName = clinicianName;
-            treatment.completedAt = completedDate;
-          });
-        }
-
-        // Save general notes if provided
-        if (generalNotes.trim()) {
-          const generalNotesId = uuid.v4();
-          await database.get<Treatment>('treatments').create(treatment => {
-            treatment._raw.id = generalNotesId;
-            treatment.patientId = patientId;
-            treatment.type = 'denture';
-            treatment.tooth = '';
-            treatment.units = 0;
-            treatment.value = 0;
-            treatment.billingCodes = JSON.stringify([]);
-            treatment.notes = `General Treatment Notes: ${generalNotes}`;
+            treatment.notes = JSON.stringify(treatmentData); // ✅ Save as JSON
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
@@ -307,7 +302,7 @@ const DentureTreatmentScreen = ({ route }: any) => {
                       </Text>
                       <Text style={[
                         styles.dentureTypePrice,
-                        selectedDentureType === type && styles.dentureTyriceSelected
+                        selectedDentureType === type && styles.dentureTypePriceSelected
                       ]}>
                         ${odaInfo.price}
                       </Text>

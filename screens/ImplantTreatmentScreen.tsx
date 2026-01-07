@@ -1,4 +1,4 @@
-// screens/ImplantTreatmentScreen.tsx - COMPLETE VERSION with Clear All
+// screens/ImplantTreatmentScreen.tsx - FIXED VERSION with proper JSON notes format
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal, Dimensions } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
@@ -288,9 +288,22 @@ const ImplantTreatmentScreen = ({ route }: any) => {
           const treatmentId = uuid.v4();
           const odaInfo = ODA_FEES[record.implantType];
 
-          const notesText = record.notes
-            ? `${odaInfo.description} - Tooth ${record.toothNumber}. ${record.notes}`
-            : `${odaInfo.description} - Tooth ${record.toothNumber}`;
+          // ✅ FIXED: Store treatment data in proper JSON format
+          const treatmentData: any = {
+            implantType: record.implantType,
+            description: odaInfo.description,
+            tooth: record.toothNumber
+          };
+
+          // Add implant-specific notes if present
+          if (record.notes && record.notes.trim()) {
+            treatmentData.implantNotes = record.notes.trim();
+          }
+
+          // Add general treatment notes if present
+          if (generalNotes && generalNotes.trim()) {
+            treatmentData.notes = generalNotes.trim();
+          }
 
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
@@ -305,7 +318,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
               description: odaInfo.description,
               implantType: record.implantType
             }]);
-            treatment.notes = notesText;
+            treatment.notes = JSON.stringify(treatmentData); // ✅ Save as JSON
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
@@ -316,14 +329,26 @@ const ImplantTreatmentScreen = ({ route }: any) => {
           const treatmentId = uuid.v4();
           const odaInfo = ODA_FEES['implant-crown'];
 
-          const notesText = record.notes
-            ? `${odaInfo.description} - Tooth ${record.toothNumber}. ${record.notes}`
-            : `${odaInfo.description} - Tooth ${record.toothNumber}`;
+          // ✅ FIXED: Store treatment data in proper JSON format
+          const treatmentData: any = {
+            description: odaInfo.description,
+            tooth: record.toothNumber
+          };
+
+          // Add crown-specific notes if present
+          if (record.notes && record.notes.trim()) {
+            treatmentData.crownNotes = record.notes.trim();
+          }
+
+          // Add general treatment notes if present
+          if (generalNotes && generalNotes.trim()) {
+            treatmentData.notes = generalNotes.trim();
+          }
 
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
             treatment.patientId = patientId;
-            treatment.type = 'implant';
+            treatment.type = 'implant-crown';
             treatment.tooth = record.toothNumber;
             treatment.units = 1;
             treatment.value = odaInfo.price;
@@ -332,24 +357,7 @@ const ImplantTreatmentScreen = ({ route }: any) => {
               price: odaInfo.price,
               description: odaInfo.description
             }]);
-            treatment.notes = notesText;
-            treatment.clinicianName = clinicianName;
-            treatment.completedAt = completedDate;
-          });
-        }
-
-        // Save general notes if provided
-        if (generalNotes.trim()) {
-          const generalNotesId = uuid.v4();
-          await database.get<Treatment>('treatments').create(treatment => {
-            treatment._raw.id = generalNotesId;
-            treatment.patientId = patientId;
-            treatment.type = 'implant';
-            treatment.tooth = '';
-            treatment.units = 0;
-            treatment.value = 0;
-            treatment.billingCodes = JSON.stringify([]);
-            treatment.notes = `General Treatment Notes: ${generalNotes}`;
+            treatment.notes = JSON.stringify(treatmentData); // ✅ Save as JSON
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });

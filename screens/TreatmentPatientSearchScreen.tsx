@@ -1,4 +1,4 @@
-// screens/TreatmentPatientSearchScreen.tsx - ENHANCED VERSION
+// screens/TreatmentPatientSearchScreen.tsx - ENHANCED VERSION WITH SCROLLING AND BETTER TEXT VISIBILITY
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
 import { Q } from '@nozbe/watermelondb';
@@ -280,156 +281,179 @@ const TreatmentPatientSearchScreen = ({ navigation }: any) => {
   );
 
   return (
-    <View style={styles.container}>
-      {/* Search Form */}
-      <View style={styles.searchForm}>
-        <View style={styles.formHeader}>
-          <View>
-            <Text style={styles.formTitle}>Search Patient for Treatment</Text>
-            <Text style={styles.formSubtitle}>Enter patient information to find them</Text>
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <View style={styles.container}>
+        {/* Search Form - Now Scrollable */}
+        <ScrollView 
+          style={styles.searchForm}
+          contentContainerStyle={styles.searchFormContent}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
+        >
+          <View style={styles.formHeader}>
+            <View>
+              <Text style={styles.formTitle}>Search Patient for Treatment</Text>
+              <Text style={styles.formSubtitle}>Enter patient information to find them</Text>
+            </View>
+            {activeSearch && (
+              <View style={styles.activeSearchBadge}>
+                <Text style={styles.activeSearchText}>🔴 Active</Text>
+              </View>
+            )}
           </View>
-          {activeSearch && (
-            <View style={styles.activeSearchBadge}>
-              <Text style={styles.activeSearchText}>🔴 Active</Text>
+          
+          <Text style={styles.label}>First Name</Text>
+          <TextInput
+            placeholder="Enter first name"
+            placeholderTextColor="#999"
+            value={firstName}
+            onChangeText={setFirstName}
+            style={styles.input}
+          />
+          
+          <Text style={styles.label}>Last Name</Text>
+          <TextInput
+            placeholder="Enter last name"
+            placeholderTextColor="#999"
+            value={lastName}
+            onChangeText={setLastName}
+            style={styles.input}
+          />
+          
+          <Text style={styles.label}>Age</Text>
+          <TextInput
+            placeholder="Enter age"
+            placeholderTextColor="#999"
+            value={age}
+            onChangeText={setAge}
+            keyboardType="numeric"
+            style={styles.input}
+          />
+
+          <Text style={styles.label}>Gender</Text>
+          <View style={styles.pickerContainer}>
+            <Picker
+              selectedValue={gender}
+              onValueChange={(itemValue) => setGender(itemValue)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Any" value="" />
+              <Picker.Item label="Male" value="Male" />
+              <Picker.Item label="Female" value="Female" />
+              <Picker.Item label="Other" value="Other" />
+            </Picker>
+          </View>
+
+          <Text style={styles.label}>Location/Village</Text>
+          <TextInput
+            placeholder="Enter location or village"
+            placeholderTextColor="#999"
+            value={location}
+            onChangeText={setLocation}
+            style={styles.input}
+          />
+
+          <View style={styles.buttonRow}>
+            <View style={styles.button}>
+              <Button title="Search" onPress={handleSearch} />
+            </View>
+            <View style={styles.button}>
+              <Button title="Clear" onPress={handleClear} color="#6c757d" />
+            </View>
+          </View>
+        </ScrollView>
+
+        {/* Results or History */}
+        <View style={styles.resultsContainer}>
+          {isSearching ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#007bff" />
+              <Text style={styles.statusText}>Searching...</Text>
+            </View>
+          ) : showHistory && !hasSearched ? (
+            <ScrollView style={styles.historyContainer}>
+              {/* Frequently Searched Section */}
+              {frequentlySearched.length > 0 && (
+                <View style={styles.historySection}>
+                  <View style={styles.historySectionHeader}>
+                    <View>
+                      <Text style={styles.historySectionTitle}>⭐ Frequently Treated</Text>
+                      <Text style={styles.historySectionSubtitle}>Quick access to common patients</Text>
+                    </View>
+                  </View>
+                  {frequentlySearched.map((item) => (
+                    <View key={item.id}>
+                      {renderHistoryItem({ item })}
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Recent Searches Section */}
+              {searchHistory.length > 0 && (
+                <View style={styles.historySection}>
+                  <View style={styles.historySectionHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.historySectionTitle}>🕐 Recent Searches</Text>
+                      <Text style={styles.historySectionSubtitle}>Recently accessed patients</Text>
+                    </View>
+                    <TouchableOpacity onPress={handleClearHistory}>
+                      <Text style={styles.clearHistoryButton}>Clear All</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {searchHistory.slice(0, 5).map((item) => (
+                    <View key={item.id}>
+                      {renderHistoryItem({ item })}
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {searchHistory.length === 0 && frequentlySearched.length === 0 && (
+                <View style={styles.emptyHistoryContainer}>
+                  <Text style={styles.emptyHistoryIcon}>🔍</Text>
+                  <Text style={styles.emptyHistoryText}>No search history yet</Text>
+                  <Text style={styles.emptyHistorySubtext}>
+                    Search for patients to see them here for quick treatment access
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          ) : hasSearched && searchResults.length === 0 ? (
+            <View style={styles.emptyResultsContainer}>
+              <Text style={styles.emptyResultsIcon}>😕</Text>
+              <Text style={styles.statusText}>No patients found</Text>
+              <Text style={styles.emptyResultsSubtext}>Try adjusting your search criteria</Text>
+            </View>
+          ) : hasSearched ? (
+            <FlatList
+              data={searchResults}
+              renderItem={renderPatientItem}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.listContainer}
+              ListHeaderComponent={
+                <View style={styles.resultsHeader}>
+                  <Text style={styles.resultsCount}>
+                    {searchResults.length} patient{searchResults.length !== 1 ? 's' : ''} found
+                  </Text>
+                  <Text style={styles.resultsSubtext}>Select a patient to begin treatment</Text>
+                </View>
+              }
+            />
+          ) : (
+            <View style={styles.emptyStateContainer}>
+              <Text style={styles.emptyStateIcon}>👆</Text>
+              <Text style={styles.statusText}>Fill in search criteria above</Text>
+              <Text style={styles.emptyStateSubtext}>Or select from recent searches below</Text>
             </View>
           )}
         </View>
-        
-        <TextInput
-          placeholder="First Name"
-          value={firstName}
-          onChangeText={setFirstName}
-          style={styles.input}
-        />
-        
-        <TextInput
-          placeholder="Last Name"
-          value={lastName}
-          onChangeText={setLastName}
-          style={styles.input}
-        />
-        
-        <TextInput
-          placeholder="Age"
-          value={age}
-          onChangeText={setAge}
-          keyboardType="numeric"
-          style={styles.input}
-        />
-
-        <Text style={styles.label}>Gender</Text>
-        <Picker
-          selectedValue={gender}
-          onValueChange={(itemValue) => setGender(itemValue)}
-          style={styles.picker}
-        >
-          <Picker.Item label="Any" value="" />
-          <Picker.Item label="Male" value="Male" />
-          <Picker.Item label="Female" value="Female" />
-          <Picker.Item label="Other" value="Other" />
-        </Picker>
-
-        <TextInput
-          placeholder="Location/Village"
-          value={location}
-          onChangeText={setLocation}
-          style={styles.input}
-        />
-
-        <View style={styles.buttonRow}>
-          <View style={styles.button}>
-            <Button title="Search" onPress={handleSearch} />
-          </View>
-          <View style={styles.button}>
-            <Button title="Clear" onPress={handleClear} color="#6c757d" />
-          </View>
-        </View>
       </View>
-
-      {/* Results or History */}
-      <View style={styles.resultsContainer}>
-        {isSearching ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007bff" />
-            <Text style={styles.statusText}>Searching...</Text>
-          </View>
-        ) : showHistory && !hasSearched ? (
-          <ScrollView style={styles.historyContainer}>
-            {/* Frequently Searched Section */}
-            {frequentlySearched.length > 0 && (
-              <View style={styles.historySection}>
-                <View style={styles.historySectionHeader}>
-                  <Text style={styles.historySectionTitle}>⭐ Frequently Treated</Text>
-                  <Text style={styles.historySectionSubtitle}>Quick access to common patients</Text>
-                </View>
-                {frequentlySearched.map((item) => (
-                  <View key={item.id}>
-                    {renderHistoryItem({ item })}
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Recent Searches Section */}
-            {searchHistory.length > 0 && (
-              <View style={styles.historySection}>
-                <View style={styles.historySectionHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.historySectionTitle}>🕐 Recent Searches</Text>
-                    <Text style={styles.historySectionSubtitle}>Recently accessed patients</Text>
-                  </View>
-                  <TouchableOpacity onPress={handleClearHistory}>
-                    <Text style={styles.clearHistoryButton}>Clear All</Text>
-                  </TouchableOpacity>
-                </View>
-                {searchHistory.slice(0, 5).map((item) => (
-                  <View key={item.id}>
-                    {renderHistoryItem({ item })}
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {searchHistory.length === 0 && frequentlySearched.length === 0 && (
-              <View style={styles.emptyHistoryContainer}>
-                <Text style={styles.emptyHistoryIcon}>🔍</Text>
-                <Text style={styles.emptyHistoryText}>No search history yet</Text>
-                <Text style={styles.emptyHistorySubtext}>
-                  Search for patients to see them here for quick treatment access
-                </Text>
-              </View>
-            )}
-          </ScrollView>
-        ) : hasSearched && searchResults.length === 0 ? (
-          <View style={styles.emptyResultsContainer}>
-            <Text style={styles.emptyResultsIcon}>😕</Text>
-            <Text style={styles.statusText}>No patients found</Text>
-            <Text style={styles.emptyResultsSubtext}>Try adjusting your search criteria</Text>
-          </View>
-        ) : hasSearched ? (
-          <FlatList
-            data={searchResults}
-            renderItem={renderPatientItem}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContainer}
-            ListHeaderComponent={
-              <View style={styles.resultsHeader}>
-                <Text style={styles.resultsCount}>
-                  {searchResults.length} patient{searchResults.length !== 1 ? 's' : ''} found
-                </Text>
-                <Text style={styles.resultsSubtext}>Select a patient to begin treatment</Text>
-              </View>
-            }
-          />
-        ) : (
-          <View style={styles.emptyStateContainer}>
-            <Text style={styles.emptyStateIcon}>👆</Text>
-            <Text style={styles.statusText}>Fill in search criteria above</Text>
-            <Text style={styles.emptyStateSubtext}>Or select from recent searches below</Text>
-          </View>
-        )}
-      </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -442,9 +466,13 @@ const styles = StyleSheet.create({
   },
   searchForm: {
     backgroundColor: '#fff',
-    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+    maxHeight: '50%',
+  },
+  searchFormContent: {
+    padding: 16,
+    paddingBottom: 20,
   },
   formHeader: {
     flexDirection: 'row',
@@ -475,6 +503,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#155724',
   },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 6,
+    marginTop: 8,
+  },
   input: {
     borderWidth: 1,
     borderColor: '#ddd',
@@ -484,16 +519,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontSize: 16,
     backgroundColor: '#f9f9f9',
+    color: '#333',
   },
-  label: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 4,
-    marginTop: 4,
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    marginBottom: 12,
+    overflow: 'hidden',
   },
   picker: {
     height: Platform.OS === 'ios' ? 150 : 50,
-    marginBottom: 12,
+    color: '#333',
   },
   buttonRow: {
     flexDirection: 'row',

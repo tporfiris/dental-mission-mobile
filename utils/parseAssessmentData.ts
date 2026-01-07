@@ -482,33 +482,197 @@ export function parseTreatmentDetails(treatment: any): string[] {
       
     case 'extraction':
       details.push(`Tooth: ${treatment.tooth}`);
-      if (billingCodes.length > 0 && billingCodes[0].complexity) {
-        details.push(`Type: ${billingCodes[0].complexity}`);
+      
+      try {
+        // NEW FORMAT - notes is a JSON object
+        const extractionData = typeof treatment.notes === 'string' 
+          ? JSON.parse(treatment.notes) 
+          : treatment.notes;
+          
+        if (extractionData.complexity) {
+          details.push(`Type: ${extractionData.complexity}`);
+        }
+        if (extractionData.notes) {
+          details.push(`Notes: ${extractionData.notes}`);
+        }
+      } catch (e) {
+        // LEGACY FORMAT - try to get complexity from billing codes
+        if (billingCodes.length > 0 && billingCodes[0].complexity) {
+          details.push(`Type: ${billingCodes[0].complexity}`);
+        }
+        // If notes is a plain string (old format), show it
+        if (treatment.notes && typeof treatment.notes === 'string') {
+          try {
+            // Try to parse as JSON first
+            JSON.parse(treatment.notes);
+          } catch {
+            // If it's not JSON, it's a plain string - show it
+            details.push(`Notes: ${treatment.notes}`);
+          }
+        }
       }
       break;
       
     case 'filling':
       details.push(`Tooth: ${treatment.tooth}`);
-      if (treatment.surface && treatment.surface !== 'Various') {
-        details.push(`Surface: ${treatment.surface}`);
+      
+      try {
+        // NEW FORMAT - notes is a JSON object with treatments and summary
+        const fillingData = typeof treatment.notes === 'string' 
+          ? JSON.parse(treatment.notes) 
+          : treatment.notes;
+          
+        // Check for new format with summary
+        if (fillingData.summary) {
+          if (fillingData.summary.teethTreated) {
+            details.push(`Teeth treated: ${fillingData.summary.teethTreated}`);
+          }
+          if (fillingData.summary.totalSurfaces) {
+            details.push(`Total surfaces: ${fillingData.summary.totalSurfaces}`);
+          }
+          if (fillingData.summary.rootCanals > 0) {
+            details.push(`Root canals: ${fillingData.summary.rootCanals}`);
+          }
+          if (fillingData.summary.crowns > 0) {
+            details.push(`Crowns: ${fillingData.summary.crowns}`);
+          }
+        } else {
+          // OLD JSON FORMAT - single tooth treatment
+          if (fillingData.surface || treatment.surface) {
+            const surface = fillingData.surface || treatment.surface;
+            if (surface && surface !== 'Various' && surface !== 'N/A') {
+              details.push(`Surface: ${surface}`);
+            }
+          }
+          
+          if (fillingData.material) {
+            details.push(`Material: ${fillingData.material}`);
+          }
+          
+          if (fillingData.units !== undefined) {
+            details.push(`Units: ${fillingData.units}`);
+          } else if (treatment.units) {
+            details.push(`Units: ${treatment.units}`);
+          }
+        }
+        
+        if (fillingData.notes) {
+          details.push(`Notes: ${fillingData.notes}`);
+        }
+      } catch (e) {
+        // LEGACY FORMAT - use treatment properties directly
+        if (treatment.surface && treatment.surface !== 'Various' && treatment.surface !== 'N/A') {
+          details.push(`Surface: ${treatment.surface}`);
+        }
+        details.push(`Units: ${treatment.units}`);
+        
+        // If notes is a plain string (old format), show it
+        if (treatment.notes && typeof treatment.notes === 'string') {
+          try {
+            // Try to parse as JSON first
+            JSON.parse(treatment.notes);
+          } catch {
+            // If it's not JSON, it's a plain string - show it
+            details.push(`Notes: ${treatment.notes}`);
+          }
+        }
       }
-      details.push(`Units: ${treatment.units}`);
       break;
       
     case 'denture':
-      if (billingCodes.length > 0) {
-        details.push(`Type: ${billingCodes[0].description || 'Denture placement'}`);
-      }
-      if (treatment.notes) {
-        details.push(`Notes: ${treatment.notes}`);
+      try {
+        // NEW FORMAT - notes is a JSON object
+        const dentureData = typeof treatment.notes === 'string' 
+          ? JSON.parse(treatment.notes) 
+          : treatment.notes;
+          
+        if (dentureData.description) {
+          details.push(`Type: ${dentureData.description}`);
+        } else if (billingCodes.length > 0) {
+          details.push(`Type: ${billingCodes[0].description || 'Denture placement'}`);
+        }
+        
+        if (dentureData.placementNotes) {
+          details.push(`Placement Notes: ${dentureData.placementNotes}`);
+        }
+        
+        if (dentureData.notes) {
+          details.push(`Notes: ${dentureData.notes}`);
+        }
+      } catch (e) {
+        // LEGACY FORMAT - plain text notes
+        if (billingCodes.length > 0) {
+          details.push(`Type: ${billingCodes[0].description || 'Denture placement'}`);
+        }
+        if (treatment.notes) {
+          details.push(`Notes: ${treatment.notes}`);
+        }
       }
       break;
       
     case 'implant':
+      details.push(`Tooth: ${treatment.tooth}`);
+      
+      try {
+        // NEW FORMAT - notes is a JSON object
+        const implantData = typeof treatment.notes === 'string' 
+          ? JSON.parse(treatment.notes) 
+          : treatment.notes;
+          
+        if (implantData.description) {
+          details.push(`Type: ${implantData.description}`);
+        } else if (billingCodes.length > 0) {
+          details.push(`Type: ${billingCodes[0].category || treatment.type}`);
+        }
+        
+        if (implantData.implantNotes) {
+          details.push(`Procedure Notes: ${implantData.implantNotes}`);
+        }
+        
+        if (implantData.notes) {
+          details.push(`Notes: ${implantData.notes}`);
+        }
+      } catch (e) {
+        // LEGACY FORMAT - plain text notes
+        if (billingCodes.length > 0) {
+          details.push(`Type: ${billingCodes[0].category || treatment.type}`);
+        }
+        if (treatment.notes) {
+          details.push(`Notes: ${treatment.notes}`);
+        }
+      }
+      break;
+      
     case 'implant-crown':
       details.push(`Tooth: ${treatment.tooth}`);
-      if (billingCodes.length > 0) {
-        details.push(`Type: ${billingCodes[0].category || treatment.type}`);
+      
+      try {
+        // NEW FORMAT - notes is a JSON object
+        const crownData = typeof treatment.notes === 'string' 
+          ? JSON.parse(treatment.notes) 
+          : treatment.notes;
+          
+        if (crownData.description) {
+          details.push(`Type: ${crownData.description}`);
+        } else if (billingCodes.length > 0) {
+          details.push(`Type: ${billingCodes[0].description || 'Implant Crown'}`);
+        }
+        
+        if (crownData.crownNotes) {
+          details.push(`Crown Notes: ${crownData.crownNotes}`);
+        }
+        
+        if (crownData.notes) {
+          details.push(`Notes: ${crownData.notes}`);
+        }
+      } catch (e) {
+        // LEGACY FORMAT - plain text notes
+        if (billingCodes.length > 0) {
+          details.push(`Type: ${billingCodes[0].description || 'Implant Crown'}`);
+        }
+        if (treatment.notes) {
+          details.push(`Notes: ${treatment.notes}`);
+        }
       }
       break;
       

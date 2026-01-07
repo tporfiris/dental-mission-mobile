@@ -596,25 +596,25 @@ const FillingsTreatmentScreen = ({ route }: any) => {
           treatment.value = totalCost;
           treatment.billingCodes = JSON.stringify(billingCodes);
           
-          // ✅ Store optimized treatment data (not full 32 teeth)
-          treatment.notes = JSON.stringify({
+          // ✅ FIXED: Store treatment data in proper JSON format
+          const treatmentData: any = {
             treatments: optimizedData.treatedTeeth, // Only teeth with treatments
-            generalNotes: notes,
             summary: {
               teethTreated: completedTreatments.length,
               totalSurfaces: getTotalSurfaceCount(),
               rootCanals: Object.values(treatments).filter(t => t.rootCanalDone).length,
               crowns: Object.values(treatments).filter(t => t.crownIndicated).length
             }
-          });
-          
+          };
+
+          // ✅ Add general notes if present
+          if (notes && notes.trim()) {
+            treatmentData.notes = notes.trim();
+          }
+
+          treatment.notes = JSON.stringify(treatmentData); // ✅ Save as JSON
           treatment.clinicianName = clinicianName;
           treatment.completedAt = completedDate;
-          
-          // ✅ Omit empty fields
-          if (notes) {
-            // Notes are included in the JSON above
-          }
         });
       });
 

@@ -1,4 +1,4 @@
-// screens/ExtractionsTreatmentScreen.tsx - OPTIMIZED VERSION with Clear All
+// screens/ExtractionsTreatmentScreen.tsx - FIXED VERSION with proper JSON notes format
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, Alert, Modal, Dimensions } from 'react-native';
 import { useExtractionsTreatment } from '../contexts/ExtractionsTreatmentContext';
@@ -172,9 +172,15 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
           const treatmentId = uuid.v4();
           const code = billingCodes.find(c => c.tooth === extraction.toothNumber);
           
-          const notesText = extraction.notes 
-            ? `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction. ${extraction.notes}`
-            : `${extraction.complexity === 'simple' ? 'Simple' : 'Complicated'} extraction`;
+          // ✅ FIXED: Save notes as JSON object (matching hygiene treatment format)
+          const treatmentData: any = {
+            complexity: extraction.complexity,
+            tooth: extraction.toothNumber,
+          };
+
+          if (extraction.notes && extraction.notes.trim()) {
+            treatmentData.notes = extraction.notes.trim();
+          }
 
           await database.get<Treatment>('treatments').create(treatment => {
             treatment._raw.id = treatmentId;
@@ -188,7 +194,7 @@ const ExtractionsTreatmentScreen = ({ route }: any) => {
               price: code.price,
               complexity: code.complexity
             }] : []);
-            treatment.notes = notesText;
+            treatment.notes = JSON.stringify(treatmentData); // ✅ FIXED: Save as JSON
             treatment.clinicianName = clinicianName;
             treatment.completedAt = completedDate;
           });
@@ -527,13 +533,13 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
           <Pressable
             style={[
               styles.complexityButton,
-              selectedComplexity === 'simple' && styles.complexityButtonSelected
+              complexity === 'simple' && styles.complexityButtonSelected
             ]}
-            onPress={() => updateSelectedComplexity('simple')}
+            onPress={() => setComplexity('simple')}
           >
             <Text style={[
               styles.complexityButtonText,
-              selectedComplexity === 'simple' && styles.complexityButtonTextSelected
+              complexity === 'simple' && styles.complexityButtonTextSelected
             ]}>
               Simple
             </Text>
@@ -541,13 +547,13 @@ const EditExtractionForm = ({ extraction, onUpdate, onCancel }: {
           <Pressable
             style={[
               styles.complexityButton,
-              selectedComplexity === 'complicated' && styles.complexityButtonSelected
+              complexity === 'complicated' && styles.complexityButtonSelected
             ]}
-            onPress={() => updateSelectedComplexity('complicated')}
+            onPress={() => setComplexity('complicated')}
           >
             <Text style={[
               styles.complexityButtonText,
-              selectedComplexity === 'complicated' && styles.complexityButtonTextSelected
+              complexity === 'complicated' && styles.complexityButtonTextSelected
             ]}>
               Complicated
             </Text>

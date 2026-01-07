@@ -1,6 +1,6 @@
-// screens/LoginScreen.tsx - UPDATED with password reset
+// screens/LoginScreen.tsx - UPDATED with password reset, Android fix, and password visibility toggle
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 
@@ -9,6 +9,7 @@ const LoginScreen = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     setError('');
@@ -98,20 +99,35 @@ const LoginScreen = () => {
         }}
         autoCapitalize="none"
         autoCorrect={false}
+        autoComplete="email"
         keyboardType="email-address"
+        textContentType="emailAddress"
         style={styles.input}
       />
       
-      <TextInput
-        placeholder="Password"
-        value={password}
-        onChangeText={(text) => {
-          setPassword(text);
-          setError(''); // Clear error when user types
-        }}
-        secureTextEntry
-        style={styles.input}
-      />
+      <View style={styles.passwordContainer}>
+        <TextInput
+          placeholder="Password"
+          value={password}
+          onChangeText={(text) => {
+            setPassword(text);
+            setError(''); // Clear error when user types
+          }}
+          secureTextEntry={!showPassword}
+          textContentType="password"
+          autoComplete="password"
+          autoCorrect={false}
+          autoCapitalize="none"
+          style={styles.passwordInput}
+        />
+        <TouchableOpacity
+          style={styles.eyeButton}
+          onPress={() => setShowPassword(!showPassword)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
+        </TouchableOpacity>
+      </View>
       
       <View style={styles.buttonContainer}>
         <Button title="Login" onPress={handleLogin} />
@@ -167,6 +183,30 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderRadius: 8,
     fontSize: 16,
+  },
+  passwordContainer: {
+    position: 'relative',
+    marginBottom: 12,
+  },
+  passwordInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+    padding: 12,
+    paddingRight: 50, // Make room for eye icon
+    borderRadius: 8,
+    fontSize: 16,
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  eyeIcon: {
+    fontSize: 20,
   },
   error: { 
     color: '#dc3545',

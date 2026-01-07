@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Button, StyleSheet, Alert, Platform,
-  Image, TouchableOpacity,
+  Image, TouchableOpacity, ScrollView, KeyboardAvoidingView,
 } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
 import { Picker } from '@react-native-picker/picker';
@@ -88,55 +88,173 @@ const NewPatientScreen = ({ navigation }: any) => {
   };
 
   return (
-    <View style={styles.container}>
-      <TextInput placeholder="First Name" value={firstName} onChangeText={setFirstName} style={styles.input} />
-      <TextInput placeholder="Last Name" value={lastName} onChangeText={setLastName} style={styles.input} />
-      <TextInput placeholder="Age" value={age} onChangeText={setAge} keyboardType="numeric" style={styles.input} />
-      <TextInput placeholder="Location/Village" value={location} onChangeText={setLocation} style={styles.input} />
+    <KeyboardAvoidingView 
+      style={{ flex: 1 }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+      <Text style={styles.label}>First Name *</Text>
+      <TextInput 
+        placeholder="Enter first name" 
+        placeholderTextColor="#999"
+        value={firstName} 
+        onChangeText={setFirstName} 
+        style={styles.input} 
+      />
+      
+      <Text style={styles.label}>Last Name *</Text>
+      <TextInput 
+        placeholder="Enter last name" 
+        placeholderTextColor="#999"
+        value={lastName} 
+        onChangeText={setLastName} 
+        style={styles.input} 
+      />
+      
+      <Text style={styles.label}>Age *</Text>
+      <TextInput 
+        placeholder="Enter age" 
+        placeholderTextColor="#999"
+        value={age} 
+        onChangeText={setAge} 
+        keyboardType="numeric" 
+        style={styles.input} 
+      />
+      
+      <Text style={styles.label}>Location/Village *</Text>
+      <TextInput 
+        placeholder="Enter location or village" 
+        placeholderTextColor="#999"
+        value={location} 
+        onChangeText={setLocation} 
+        style={styles.input} 
+      />
 
-      <Text style={styles.label}>Gender</Text>
-      <Picker selectedValue={gender} onValueChange={(itemValue) => setGender(itemValue)} style={styles.picker}>
-        <Picker.Item label="Male" value="Male" />
-        <Picker.Item label="Female" value="Female" />
-        <Picker.Item label="Other" value="Other" />
-      </Picker>
+      <Text style={styles.label}>Gender *</Text>
+      <View style={styles.pickerContainer}>
+        <Picker 
+          selectedValue={gender} 
+          onValueChange={(itemValue) => setGender(itemValue)} 
+          style={styles.picker}
+        >
+          <Picker.Item label="Male" value="Male" />
+          <Picker.Item label="Female" value="Female" />
+          <Picker.Item label="Other" value="Other" />
+        </Picker>
+      </View>
 
+      <Text style={styles.label}>Patient Photo</Text>
       {photoUri ? (
-        <Image source={{ uri: photoUri }} style={styles.image} />
+        <View>
+          <Image source={{ uri: photoUri }} style={styles.image} />
+          <TouchableOpacity style={styles.changePhotoButton} onPress={pickImage}>
+            <Text style={styles.changePhotoText}>Change Photo</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <TouchableOpacity style={styles.imagePlaceholder} onPress={pickImage}>
-          <Text style={{ textAlign: 'center' }}>Tap to Take Patient Photo</Text>
+          <Text style={styles.cameraIcon}>📷</Text>
+          <Text style={styles.imagePlaceholderText}>Tap to Take Patient Photo</Text>
         </TouchableOpacity>
       )}
 
-      <Button title="Save Patient" onPress={handleSave} />
-    </View>
+      <View style={styles.buttonContainer}>
+        <Button title="Save Patient" onPress={handleSave} />
+      </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 export default NewPatientScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  header: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
-  input: { borderWidth: 1, padding: 10, marginBottom: 10, borderRadius: 5 },
-  label: { marginTop: 10 },
-  picker: { height: Platform.OS === 'ios' ? 200 : 50, marginBottom: 20 },
+  container: { 
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40, // Extra padding at bottom for scrolling
+  },
+  label: { 
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+    marginTop: 12,
+  },
+  input: { 
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+    padding: 12,
+    marginBottom: 12,
+    borderRadius: 8,
+    fontSize: 16,
+    color: '#333', // Explicit text color for Android
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  picker: { 
+    height: Platform.OS === 'ios' ? 200 : 50,
+    color: '#333', // Explicit text color for Android picker
+  },
   image: {
     width: 200,
     height: 200,
     borderRadius: 10,
     alignSelf: 'center',
-    marginBottom: 20,
+    marginBottom: 12,
   },
   imagePlaceholder: {
     width: 200,
     height: 200,
     borderRadius: 10,
-    backgroundColor: '#eee',
+    backgroundColor: '#e0e0e0',
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'center',
     marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    borderStyle: 'dashed',
+  },
+  cameraIcon: {
+    fontSize: 48,
+    marginBottom: 8,
+  },
+  imagePlaceholderText: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  changePhotoButton: {
+    alignSelf: 'center',
+    backgroundColor: '#007bff',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  changePhotoText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  buttonContainer: {
+    marginTop: 20,
   },
 });
