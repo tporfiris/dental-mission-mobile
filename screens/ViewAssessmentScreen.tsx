@@ -1,8 +1,10 @@
-// screens/ViewAssessmentScreen.tsx - Enhanced with date grouping
+// screens/ViewAssessmentScreen.tsx - Enhanced with office and clinician tracking
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
 import { Q } from '@nozbe/watermelondb';
+import { db as firebaseDb } from '../firebaseConfig';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import DentitionAssessment from '../db/models/DentitionAssessment';
 import HygieneAssessment from '../db/models/HygieneAssessment';
 import ExtractionsAssessment from '../db/models/ExtractionsAssessment';
@@ -11,6 +13,12 @@ import DentureAssessment from '../db/models/DentureAssessment';
 import ImplantAssessment from '../db/models/ImplantAssessment';
 import { parseAssessmentData } from '../utils/parseAssessmentData';
 
+interface Office {
+  id: string;
+  name: string;
+  location: string;
+}
+
 interface Assessment {
   id: string;
   type: string;
@@ -18,6 +26,9 @@ interface Assessment {
   data: string;
   createdAt: Date;
   updatedAt: Date;
+  officeId?: string;
+  officeName?: string;
+  clinicianEmail?: string;
 }
 
 interface GroupedAssessment {
@@ -31,11 +42,59 @@ const ViewAssessmentScreen = ({ route }: any) => {
   const [loading, setLoading] = useState(true);
   const [groupedAssessments, setGroupedAssessments] = useState<GroupedAssessment[]>([]);
   const [expandedAssessment, setExpandedAssessment] = useState<string | null>(null);
+  const [offices, setOffices] = useState<Map<string, Office>>(new Map());
+
+  // Load offices from Firestore
+  const loadOffices = async (): Promise<Map<string, Office>> => {
+    try {
+      const officesSnapshot = await getDocs(collection(firebaseDb, 'offices'));
+      const officesMap = new Map<string, Office>();
+      
+      officesSnapshot.forEach((doc) => {
+        officesMap.set(doc.id, {
+          id: doc.id,
+          name: doc.data().name,
+          location: doc.data().location
+        });
+      });
+      
+      console.log(`✅ Loaded ${officesMap.size} offices for assessment view`);
+      return officesMap;
+    } catch (error) {
+      console.error('❌ Error loading offices:', error);
+      return new Map();
+    }
+  };
+
+  // Load assessment office info from Firestore
+  const loadAssessmentOfficeInfo = async (assessmentId: string, officesMap: Map<string, Office>) => {
+    try {
+      const assessmentDoc = await getDoc(doc(firebaseDb, 'assessments', assessmentId));
+      if (assessmentDoc.exists()) {
+        const data = assessmentDoc.data();
+        const officeId = data.officeId || 'unknown';
+        const office = officesMap.get(officeId);
+        
+        return {
+          officeId,
+          officeName: office?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown Office'),
+          clinicianEmail: data.clinicianEmail || 'Unknown'
+        };
+      }
+    } catch (error) {
+      // Silent fail - assessment not synced yet
+    }
+    return { officeId: 'local', officeName: 'Not synced yet', clinicianEmail: 'Unknown' };
+  };
 
   useEffect(() => {
     const loadAssessments = async () => {
       try {
         console.log('🔍 Loading assessments for patient:', patientId);
+
+        // Load offices first
+        const officesMap = await loadOffices();
+        setOffices(officesMap);
 
         const [dentition, hygiene, extractions, fillings, denture, implant] = await Promise.all([
           db.get<DentitionAssessment>('dentition_assessments').query(Q.where('patient_id', Q.eq(patientId))).fetch(),
@@ -46,15 +105,83 @@ const ViewAssessmentScreen = ({ route }: any) => {
           db.get<ImplantAssessment>('implant_assessments').query(Q.where('patient_id', Q.eq(patientId))).fetch(),
         ]);
 
-        // Combine all assessments with their types
-        const allAssessments: Assessment[] = [
-          ...dentition.map(a => ({ id: a.id, type: 'Dentition', emoji: '🦷', data: a.data, createdAt: a.createdAt })),
-          ...hygiene.map(a => ({ id: a.id, type: 'Hygiene', emoji: '🪥', data: a.data, createdAt: a.createdAt })),
-          ...extractions.map(a => ({ id: a.id, type: 'Extractions', emoji: '🛠️', data: a.data, createdAt: a.createdAt })),
-          ...fillings.map(a => ({ id: a.id, type: 'Fillings', emoji: '🧱', data: a.data, createdAt: a.createdAt })),
-          ...denture.map(a => ({ id: a.id, type: 'Denture', emoji: '🦷', data: a.data, createdAt: a.createdAt })),
-          ...implant.map(a => ({ id: a.id, type: 'Implant', emoji: '🧲', data: a.data, createdAt: a.createdAt })),
+        // Combine all assessments with their types and load office info
+        const allAssessmentsPromises = [
+          ...dentition.map(async a => {
+            const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+            return { 
+              id: a.id, 
+              type: 'Dentition', 
+              emoji: '🦷', 
+              data: a.data, 
+              createdAt: a.createdAt,
+              updatedAt: a.updatedAt,
+              ...officeInfo
+            };
+          }),
+          ...hygiene.map(async a => {
+            const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+            return { 
+              id: a.id, 
+              type: 'Hygiene', 
+              emoji: '🪥', 
+              data: a.data, 
+              createdAt: a.createdAt,
+              updatedAt: a.updatedAt,
+              ...officeInfo
+            };
+          }),
+          ...extractions.map(async a => {
+            const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+            return { 
+              id: a.id, 
+              type: 'Extractions', 
+              emoji: '🛠️', 
+              data: a.data, 
+              createdAt: a.createdAt,
+              updatedAt: a.updatedAt,
+              ...officeInfo
+            };
+          }),
+          ...fillings.map(async a => {
+            const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+            return { 
+              id: a.id, 
+              type: 'Fillings', 
+              emoji: '🧱', 
+              data: a.data, 
+              createdAt: a.createdAt,
+              updatedAt: a.updatedAt,
+              ...officeInfo
+            };
+          }),
+          ...denture.map(async a => {
+            const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+            return { 
+              id: a.id, 
+              type: 'Denture', 
+              emoji: '🦷', 
+              data: a.data, 
+              createdAt: a.createdAt,
+              updatedAt: a.updatedAt,
+              ...officeInfo
+            };
+          }),
+          ...implant.map(async a => {
+            const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+            return { 
+              id: a.id, 
+              type: 'Implant', 
+              emoji: '🧲', 
+              data: a.data, 
+              createdAt: a.createdAt,
+              updatedAt: a.updatedAt,
+              ...officeInfo
+            };
+          }),
         ];
+
+        const allAssessments = await Promise.all(allAssessmentsPromises);
 
         // Group assessments by date
         const grouped = allAssessments.reduce((acc, assessment) => {
@@ -128,13 +255,25 @@ const ViewAssessmentScreen = ({ route }: any) => {
         </View>
         
         {isExpanded && (
-          <View style={styles.detailsContainer}>
-            <View style={styles.divider} />
-            <Text style={styles.detailsTitle}>Assessment Details:</Text>
-            {parsedData.details.map((detail, index) => (
-              <Text key={index} style={styles.detailText}>{detail}</Text>
-            ))}
-          </View>
+          <>
+            <View style={styles.detailsContainer}>
+              <View style={styles.divider} />
+              <Text style={styles.detailsTitle}>Assessment Details:</Text>
+              {parsedData.details.map((detail, index) => (
+                <Text key={index} style={styles.detailText}>{detail}</Text>
+              ))}
+            </View>
+
+            {/* ✅ NEW: Show office and clinician info */}
+            <View style={styles.assessmentFooter}>
+              <Text style={styles.assessmentClinician}>
+                👤 {assessment.clinicianEmail || 'Unknown'}
+              </Text>
+              <Text style={styles.assessmentOffice}>
+                🏥 {assessment.officeName || 'Not synced'}
+              </Text>
+            </View>
+          </>
         )}
       </TouchableOpacity>
     );
@@ -305,6 +444,25 @@ const styles = StyleSheet.create({
     color: '#495057',
     lineHeight: 20,
     marginBottom: 4,
+  },
+  assessmentFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  assessmentClinician: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  assessmentOffice: {
+    fontSize: 11,
+    color: '#007bff',
+    fontWeight: '500',
   },
   emptyState: {
     flex: 1,

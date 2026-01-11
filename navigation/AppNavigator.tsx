@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 
 import LoginScreen from '../screens/LoginScreen';
+import RegisterScreen from '../screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
 import NewPatientScreen from '../screens/NewPatientScreen';
 import PatientQRCodeScreen from '../screens/PatientQRCodeScreen';
@@ -32,6 +33,7 @@ import VoiceRecordingsScreen from '../screens/VoiceRecordingsScreen';
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import PatientListScreen from '../screens/PatientListScreen';
 import PatientDetailScreen from '../screens/PatientDetailScreen';
+import OfficeManagementScreen from '../screens/OfficeManagementScreen';
 
 // Patient Search Screens
 import PatientSearchScreen from '../screens/PatientSearchScreen';
@@ -123,6 +125,17 @@ export default function AppNavigator() {
               headerBackTitleVisible: false
             }}
           />
+          
+          {/* Office Management Screen (Admin Only) */}
+          <Stack.Screen 
+            name="OfficeManagement" 
+            component={OfficeManagementScreen}
+            options={{ 
+              title: 'Manage Offices',
+              headerBackTitleVisible: false
+            }}
+          />
+          
           <Stack.Screen 
             name="PatientList" 
             component={PatientListScreen}
@@ -160,7 +173,21 @@ export default function AppNavigator() {
           <Stack.Screen name="ImplantTreatment" component={ImplantTreatmentScreen} />
         </>
       ) : (
-        <Stack.Screen name="Login" component={LoginScreen} />
+        <>
+          <Stack.Screen 
+            name="Login" 
+            component={LoginScreen}
+            options={{ title: 'Login' }}
+          />
+          <Stack.Screen 
+            name="Register" 
+            component={RegisterScreen}
+            options={{ 
+              title: 'Create Account',
+              headerBackTitleVisible: false
+            }}
+          />
+        </>
       )}
     </Stack.Navigator>
   );

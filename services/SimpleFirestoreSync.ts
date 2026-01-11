@@ -1,5 +1,5 @@
 // services/SimpleFirestoreSync.ts
-// ✅ SIMPLIFIED VERSION - Detects offline during operations, not upfront
+// ✅ UPDATED: Office tracking + Simplified offline detection
 import { database } from '../db';
 import { db, auth } from '../firebaseConfig';
 import { 
@@ -42,15 +42,20 @@ class SimpleFirestoreSyncService {
     isAuthenticated: false,
   };
 
+  // ✅ NEW: Cache for user's office ID
+  private userOfficeId: string | null = null;
+
   constructor() {
     this.checkAuthStatus();
     
     // Listen to Firebase Auth state changes
-    auth.onAuthStateChanged((user) => {
+    auth.onAuthStateChanged(async (user) => {
       console.log('🔐 Firebase Auth state changed in sync service:', user?.email || 'logged out');
       
       if (user) {
-        // User logged in - enable sync
+        // Load user's office ID
+        await this.loadUserOfficeId(user.uid);
+        
         console.log('✅ User logged in, enabling Firestore sync');
         this.currentStatus.isAuthenticated = true;
         this.currentStatus.syncError = null;
@@ -60,16 +65,35 @@ class SimpleFirestoreSyncService {
         this.startPeriodicSync();
         
       } else {
-        // User logged out - disable sync
         console.log('⏹️ User logged out, disabling Firestore sync');
         this.stopPeriodicSync();
         this.currentStatus.isAuthenticated = false;
         this.currentStatus.syncError = null;
         this.currentStatus.pendingSyncCount = 0;
         this.syncInProgress = false;
+        this.userOfficeId = null;
         this.notifyListeners();
       }
     });
+  }
+
+  // ✅ NEW: Load the user's office ID from their profile
+  private async loadUserOfficeId(uid: string): Promise<void> {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        this.userOfficeId = userData.officeId || null;
+        console.log('📍 Loaded user office ID:', this.userOfficeId);
+      } else {
+        console.warn('⚠️ User document not found, checking clinicians collection');
+        // Fallback to legacy clinicians collection
+        this.userOfficeId = 'legacy';
+      }
+    } catch (error) {
+      console.error('❌ Error loading user office ID:', error);
+      this.userOfficeId = null;
+    }
   }
 
   // Start checking every 45 seconds for unsaved data
@@ -365,7 +389,7 @@ class SimpleFirestoreSyncService {
     }
   }
 
-  // Sync only patients that don't exist in Firestore
+  // ✅ UPDATED: Sync patients with office tracking
   private async syncUnsyncedPatients() {
     if (!auth.currentUser) return;
 
@@ -398,6 +422,8 @@ class SimpleFirestoreSyncService {
         gender: patient.gender,
         location: patient.location,
         photoUri: patient.photoUri,
+        officeId: this.userOfficeId, // ✅ Track which office registered this patient
+        registeredBy: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
       });
     }
@@ -406,7 +432,7 @@ class SimpleFirestoreSyncService {
     console.log(`✅ Synced ${unsyncedPatients.length} new patients`);
   }
 
-  // Sync only treatments that don't exist in Firestore
+  // ✅ UPDATED: Sync treatments with office tracking
   private async syncUnsyncedTreatments() {
     if (!auth.currentUser) return;
   
@@ -460,6 +486,8 @@ class SimpleFirestoreSyncService {
         clinicianName: treatment.clinicianName,
         completedAt: treatment.completedAt ? 
           Timestamp.fromDate(treatment.completedAt) : null,
+        officeId: this.userOfficeId, // ✅ Track which office performed this treatment
+        performedBy: auth.currentUser?.uid,
         createdAt: serverTimestamp(),
         syncedAt: serverTimestamp(),
         ...(treatment.visitId && { visitId: treatment.visitId }),
@@ -472,10 +500,10 @@ class SimpleFirestoreSyncService {
     console.log(`✅ Synced ${unsyncedTreatments.length} treatments`);
   }
 
-  // Sync only assessments that don't exist in Firestore
+  // ✅ UPDATED: Sync assessments with office tracking
   private async syncUnsyncedAssessments() {
     if (!auth.currentUser) return;
-
+  
     const assessmentTypes = [
       { collection: 'dentition_assessments', name: 'dentition' },
       { collection: 'hygiene_assessments', name: 'hygiene' },
@@ -484,14 +512,14 @@ class SimpleFirestoreSyncService {
       { collection: 'denture_assessments', name: 'denture' },
       { collection: 'implant_assessments', name: 'implant' },
     ];
-
+  
     const allUnsyncedAssessments = [];
-
+  
     for (const { collection: localCollection, name: assessmentType } of assessmentTypes) {
       if (!auth.currentUser) break;
       
       const assessments = await database.get(localCollection).query().fetch();
-
+  
       for (const assessment of assessments) {
         if (!auth.currentUser) break;
         
@@ -504,15 +532,13 @@ class SimpleFirestoreSyncService {
         }
       }
     }
-
-    if (allUnsyncedAssessments.length === 0) {
-      return;
-    }
-
+  
+    if (allUnsyncedAssessments.length === 0) return;
+  
     console.log(`🔄 Syncing ${allUnsyncedAssessments.length} assessments...`);
     
     const batch = writeBatch(db);
-
+  
     for (const { assessment, type } of allUnsyncedAssessments) {
       const assessmentRef = doc(db, 'assessments', assessment.id);
       
@@ -534,10 +560,13 @@ class SimpleFirestoreSyncService {
         updatedAt: assessment.updatedAt ? 
           Timestamp.fromDate(assessment.updatedAt) : 
           serverTimestamp(),
+        officeId: this.userOfficeId, // ✅ Track which office performed this assessment
         clinicianId: auth.currentUser?.uid || null,
+        clinicianEmail: auth.currentUser?.email || 'Unknown', // ✅ FIX: Add clinician email
+        syncedAt: serverTimestamp(), // ✅ ADD: Track when synced for deletion lock
       });
     }
-
+  
     await batch.commit();
     console.log(`✅ Synced ${allUnsyncedAssessments.length} assessments`);
   }

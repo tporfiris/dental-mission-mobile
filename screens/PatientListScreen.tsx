@@ -1,4 +1,4 @@
-// screens/PatientListScreen.tsx - Enhanced with assessment/treatment previews and cloud images
+// screens/PatientListScreen.tsx - UPDATED with office and clinician tracking
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -17,7 +17,9 @@ import {
   collection, 
   getDocs, 
   orderBy, 
-  query 
+  query,
+  doc,
+  getDoc
 } from 'firebase/firestore';
 import { parseAssessmentData, parseTreatmentDetails } from '../utils/parseAssessmentData';
 import { SmartImage } from '../components/SmartImage';
@@ -32,8 +34,11 @@ interface Patient {
   gender: string;
   location: string;
   photoUri?: string;
-  photoCloudUri?: string; // ✅ ADD THIS
+  photoCloudUri?: string;
   createdAt: Date;
+  officeId?: string;
+  officeName?: string;
+  registeredBy?: string;
 }
 
 interface Treatment {
@@ -48,6 +53,9 @@ interface Treatment {
   notes: string;
   clinicianName: string;
   completedAt: Date;
+  officeId?: string;
+  officeName?: string;
+  performedBy?: string;
 }
 
 interface Assessment {
@@ -57,6 +65,15 @@ interface Assessment {
   data: string;
   clinicianEmail: string;
   createdAt: Date;
+  officeId?: string;
+  officeName?: string;
+  clinicianId?: string;
+}
+
+interface Office {
+  id: string;
+  name: string;
+  location: string;
 }
 
 const PatientListScreen = ({ navigation }: any) => {
@@ -65,6 +82,7 @@ const PatientListScreen = ({ navigation }: any) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [offices, setOffices] = useState<Map<string, Office>>(new Map());
   const [searchQuery, setSearchQuery] = useState('');
 
   // Helper function to safely convert Firestore timestamps to Date
@@ -80,15 +98,42 @@ const PatientListScreen = ({ navigation }: any) => {
     return new Date();
   };
 
-  // Get detailed quick summary for assessment - NOW USING UTILITY
+  // Load offices data
+  const loadOffices = async (): Promise<Map<string, Office>> => {
+    try {
+      const officesSnapshot = await getDocs(collection(db, 'offices'));
+      const officesMap = new Map<string, Office>();
+      
+      officesSnapshot.forEach((doc) => {
+        officesMap.set(doc.id, {
+          id: doc.id,
+          name: doc.data().name,
+          location: doc.data().location
+        });
+      });
+      
+      console.log(`✅ Loaded ${officesMap.size} offices`);
+      return officesMap;
+    } catch (error) {
+      console.error('❌ Error loading offices:', error);
+      return new Map();
+    }
+  };
+
+  // Get office name by ID
+  const getOfficeName = (officeId?: string): string => {
+    if (!officeId) return 'Unknown Office';
+    const office = offices.get(officeId);
+    return office ? office.name : officeId === 'legacy' ? 'Legacy' : 'Unknown Office';
+  };
+
+  // Get detailed quick summary for assessment
   const getAssessmentSummary = (assessment: Assessment): string => {
     try {
-      // Parse the data string to object first
       const dataObj = typeof assessment.data === 'string' 
         ? JSON.parse(assessment.data) 
         : assessment.data;
       
-      // Use the utility parser
       const parsed = parseAssessmentData(dataObj, assessment.assessmentType);
       return parsed.summary;
     } catch (e) {
@@ -97,11 +142,10 @@ const PatientListScreen = ({ navigation }: any) => {
     }
   };
 
-  // Get quick summary for treatment - NOW USING UTILITY
+  // Get quick summary for treatment
   const getTreatmentSummary = (treatment: Treatment): string => {
     try {
       const details = parseTreatmentDetails(treatment);
-      // Return first 2 details joined
       return details.slice(0, 2).join(' • ');
     } catch (e) {
       console.error('Error parsing treatment summary:', e);
@@ -114,11 +158,17 @@ const PatientListScreen = ({ navigation }: any) => {
     try {
       console.log('👥 Loading patient data from Firestore...');
 
+      // Load offices first
+      const officesMap = await loadOffices();
+      setOffices(officesMap);
+
       // Load patients with ordering
       const patientsQuery = query(collection(db, 'patients'), orderBy('createdAt', 'desc'));
       const patientsSnapshot = await getDocs(patientsQuery);
       const patientsData = patientsSnapshot.docs.map(doc => {
         const data = doc.data();
+        const officeId = data.officeId || 'unknown';
+        
         return {
           id: doc.id,
           firstName: data.firstName || 'Unknown',
@@ -127,8 +177,11 @@ const PatientListScreen = ({ navigation }: any) => {
           gender: data.gender || 'Unknown',
           location: data.location || 'Unknown',
           photoUri: data.photoUri || '',
-          photoCloudUri: data.photoCloudUri || '', // ✅ ADD THIS
-          createdAt: safeToDate(data.createdAt || data.syncedAt)
+          photoCloudUri: data.photoCloudUri || '',
+          createdAt: safeToDate(data.createdAt || data.syncedAt),
+          officeId: officeId,
+          officeName: officesMap.get(officeId)?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown'),
+          registeredBy: data.registeredBy || 'Unknown'
         };
       });
 
@@ -136,6 +189,8 @@ const PatientListScreen = ({ navigation }: any) => {
       const treatmentsSnapshot = await getDocs(collection(db, 'treatments'));
       const treatmentsData = treatmentsSnapshot.docs.map(doc => {
         const data = doc.data();
+        const officeId = data.officeId || 'unknown';
+        
         return {
           id: doc.id,
           patientId: data.patientId || '',
@@ -147,7 +202,10 @@ const PatientListScreen = ({ navigation }: any) => {
           billingCodes: data.billingCodes || '[]',
           notes: data.notes || '',
           clinicianName: data.clinicianName || 'Unknown',
-          completedAt: safeToDate(data.completedAt || data.createdAt || data.syncedAt)
+          completedAt: safeToDate(data.completedAt || data.createdAt || data.syncedAt),
+          officeId: officeId,
+          officeName: officesMap.get(officeId)?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown'),
+          performedBy: data.performedBy || 'Unknown'
         };
       });
 
@@ -155,13 +213,18 @@ const PatientListScreen = ({ navigation }: any) => {
       const assessmentsSnapshot = await getDocs(collection(db, 'assessments'));
       const assessmentsData = assessmentsSnapshot.docs.map(doc => {
         const data = doc.data();
+        const officeId = data.officeId || 'unknown';
+        
         return {
           id: doc.id,
           patientId: data.patientId || '',
           assessmentType: data.assessmentType || 'unknown',
           data: data.data || '{}',
           clinicianEmail: data.clinicianEmail || 'Unknown',
-          createdAt: safeToDate(data.createdAt || data.syncedAt)
+          createdAt: safeToDate(data.createdAt || data.syncedAt),
+          officeId: officeId,
+          officeName: officesMap.get(officeId)?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown'),
+          clinicianId: data.clinicianId || 'Unknown'
         };
       });
 
@@ -172,7 +235,8 @@ const PatientListScreen = ({ navigation }: any) => {
       console.log('✅ Patient data loaded:', {
         patients: patientsData.length,
         treatments: treatmentsData.length,
-        assessments: assessmentsData.length
+        assessments: assessmentsData.length,
+        offices: officesMap.size
       });
 
     } catch (error) {
@@ -212,6 +276,7 @@ const PatientListScreen = ({ navigation }: any) => {
       patient.firstName.toLowerCase().includes(query) ||
       patient.lastName.toLowerCase().includes(query) ||
       patient.location.toLowerCase().includes(query) ||
+      patient.officeName?.toLowerCase().includes(query) ||
       `${patient.firstName} ${patient.lastName}`.toLowerCase().includes(query)
     );
   }, [patients, searchQuery]);
@@ -222,7 +287,6 @@ const PatientListScreen = ({ navigation }: any) => {
     const patientAssessments = assessments.filter(a => a.patientId === patientId);
     const totalValue = patientTreatments.reduce((sum, t) => sum + (t.value * t.units), 0);
     
-    // Get most recent assessment and treatment with details
     const latestAssessment = patientAssessments.length > 0 
       ? patientAssessments.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
       : null;
@@ -273,7 +337,7 @@ const PatientListScreen = ({ navigation }: any) => {
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
-          placeholder="🔍 Search by name or location..."
+          placeholder="🔍 Search by name, location, or office..."
           value={searchQuery}
           onChangeText={setSearchQuery}
           autoCapitalize="none"
@@ -321,7 +385,7 @@ const PatientListScreen = ({ navigation }: any) => {
                 onPress={() => navigateToPatientDetail(patient)}
               >
                 <View style={styles.patientCardContent}>
-                  {/* Patient Photo - ✅ UPDATED */}
+                  {/* Patient Photo */}
                   <View style={styles.photoContainer}>
                     {patient.photoUri ? (
                       <SmartImage
@@ -346,6 +410,10 @@ const PatientListScreen = ({ navigation }: any) => {
                     </Text>
                     <Text style={styles.patientDetails}>
                       {patient.age} years • {patient.gender} • {patient.location}
+                    </Text>
+                    {/* ✅ NEW: Show office info */}
+                    <Text style={styles.patientOffice}>
+                      🏥 {patient.officeName || 'Unknown Office'}
                     </Text>
                     <Text style={styles.patientDate}>
                       Registered: {patient.createdAt.toLocaleDateString()}
@@ -373,28 +441,40 @@ const PatientListScreen = ({ navigation }: any) => {
                 <View style={styles.recentActivity}>
                   {stats.latestAssessment && (
                     <View style={styles.activityItem}>
-                      <Text style={styles.activityType}>
-                        📋 {stats.latestAssessment.assessmentType.charAt(0).toUpperCase() + stats.latestAssessment.assessmentType.slice(1)}
-                      </Text>
+                      <View style={styles.activityHeader}>
+                        <Text style={styles.activityType}>
+                          📋 {stats.latestAssessment.assessmentType.charAt(0).toUpperCase() + stats.latestAssessment.assessmentType.slice(1)}
+                        </Text>
+                        {/* ✅ NEW: Show office for assessment */}
+                        <Text style={styles.activityOffice}>
+                          {stats.latestAssessment.officeName}
+                        </Text>
+                      </View>
                       <Text style={styles.activitySummary}>
                         {stats.latestAssessmentSummary}
                       </Text>
                       <Text style={styles.activityDate}>
-                        {stats.latestAssessment.createdAt.toLocaleDateString()}
+                        {stats.latestAssessment.createdAt.toLocaleDateString()} • {stats.latestAssessment.clinicianEmail}
                       </Text>
                     </View>
                   )}
                   
                   {stats.latestTreatment && (
                     <View style={styles.activityItem}>
-                      <Text style={styles.activityType}>
-                        🦷 {stats.latestTreatment.type.charAt(0).toUpperCase() + stats.latestTreatment.type.slice(1)}
-                      </Text>
+                      <View style={styles.activityHeader}>
+                        <Text style={styles.activityType}>
+                          🦷 {stats.latestTreatment.type.charAt(0).toUpperCase() + stats.latestTreatment.type.slice(1)}
+                        </Text>
+                        {/* ✅ NEW: Show office for treatment */}
+                        <Text style={styles.activityOffice}>
+                          {stats.latestTreatment.officeName}
+                        </Text>
+                      </View>
                       <Text style={styles.activitySummary}>
                         {stats.latestTreatmentSummary} • ${(stats.latestTreatment.value * stats.latestTreatment.units).toFixed(0)}
                       </Text>
                       <Text style={styles.activityDate}>
-                        {stats.latestTreatment.completedAt.toLocaleDateString()}
+                        {stats.latestTreatment.completedAt.toLocaleDateString()} • {stats.latestTreatment.clinicianName}
                       </Text>
                     </View>
                   )}
@@ -562,6 +642,12 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 2,
   },
+  patientOffice: {
+    fontSize: 12,
+    color: '#007bff',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
   patientDate: {
     fontSize: 11,
     color: '#999',
@@ -594,11 +680,21 @@ const styles = StyleSheet.create({
   activityItem: {
     marginBottom: 8,
   },
+  activityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
   activityType: {
     fontSize: 12,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 2,
+  },
+  activityOffice: {
+    fontSize: 11,
+    color: '#6c757d',
+    fontWeight: '500',
   },
   activitySummary: {
     fontSize: 12,

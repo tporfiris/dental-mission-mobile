@@ -1,10 +1,10 @@
-// screens/LoginScreen.tsx - UPDATED with password reset, Android fix, and password visibility toggle
+// screens/LoginScreen.tsx - UPDATED with registration link
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebaseConfig';
 
-const LoginScreen = () => {
+const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -26,7 +26,6 @@ const LoginScreen = () => {
     } catch (e: any) {
       console.error('❌ Login error:', e.code, e.message);
       
-      // User-friendly error messages
       let errorMessage = 'Login failed. Please try again.';
       
       if (e.code === 'auth/invalid-email') {
@@ -95,7 +94,7 @@ const LoginScreen = () => {
         value={email}
         onChangeText={(text) => {
           setEmail(text);
-          setError(''); // Clear error when user types
+          setError('');
         }}
         autoCapitalize="none"
         autoCorrect={false}
@@ -111,7 +110,7 @@ const LoginScreen = () => {
           value={password}
           onChangeText={(text) => {
             setPassword(text);
-            setError(''); // Clear error when user types
+            setError('');
           }}
           secureTextEntry={!showPassword}
           textContentType="password"
@@ -142,12 +141,18 @@ const LoginScreen = () => {
         />
       </View>
       
+      {/* NEW: Registration Link */}
+      <View style={styles.registerLinkContainer}>
+        <Text style={styles.registerLinkText}>Don't have an account? </Text>
+        <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+          <Text style={styles.registerLink}>Sign Up</Text>
+        </TouchableOpacity>
+      </View>
+      
       <View style={styles.testAccountsContainer}>
-        <Text style={styles.testAccountsTitle}>Test Accounts:</Text>
+      <Text style={styles.testAccount}>To view the Admin Dashboard, use the following account:</Text>
         <Text style={styles.testAccount}>Admin: admin@mission.com</Text>
         <Text style={styles.testAccount}>Admin Password: password123</Text>
-        <Text style={styles.testAccount}>Clinician: clinician1@test.com</Text>
-        <Text style={styles.testAccount}>Clinician Password: mission123</Text>
       </View>
     </View>
   );
@@ -193,7 +198,7 @@ const styles = StyleSheet.create({
     borderColor: '#ddd',
     backgroundColor: '#fff',
     padding: 12,
-    paddingRight: 50, // Make room for eye icon
+    paddingRight: 50,
     borderRadius: 8,
     fontSize: 16,
   },
@@ -224,9 +229,25 @@ const styles = StyleSheet.create({
   },
   forgotPasswordContainer: {
     marginTop: 10,
+    marginBottom: 10,
+  },
+  registerLinkContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 20,
+    marginBottom: 20,
+  },
+  registerLinkText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  registerLink: {
+    fontSize: 14,
+    color: '#007bff',
+    fontWeight: '600',
   },
   testAccountsContainer: {
-    marginTop: 40,
+    marginTop: 20,
     padding: 15,
     backgroundColor: '#e7f3ff',
     borderRadius: 8,

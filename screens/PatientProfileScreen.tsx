@@ -1,4 +1,4 @@
-// screens/PatientProfileScreen.tsx - UPDATED VERSION WITH SMALLER QR AT BOTTOM
+// screens/PatientProfileScreen.tsx - UPDATED with office and clinician tracking
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -12,6 +12,8 @@ import {
 import { useDatabase } from '@nozbe/watermelondb/hooks';
 import { Q } from '@nozbe/watermelondb';
 import QRCode from 'react-native-qrcode-svg';
+import { db as firebaseDb } from '../firebaseConfig';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import Patient from '../db/models/Patient';
 import DentitionAssessment from '../db/models/DentitionAssessment';
 import HygieneAssessment from '../db/models/HygieneAssessment';
@@ -20,9 +22,14 @@ import FillingsAssessment from '../db/models/FillingsAssessment';
 import DentureAssessment from '../db/models/DentureAssessment';
 import ImplantAssessment from '../db/models/ImplantAssessment';
 import Treatment from '../db/models/Treatment';
-// ✅ NEW: Import centralized parsing utilities
 import { parseAssessmentData, parseTreatmentDetails } from '../utils/parseAssessmentData';
 import { SmartImage } from '../components/SmartImage';
+
+interface Office {
+  id: string;
+  name: string;
+  location: string;
+}
 
 interface Assessment {
   id: string;
@@ -30,6 +37,9 @@ interface Assessment {
   emoji: string;
   data: string;
   createdAt: Date;
+  officeId?: string;
+  officeName?: string;
+  clinicianEmail?: string;
 }
 
 interface GroupedAssessment {
@@ -46,6 +56,8 @@ interface TreatmentDetail {
   clinicianName: string;
   completedAt: Date;
   billingCodes: any[];
+  officeId?: string;
+  officeName?: string;
 }
 
 interface GroupedTreatment {
@@ -53,8 +65,7 @@ interface GroupedTreatment {
   treatments: TreatmentDetail[];
 }
 
-// ✅ NEW: Simple wrapper to convert Treatment model to parseable format
-const convertTreatmentForParsing = (treatment: Treatment): TreatmentDetail => {
+const convertTreatmentForParsing = (treatment: Treatment, officesMap: Map<string, Office>): TreatmentDetail => {
   const details = parseTreatmentDetails({
     id: treatment.id,
     type: treatment.type,
@@ -76,6 +87,9 @@ const convertTreatmentForParsing = (treatment: Treatment): TreatmentDetail => {
   } catch (e) {
     // Handle parsing error
   }
+
+  let officeId = 'local';
+  let officeName = 'Not synced yet';
   
   return {
     id: treatment.id,
@@ -86,6 +100,8 @@ const convertTreatmentForParsing = (treatment: Treatment): TreatmentDetail => {
     clinicianName: treatment.clinicianName,
     completedAt: treatment.completedAt,
     billingCodes,
+    officeId,
+    officeName,
   };
 };
 
@@ -94,11 +110,96 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
   const db = useDatabase();
   
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [patientOfficeInfo, setPatientOfficeInfo] = useState<{ officeId?: string; officeName?: string }>({});
   const [groupedAssessments, setGroupedAssessments] = useState<GroupedAssessment[]>([]);
   const [groupedTreatments, setGroupedTreatments] = useState<GroupedTreatment[]>([]);
+  const [offices, setOffices] = useState<Map<string, Office>>(new Map());
   const [loading, setLoading] = useState(true);
   const [expandedAssessment, setExpandedAssessment] = useState<string | null>(null);
   const [expandedTreatment, setExpandedTreatment] = useState<string | null>(null);
+
+  // Load offices from Firestore
+  const loadOffices = async (): Promise<Map<string, Office>> => {
+    try {
+      const officesSnapshot = await getDocs(collection(firebaseDb, 'offices'));
+      const officesMap = new Map<string, Office>();
+      
+      officesSnapshot.forEach((doc) => {
+        officesMap.set(doc.id, {
+          id: doc.id,
+          name: doc.data().name,
+          location: doc.data().location
+        });
+      });
+      
+      console.log(`✅ Loaded ${officesMap.size} offices for profile view`);
+      return officesMap;
+    } catch (error) {
+      console.error('❌ Error loading offices:', error);
+      return new Map();
+    }
+  };
+
+  // Load patient's office info from Firestore
+  const loadPatientOfficeInfo = async (patientId: string, officesMap: Map<string, Office>) => {
+    try {
+      const patientDoc = await getDoc(doc(firebaseDb, 'patients', patientId));
+      if (patientDoc.exists()) {
+        const data = patientDoc.data();
+        const officeId = data.officeId || 'unknown';
+        const office = officesMap.get(officeId);
+        
+        return {
+          officeId,
+          officeName: office?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown Office')
+        };
+      }
+    } catch (error) {
+      console.log('Could not load patient office info from Firestore');
+    }
+    return {};
+  };
+
+  // Load assessment office info from Firestore
+  const loadAssessmentOfficeInfo = async (assessmentId: string, officesMap: Map<string, Office>) => {
+    try {
+      const assessmentDoc = await getDoc(doc(firebaseDb, 'assessments', assessmentId));
+      if (assessmentDoc.exists()) {
+        const data = assessmentDoc.data();
+        const officeId = data.officeId || 'unknown';
+        const office = officesMap.get(officeId);
+        
+        return {
+          officeId,
+          officeName: office?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown Office'),
+          clinicianEmail: data.clinicianEmail || 'Unknown'
+        };
+      }
+    } catch (error) {
+      // Silent fail - assessment not synced yet
+    }
+    return { officeId: 'local', officeName: 'Not synced yet', clinicianEmail: 'Unknown' };
+  };
+
+  // Load treatment office info from Firestore
+  const loadTreatmentOfficeInfo = async (treatmentId: string, officesMap: Map<string, Office>) => {
+    try {
+      const treatmentDoc = await getDoc(doc(firebaseDb, 'treatments', treatmentId));
+      if (treatmentDoc.exists()) {
+        const data = treatmentDoc.data();
+        const officeId = data.officeId || 'unknown';
+        const office = officesMap.get(officeId);
+        
+        return {
+          officeId,
+          officeName: office?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown Office')
+        };
+      }
+    } catch (error) {
+      // Silent fail - treatment not synced yet
+    }
+    return { officeId: 'local', officeName: 'Not synced yet' };
+  };
 
   useEffect(() => {
     loadPatientData();
@@ -108,9 +209,17 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
     try {
       setLoading(true);
 
+      // Load offices first
+      const officesMap = await loadOffices();
+      setOffices(officesMap);
+
       // Load patient
       const foundPatient = await db.get<Patient>('patients').find(patientId);
       setPatient(foundPatient);
+
+      // Load patient's office info from Firestore
+      const patientOffice = await loadPatientOfficeInfo(patientId, officesMap);
+      setPatientOfficeInfo(patientOffice);
 
       // Load all assessments (sorted by creation date, newest first)
       const [
@@ -159,15 +268,77 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
           .fetch(),
       ]);
 
-      // Combine all assessments with their types
-      const allAssessments: Assessment[] = [
-        ...dentitionAssessments.map(a => ({ id: a.id, type: 'Dentition', emoji: '🦷', data: a.data, createdAt: a.createdAt })),
-        ...hygieneAssessments.map(a => ({ id: a.id, type: 'Hygiene', emoji: '🪥', data: a.data, createdAt: a.createdAt })),
-        ...extractionsAssessments.map(a => ({ id: a.id, type: 'Extractions', emoji: '🛠️', data: a.data, createdAt: a.createdAt })),
-        ...fillingsAssessments.map(a => ({ id: a.id, type: 'Fillings', emoji: '🧱', data: a.data, createdAt: a.createdAt })),
-        ...dentureAssessments.map(a => ({ id: a.id, type: 'Denture', emoji: '🦷', data: a.data, createdAt: a.createdAt })),
-        ...implantAssessments.map(a => ({ id: a.id, type: 'Implant', emoji: '🧲', data: a.data, createdAt: a.createdAt })),
+      // Combine all assessments with their types and load office info
+      const allAssessmentsPromises = [
+        ...dentitionAssessments.map(async a => {
+          const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+          return { 
+            id: a.id, 
+            type: 'Dentition', 
+            emoji: '🦷', 
+            data: a.data, 
+            createdAt: a.createdAt,
+            ...officeInfo
+          };
+        }),
+        ...hygieneAssessments.map(async a => {
+          const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+          return { 
+            id: a.id, 
+            type: 'Hygiene', 
+            emoji: '🪥', 
+            data: a.data, 
+            createdAt: a.createdAt,
+            ...officeInfo
+          };
+        }),
+        ...extractionsAssessments.map(async a => {
+          const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+          return { 
+            id: a.id, 
+            type: 'Extractions', 
+            emoji: '🛠️', 
+            data: a.data, 
+            createdAt: a.createdAt,
+            ...officeInfo
+          };
+        }),
+        ...fillingsAssessments.map(async a => {
+          const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+          return { 
+            id: a.id, 
+            type: 'Fillings', 
+            emoji: '🧱', 
+            data: a.data, 
+            createdAt: a.createdAt,
+            ...officeInfo
+          };
+        }),
+        ...dentureAssessments.map(async a => {
+          const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+          return { 
+            id: a.id, 
+            type: 'Denture', 
+            emoji: '🦷', 
+            data: a.data, 
+            createdAt: a.createdAt,
+            ...officeInfo
+          };
+        }),
+        ...implantAssessments.map(async a => {
+          const officeInfo = await loadAssessmentOfficeInfo(a.id, officesMap);
+          return { 
+            id: a.id, 
+            type: 'Implant', 
+            emoji: '🧲', 
+            data: a.data, 
+            createdAt: a.createdAt,
+            ...officeInfo
+          };
+        }),
       ];
+
+      const allAssessments = await Promise.all(allAssessmentsPromises);
 
       // Group assessments by date
       const grouped = allAssessments.reduce((acc, assessment) => {
@@ -199,7 +370,7 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
 
       setGroupedAssessments(grouped);
 
-      // Load and parse treatments
+      // Load and parse treatments with office info
       const patientTreatments = await db
         .get<Treatment>('treatments')
         .query(
@@ -208,8 +379,17 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
         )
         .fetch();
 
-      // ✅ NEW: Use the wrapper function to convert treatments
-      const parsedTreatments = patientTreatments.map(t => convertTreatmentForParsing(t));
+      // Load office info for each treatment
+      const parsedTreatmentsPromises = patientTreatments.map(async (t) => {
+        const officeInfo = await loadTreatmentOfficeInfo(t.id, officesMap);
+        const parsed = convertTreatmentForParsing(t, officesMap);
+        return {
+          ...parsed,
+          ...officeInfo
+        };
+      });
+
+      const parsedTreatments = await Promise.all(parsedTreatmentsPromises);
 
       // Group treatments by date
       const groupedTreatmentsByDate = parsedTreatments.reduce((acc, treatment) => {
@@ -297,6 +477,12 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
           {patient.age} years old • {patient.gender}
         </Text>
         <Text style={styles.patientLocation}>📍 {patient.location}</Text>
+        {/* ✅ NEW: Show patient's office */}
+        {patientOfficeInfo.officeName && (
+          <Text style={styles.patientOffice}>
+            🏥 {patientOfficeInfo.officeName}
+          </Text>
+        )}
       </View>
 
       {/* New Assessment Button */}
@@ -328,7 +514,6 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
               
               {group.assessments.map((assessment) => {
                 const isExpanded = expandedAssessment === assessment.id;
-                // ✅ NEW: Use centralized parsing function
                 const parsed = parseAssessmentData(assessment.data, assessment.type.toLowerCase());
                 
                 return (
@@ -351,13 +536,27 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
                       <Text style={styles.expandIcon}>{isExpanded ? '▼' : '▶'}</Text>
                     </View>
                     
-                    {isExpanded && parsed.details.length > 0 && (
-                      <View style={styles.assessmentDetails}>
-                        <View style={styles.divider} />
-                        {parsed.details.map((detail, idx) => (
-                          <Text key={idx} style={styles.detailText}>• {detail}</Text>
-                        ))}
-                      </View>
+                    {isExpanded && (
+                      <>
+                        {parsed.details.length > 0 && (
+                          <View style={styles.assessmentDetails}>
+                            <View style={styles.divider} />
+                            {parsed.details.map((detail, idx) => (
+                              <Text key={idx} style={styles.detailText}>• {detail}</Text>
+                            ))}
+                          </View>
+                        )}
+                        
+                        {/* ✅ NEW: Show office and clinician info */}
+                        <View style={styles.assessmentFooter}>
+                          <Text style={styles.assessmentClinician}>
+                            👤 {assessment.clinicianEmail || 'Unknown'}
+                          </Text>
+                          <Text style={styles.assessmentOffice}>
+                            🏥 {assessment.officeName || 'Not synced'}
+                          </Text>
+                        </View>
+                      </>
                     )}
                   </TouchableOpacity>
                 );
@@ -441,6 +640,13 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
                             ))}
                           </View>
                         )}
+
+                        {/* ✅ NEW: Show office info for treatment */}
+                        <View style={styles.treatmentFooter}>
+                          <Text style={styles.treatmentOffice}>
+                            🏥 {treatment.officeName || 'Not synced'}
+                          </Text>
+                        </View>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -516,6 +722,12 @@ const styles = StyleSheet.create({
   patientLocation: {
     fontSize: 16,
     color: '#666',
+  },
+  patientOffice: {
+    fontSize: 15,
+    color: '#007bff',
+    fontWeight: '600',
+    marginTop: 8,
   },
   qrSection: {
     backgroundColor: '#fff',
@@ -652,6 +864,25 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 4,
   },
+  assessmentFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  assessmentClinician: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  assessmentOffice: {
+    fontSize: 11,
+    color: '#007bff',
+    fontWeight: '500',
+  },
   treatmentCard: {
     backgroundColor: '#f9f9f9',
     borderRadius: 8,
@@ -762,5 +993,16 @@ const styles = StyleSheet.create({
   billingDescription: {
     fontSize: 12,
     color: '#666',
+  },
+  treatmentFooter: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  treatmentOffice: {
+    fontSize: 11,
+    color: '#007bff',
+    fontWeight: '500',
   },
 });

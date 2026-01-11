@@ -1,4 +1,4 @@
-// screens/HomeScreen.tsx
+// screens/HomeScreen.tsx - UPDATED with office tracking
 import React from 'react';
 import { View, Text, StyleSheet, Button } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,7 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import SyncStatusIndicator from '../components/SyncStatusIndicator';
 
 const HomeScreen = () => {
-  const { user, role, logout } = useAuth();
+  const { user, userProfile, role, logout } = useAuth();
   const navigation = useNavigation<any>();
 
   const renderRoleSection = () => {
@@ -84,6 +84,12 @@ const HomeScreen = () => {
               color="#007bff"
             />
             <View style={styles.spacer} />
+            <Button 
+              title="🏥 Manage Offices" 
+              onPress={() => navigation.navigate('OfficeManagement')}
+              color="#6c757d"
+            />
+            <View style={styles.spacer} />
           </>
         );
       default:
@@ -94,8 +100,33 @@ const HomeScreen = () => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome to the Dental Mission App</Text>
-      <Text style={styles.text}>Logged in as: {user?.email}</Text>
-      <Text style={styles.text}>Role: {role}</Text>
+      
+      {/* User Info Section */}
+      <View style={styles.userInfoCard}>
+        <Text style={styles.text}>
+          <Text style={styles.label}>Email:</Text> {user?.email}
+        </Text>
+        <Text style={styles.text}>
+          <Text style={styles.label}>Role:</Text> {role}
+        </Text>
+        
+        {/* Show office information if available */}
+        {userProfile?.fullName && (
+          <Text style={styles.text}>
+            <Text style={styles.label}>Name:</Text> {userProfile.fullName}
+          </Text>
+        )}
+        
+        {userProfile?.officeName && (
+          <View style={styles.officeInfo}>
+            <Text style={styles.officeLabel}>🏥 Your Office</Text>
+            <Text style={styles.officeName}>{userProfile.officeName}</Text>
+            {userProfile.officeLocation && (
+              <Text style={styles.officeLocation}>📍 {userProfile.officeLocation}</Text>
+            )}
+          </View>
+        )}
+      </View>
 
       {/* Sync Status Indicator - Compact version for home screen */}
       <SyncStatusIndicator showDetails={false} />
@@ -122,10 +153,44 @@ const styles = StyleSheet.create({
     marginBottom: 20, 
     textAlign: 'center' 
   },
+  userInfoCard: {
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
   text: { 
-    fontSize: 16, 
-    marginBottom: 10, 
-    textAlign: 'center' 
+    fontSize: 14, 
+    marginBottom: 8,
+    color: '#495057',
+  },
+  label: {
+    fontWeight: '600',
+    color: '#212529',
+  },
+  officeInfo: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#dee2e6',
+  },
+  officeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6c757d',
+    marginBottom: 4,
+  },
+  officeName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#007bff',
+    marginBottom: 2,
+  },
+  officeLocation: {
+    fontSize: 13,
+    color: '#6c757d',
   },
   roleSection: {
     fontSize: 18,

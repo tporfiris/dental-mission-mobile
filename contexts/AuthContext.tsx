@@ -1,5 +1,5 @@
 // contexts/AuthContext.tsx
-// ✅ UPDATED: Better logout handling + Secure token storage with expo-secure-store
+// ✅ UPDATED: Office tracking + Secure token storage + Better logout handling
 import React, { createContext, useState, useEffect, useContext, useRef } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -14,10 +14,22 @@ const SECURE_KEYS = {
   REFRESH_TOKEN: 'dental_refresh_token',
   USER_ID: 'dental_user_id',
   USER_ROLE: 'dental_user_role',
+  USER_PROFILE: 'dental_user_profile',
 };
+
+interface UserProfile {
+  uid: string;
+  email: string;
+  fullName: string;
+  officeId: string;
+  officeName?: string;
+  officeLocation?: string;
+  role: string;
+}
 
 interface AuthContextType {
   user: User | null;
+  userProfile: UserProfile | null;
   role: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -26,6 +38,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  userProfile: null,
   role: null,
   loading: true,
   login: async () => {},
@@ -36,6 +49,7 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -43,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const sessionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
-  // ✅ NEW: Secure token storage functions
+  // ✅ Secure token storage functions
   const storeSecureData = async (key: string, value: string) => {
     try {
       await SecureStore.setItemAsync(key, value);
@@ -69,8 +83,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // ✅ NEW: Store user session securely
-  const storeUserSession = async (firebaseUser: User, userRole: string) => {
+  // ✅ Store user session securely (with profile)
+  const storeUserSession = async (firebaseUser: User, userRole: string, profile: UserProfile) => {
     try {
       const token = await firebaseUser.getIdToken();
       const refreshToken = firebaseUser.refreshToken;
@@ -80,6 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         storeSecureData(SECURE_KEYS.REFRESH_TOKEN, refreshToken || ''),
         storeSecureData(SECURE_KEYS.USER_ID, firebaseUser.uid),
         storeSecureData(SECURE_KEYS.USER_ROLE, userRole),
+        storeSecureData(SECURE_KEYS.USER_PROFILE, JSON.stringify(profile)),
       ]);
 
       console.log('✅ User session stored securely');
@@ -88,7 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // ✅ NEW: Clear user session
+  // ✅ Clear user session
   const clearUserSession = async () => {
     try {
       await Promise.all([
@@ -96,6 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteSecureData(SECURE_KEYS.REFRESH_TOKEN),
         deleteSecureData(SECURE_KEYS.USER_ID),
         deleteSecureData(SECURE_KEYS.USER_ROLE),
+        deleteSecureData(SECURE_KEYS.USER_PROFILE),
       ]);
 
       console.log('✅ User session cleared');
@@ -104,16 +120,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // ✅ NEW: Check for stored session on app start
+  // ✅ Check for stored session on app start
   const restoreSession = async () => {
     try {
       const storedUserId = await getSecureData(SECURE_KEYS.USER_ID);
       const storedRole = await getSecureData(SECURE_KEYS.USER_ROLE);
+      const storedProfile = await getSecureData(SECURE_KEYS.USER_PROFILE);
 
       if (storedUserId && storedRole) {
         console.log('📱 Found stored session, waiting for Firebase auth...');
-        // The onAuthStateChanged listener will handle the actual user restoration
-        return { userId: storedUserId, role: storedRole };
+        return { 
+          userId: storedUserId, 
+          role: storedRole,
+          profile: storedProfile ? JSON.parse(storedProfile) : null
+        };
       }
       return null;
     } catch (error) {
@@ -159,48 +179,143 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user]);
 
-  // ✅ UPDATED: Auth state listener with secure storage
+  // ✅ NEW: Load user profile with office information
+  const loadUserProfile = async (firebaseUser: User): Promise<UserProfile | null> => {
+    try {
+      // First, try to get user profile from new 'users' collection
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        
+        // Fetch office details
+        let officeName = '';
+        let officeLocation = '';
+        
+        if (userData.officeId) {
+          try {
+            const officeDoc = await getDoc(doc(db, 'offices', userData.officeId));
+            if (officeDoc.exists()) {
+              const officeData = officeDoc.data();
+              officeName = officeData.name;
+              officeLocation = officeData.location;
+            }
+          } catch (officeError) {
+            console.warn('⚠️ Could not load office details:', officeError);
+          }
+        }
+        
+        const fullProfile: UserProfile = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          fullName: userData.fullName || '',
+          officeId: userData.officeId || '',
+          officeName,
+          officeLocation,
+          role: userData.role || 'clinician',
+        };
+        
+        console.log('✅ User profile loaded:', {
+          email: userData.email,
+          role: userData.role,
+          office: officeName || userData.officeId
+        });
+        
+        return fullProfile;
+      } else {
+        // Fallback: Try legacy 'clinicians' collection
+        console.log('ℹ️ User doc not found, checking clinicians collection...');
+        const clinicianDoc = await getDoc(doc(db, 'clinicians', firebaseUser.uid));
+        
+        if (clinicianDoc.exists()) {
+          const userData = clinicianDoc.data();
+          
+          // Create a minimal profile for legacy users
+          const legacyProfile: UserProfile = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            fullName: userData.full_name || '',
+            officeId: 'legacy',
+            role: userData.role || 'clinician',
+          };
+          
+          console.log('✅ Legacy user profile loaded:', userData.role);
+          return legacyProfile;
+        } else {
+          console.warn('⚠️ No user document found - new registration?');
+          return null;
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error loading user profile:', error);
+      return null;
+    }
+  };
+
+  // ✅ UPDATED: Auth state listener with office tracking
   useEffect(() => {
     // Try to restore session first
-    restoreSession();
+    const storedSession = restoreSession();
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('🔐 Auth state changed:', firebaseUser?.email || 'undefined');
+      console.log('🔐 Auth state changed:', firebaseUser?.email || 'logged out');
       
       if (firebaseUser) {
         setUser(firebaseUser);
         
-        // Fetch role from Firestore 'users' collection
         try {
-          console.log('📝 Fetching role for user:', firebaseUser.uid);
+          // Load full user profile with office info
+          const profile = await loadUserProfile(firebaseUser);
           
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          let userRole = 'clinician'; // default
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            userRole = userData.role || 'clinician';
-            console.log('✅ User role loaded from Firestore:', userRole);
+          if (profile) {
+            setUserProfile(profile);
+            setRole(profile.role);
+            
+            // Store session securely
+            await storeUserSession(firebaseUser, profile.role, profile);
           } else {
-            console.warn('⚠️ User document not found in Firestore for UID:', firebaseUser.uid);
-            console.warn('⚠️ Using default clinician role...');
+            // No profile found, try cached data
+            const stored = await storedSession;
+            if (stored?.profile) {
+              setUserProfile(stored.profile);
+              setRole(stored.role);
+              console.log('📦 Using cached profile');
+            } else {
+              // Default values for new users
+              setRole('clinician');
+              console.warn('⚠️ No profile found, using defaults');
+            }
           }
-          
-          setRole(userRole);
-          
-          // ✅ Store session securely
-          await storeUserSession(firebaseUser, userRole);
-          
         } catch (error) {
-          console.error('❌ Error fetching user role:', error);
-          setRole('clinician');
+          console.error('❌ Error fetching user profile:', error);
+          
+          // Try to load cached profile
+          try {
+            const cachedProfile = await getSecureData(SECURE_KEYS.USER_PROFILE);
+            const cachedRole = await getSecureData(SECURE_KEYS.USER_ROLE);
+            
+            if (cachedProfile) {
+              setUserProfile(JSON.parse(cachedProfile));
+              console.log('📦 Using cached profile');
+            }
+            
+            if (cachedRole) {
+              setRole(cachedRole);
+              console.log('📦 Using cached role:', cachedRole);
+            } else {
+              setRole('clinician'); // Default role
+            }
+          } catch (cacheError) {
+            console.error('❌ Error loading cached profile:', cacheError);
+            setRole('clinician'); // Default role
+          }
         }
       } else {
         setUser(null);
+        setUserProfile(null);
         setRole(null);
-        // Clear stored session when user logs out
+        
+        // Clear cached data on logout
         await clearUserSession();
       }
       
@@ -210,7 +325,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
-  // ✅ UPDATED: Login with secure storage
+  // ✅ UPDATED: Login with office profile loading
   const login = async (email: string, password: string) => {
     try {
       console.log('🔐 Attempting login for:', email);
@@ -222,25 +337,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('🔄 Updating sync service auth status...');
       simpleFirestoreSyncService.updateAuthStatus();
       
-      // Fetch user role
-      console.log('📝 Fetching role for user:', userCredential.user.uid);
-      const userDocRef = doc(db, 'users', userCredential.user.uid);
-      const userDoc = await getDoc(userDocRef);
+      // Load user profile
+      const profile = await loadUserProfile(userCredential.user);
       
-      let userRole = 'clinician'; // default
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        userRole = userData.role || 'clinician';
-        console.log('✅ User role loaded:', userRole);
+      if (profile) {
+        setUserProfile(profile);
+        setRole(profile.role);
+        
+        // Store session securely
+        await storeUserSession(userCredential.user, profile.role, profile);
+        
+        console.log('✅ User profile loaded:', profile.role);
       } else {
         console.warn('⚠️ User document not found, defaulting to clinician');
+        setRole('clinician');
       }
-      
-      setRole(userRole);
-      
-      // ✅ Store session securely
-      await storeUserSession(userCredential.user, userRole);
       
     } catch (error: any) {
       console.error('❌ Login failed:', error);
@@ -248,7 +359,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
   
-  // ✅ UPDATED: Logout with secure storage cleanup
+  // ✅ Logout with complete cleanup
   const logout = async () => {
     try {
       console.log('👋 Logging out user...');
@@ -270,6 +381,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // 5. Clear local state BEFORE Firebase signOut
       setUser(null);
+      setUserProfile(null);
       setRole(null);
       
       // 6. Finally sign out from Firebase
@@ -283,7 +395,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, userProfile, role, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

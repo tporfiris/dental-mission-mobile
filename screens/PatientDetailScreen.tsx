@@ -1,4 +1,4 @@
-// screens/PatientDetailScreen.tsx - UPDATED with delete functionality
+// screens/PatientDetailScreen.tsx - UPDATED with office and clinician tracking
 import React, { useState } from 'react';
 import {
   View,
@@ -26,6 +26,9 @@ interface Patient {
   photoUri?: string;
   photoCloudUri?: string;
   createdAt: Date;
+  officeId?: string;
+  officeName?: string;
+  registeredBy?: string;
 }
 
 interface Treatment {
@@ -40,6 +43,9 @@ interface Treatment {
   notes: string;
   clinicianName: string;
   completedAt: Date;
+  officeId?: string;
+  officeName?: string;
+  performedBy?: string;
 }
 
 interface Assessment {
@@ -49,6 +55,9 @@ interface Assessment {
   data: string;
   clinicianEmail: string;
   createdAt: Date;
+  officeId?: string;
+  officeName?: string;
+  clinicianId?: string;
 }
 
 const PatientDetailScreen = ({ route, navigation }: any) => {
@@ -60,25 +69,6 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
 
   // Calculate total treatment value
   const totalValue = treatments.reduce((sum, t) => sum + (t.value * t.units), 0);
-
-  // Helper function to check if an item can be deleted based on when it was synced
-  const canDeleteItem = (syncedAt: Date | undefined | null): boolean => {
-    if (!syncedAt) {
-      // If no sync date, allow deletion (shouldn't happen in normal flow)
-      return true;
-    }
-
-    // Get midnight of the day after the item was synced
-    const syncDate = new Date(syncedAt);
-    const midnightAfterSync = new Date(syncDate);
-    midnightAfterSync.setHours(24, 0, 0, 0);
-
-    // Get current time
-    const now = new Date();
-
-    // Can delete if we haven't passed midnight yet
-    return now < midnightAfterSync;
-  };
 
   // Delete treatment with confirmation
   const handleDeleteTreatment = (treatment: Treatment) => {
@@ -97,17 +87,14 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
               const result = await dataDeletionService.deleteTreatment(treatment.id);
 
               if (result.isLocked) {
-                // Item is locked - show lock message
                 Alert.alert(
                   '🔒 Item Locked',
                   result.lockReason || 'This item can no longer be deleted because it was synced more than 24 hours ago.',
                   [{ text: 'OK' }]
                 );
               } else if (result.success) {
-                // Remove from local state
                 setTreatments(prev => prev.filter(t => t.id !== treatment.id));
                 
-                // Show success message with details
                 const deletedFrom = [];
                 if (result.deletedFrom.cloud) deletedFrom.push('cloud');
                 if (result.deletedFrom.local) deletedFrom.push('local');
@@ -159,17 +146,14 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
               );
 
               if (result.isLocked) {
-                // Item is locked - show lock message
                 Alert.alert(
                   '🔒 Item Locked',
                   result.lockReason || 'This item can no longer be deleted because it was synced more than 24 hours ago.',
                   [{ text: 'OK' }]
                 );
               } else if (result.success) {
-                // Remove from local state
                 setAssessments(prev => prev.filter(a => a.id !== assessment.id));
                 
-                // Show success message with details
                 const deletedFrom = [];
                 if (result.deletedFrom.cloud) deletedFrom.push('cloud');
                 if (result.deletedFrom.local) deletedFrom.push('local');
@@ -243,6 +227,10 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
             </Text>
             <Text style={styles.patientDetails}>
               📍 {patient.location}
+            </Text>
+            {/* ✅ NEW: Show office info */}
+            <Text style={styles.patientOffice}>
+              🏥 {patient.officeName || 'Unknown Office'}
             </Text>
             <Text style={styles.patientDate}>
               Registered: {patient.createdAt.toLocaleDateString()}
@@ -325,7 +313,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                           {deletingId === assessment.id ? (
                             <ActivityIndicator size="small" color="#fff" />
                           ) : (
-                            <Text style={styles.deleteButtonText}>🗑️ Delete</Text>
+                            <Text style={styles.deleteButtonText}>🗑️</Text>
                           )}
                         </TouchableOpacity>
                       </View>
@@ -343,9 +331,15 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                         )}
                       </View>
 
-                      <Text style={styles.itemClinician}>
-                        By: {assessment.clinicianEmail}
-                      </Text>
+                      {/* ✅ NEW: Show office and clinician */}
+                      <View style={styles.itemFooter}>
+                        <Text style={styles.itemClinician}>
+                          👤 {assessment.clinicianEmail}
+                        </Text>
+                        <Text style={styles.itemOffice}>
+                          🏥 {assessment.officeName || 'Unknown Office'}
+                        </Text>
+                      </View>
                     </View>
                   );
                 })
@@ -404,7 +398,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                           {deletingId === treatment.id ? (
                             <ActivityIndicator size="small" color="#fff" />
                           ) : (
-                            <Text style={styles.deleteButtonText}>🗑️ Delete</Text>
+                            <Text style={styles.deleteButtonText}>🗑️</Text>
                           )}
                         </TouchableOpacity>
                       </View>
@@ -439,9 +433,15 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                         </Text>
                       </View>
 
-                      <Text style={styles.itemClinician}>
-                        By: {treatment.clinicianName}
-                      </Text>
+                      {/* ✅ NEW: Show office and clinician */}
+                      <View style={styles.itemFooter}>
+                        <Text style={styles.itemClinician}>
+                          👤 {treatment.clinicianName}
+                        </Text>
+                        <Text style={styles.itemOffice}>
+                          🏥 {treatment.officeName || 'Unknown Office'}
+                        </Text>
+                      </View>
                     </View>
                   );
                 })
@@ -504,6 +504,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginBottom: 2,
+  },
+  patientOffice: {
+    fontSize: 13,
+    color: '#007bff',
+    fontWeight: '600',
+    marginTop: 4,
   },
   patientDate: {
     fontSize: 12,
@@ -611,11 +617,11 @@ const styles = StyleSheet.create({
   },
   deleteButton: {
     backgroundColor: '#dc3545',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
     marginLeft: 8,
-    minWidth: 80,
+    minWidth: 36,
     alignItems: 'center',
   },
   deleteButtonDisabled: {
@@ -623,8 +629,7 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 16,
   },
   itemDetails: {
     marginBottom: 8,
@@ -660,10 +665,24 @@ const styles = StyleSheet.create({
     color: '#28a745',
     marginTop: 4,
   },
+  itemFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
   itemClinician: {
-    fontSize: 12,
-    color: '#999',
-    fontStyle: 'italic',
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  itemOffice: {
+    fontSize: 11,
+    color: '#007bff',
+    fontWeight: '500',
   },
   footer: {
     height: 20,
