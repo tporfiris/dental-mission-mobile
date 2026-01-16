@@ -1,4 +1,4 @@
-// screens/NewPatientScreen.tsx
+// screens/NewPatientScreen.tsx - UPDATED to navigate to PatientActionSelectionScreen
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, Button, StyleSheet, Alert, Platform,
@@ -77,9 +77,11 @@ const NewPatientScreen = ({ navigation }: any) => {
   
       console.log('✅ Patient saved with ID:', id);
 
-  
-      // Instead of going back, navigate to QR code screen
-      navigation.navigate('Assessments', { patientId: id });
+      // ✅ UPDATED: Navigate to PatientActionSelection instead of Assessments
+      navigation.navigate('PatientActionSelection', { 
+        patientId: id,
+        patientName: firstName + ' ' + lastName
+      });
   
     } catch (err) {
       console.error('❌ Failed to save patient:', err);

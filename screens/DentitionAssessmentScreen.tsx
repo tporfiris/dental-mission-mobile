@@ -25,7 +25,18 @@ const scaleFontSize = (size: number) => Math.round(scaleWidth(size));
 const CHART_WIDTH = Math.min(SCREEN_WIDTH * 0.92, 360);
 const CHART_HEIGHT = CHART_WIDTH * 1.33; // Maintain aspect ratio
 
-const TOOTH_STATES = ['present', 'crown-missing', 'roots-only', 'fully-missing'] as const;
+// ✅ EXPANDED TOOTH STATES - Added new options
+const TOOTH_STATES = [
+  'present',           // Normal healthy tooth
+  'has-fillings',      // NEW: Tooth has existing fillings
+  'has-crowns',        // NEW: Tooth has crown
+  'existing-rc',       // NEW: Tooth has existing root canal
+  'has-cavities',      // NEW: Tooth has cavities that need treatment
+  'broken-crack',      // NEW: Tooth is broken or cracked
+  'crown-missing',     // Original: Crown portion missing
+  'roots-only',        // Original: Only roots remain
+  'fully-missing'      // Original: Tooth completely missing
+] as const;
 type ToothState = typeof TOOTH_STATES[number];
 
 const UPPER_RIGHT = ['11', '12', '13', '14', '15', '16', '17', '18'];
@@ -251,10 +262,21 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
     }
   };
 
+  // ✅ UPDATED: Color coding for all tooth states
   const getToothStyle = (state: ToothState) => {
     switch (state) {
       case 'present':
         return styles.toothPresent;
+      case 'has-fillings':
+        return styles.toothHasFillings;
+      case 'has-crowns':
+        return styles.toothHasCrowns;
+      case 'existing-rc':
+        return styles.toothExistingRC;
+      case 'has-cavities':
+        return styles.toothHasCavities;
+      case 'broken-crack':
+        return styles.toothBrokenCrack;
       case 'crown-missing':
         return styles.toothCrownMissing;
       case 'roots-only':
@@ -360,11 +382,31 @@ const DentitionAssessmentScreen = ({ route, navigation }: any) => {
         )}
       </View>
 
-      {/* Legend */}
+      {/* ✅ UPDATED LEGEND - All tooth states */}
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendCircle, styles.toothPresent]} />
           <Text style={styles.legendLabel}>Present</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendCircle, styles.toothHasFillings]} />
+          <Text style={styles.legendLabel}>Has Fillings</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendCircle, styles.toothHasCrowns]} />
+          <Text style={styles.legendLabel}>Has Crowns</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendCircle, styles.toothExistingRC]} />
+          <Text style={styles.legendLabel}>Existing Root Canal</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendCircle, styles.toothHasCavities]} />
+          <Text style={styles.legendLabel}>Has Cavities</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendCircle, styles.toothBrokenCrack]} />
+          <Text style={styles.legendLabel}>Broken/Crack</Text>
         </View>
         <View style={styles.legendItem}>
           <View style={[styles.legendCircle, styles.toothCrownMissing]} />
@@ -548,17 +590,33 @@ const styles = StyleSheet.create({
     fontSize: scaleFontSize(9),
     fontWeight: 'bold',
   },
+  // ✅ UPDATED: Styles for all tooth states
   toothPresent: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#4CAF50', // Green - healthy
+  },
+  toothHasFillings: {
+    backgroundColor: '#2196F3', // Blue - has fillings
+  },
+  toothHasCrowns: {
+    backgroundColor: '#FFC107', // Amber - has crowns
+  },
+  toothExistingRC: {
+    backgroundColor: '#9C27B0', // Purple - existing root canal
+  },
+  toothHasCavities: {
+    backgroundColor: '#FF9800', // Orange - has cavities
+  },
+  toothBrokenCrack: {
+    backgroundColor: '#E91E63', // Pink - broken/cracked
   },
   toothCrownMissing: {
-    backgroundColor: '#FFC107',
+    backgroundColor: '#FF5722', // Deep Orange - crown missing
   },
   toothRootsOnly: {
-    backgroundColor: '#FF5722',
+    backgroundColor: '#795548', // Brown - roots only
   },
   toothFullyMissing: {
-    backgroundColor: 'rgba(108, 117, 125, 0.3)',
+    backgroundColor: 'rgba(108, 117, 125, 0.3)', // Gray transparent
     borderWidth: 2,
     borderColor: '#6c757d',
   },

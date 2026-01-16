@@ -1,5 +1,6 @@
+// screens/AssessmentsScreen.tsx - UPDATED with Begin Treatment button
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Button, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Button, ScrollView, TouchableOpacity } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
 import QRCode from 'react-native-qrcode-svg';
 import Patient from '../db/models/Patient';
@@ -89,6 +90,21 @@ const AssessmentsScreen = ({ route, navigation }: any) => {
             <Button title="🧲 Implant" onPress={() => navigation.navigate('ImplantAssessment', { patientId })} />
           </View>
         </View>
+      </View>
+
+      {/* ✅ NEW: Begin Treatment Button */}
+      <View style={styles.treatmentButtonContainer}>
+        <TouchableOpacity
+          style={styles.beginTreatmentButton}
+          onPress={() => navigation.navigate('Treatment', { patientId })}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.beginTreatmentIcon}>🦷</Text>
+          <Text style={styles.beginTreatmentText}>Begin Treatment</Text>
+          <Text style={styles.beginTreatmentSubtext}>
+            Click here to start.
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* QR Code at Bottom */}
@@ -192,6 +208,38 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     marginBottom: 12,
+  },
+  // ✅ NEW: Begin Treatment Button Styles
+  treatmentButtonContainer: {
+    width: '100%',
+    marginBottom: 24,
+  },
+  beginTreatmentButton: {
+    backgroundColor: '#28a745',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  beginTreatmentIcon: {
+    fontSize: 40,
+    marginBottom: 8,
+  },
+  beginTreatmentText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  beginTreatmentSubtext: {
+    fontSize: 13,
+    color: '#fff',
+    opacity: 0.9,
+    textAlign: 'center',
   },
   qrContainer: { 
     alignItems: 'center', 

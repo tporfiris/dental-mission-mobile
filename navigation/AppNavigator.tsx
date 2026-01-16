@@ -1,4 +1,4 @@
-// navigation/AppNavigator.tsx
+// navigation/AppNavigator.tsx - UPDATED with PatientActionSelectionScreen
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,6 +16,9 @@ import FillingsAssessmentScreen from '../screens/FillingsAssessmentScreen';
 import ExtractionsAssessmentScreen from '../screens/ExtractionsAssessmentScreen';
 import DentureAssessmentScreen from '../screens/DentureAssessmentScreen';
 import ImplantAssessmentScreen from '../screens/ImplantAssessmentScreen';
+
+// ✅ NEW: Patient Action Selection Screen
+import PatientActionSelectionScreen from '../screens/PatientActionSelectionScreen';
 
 // Treatment Screens
 import TreatmentScreen from '../screens/TreatmentScreen';
@@ -153,6 +156,17 @@ export default function AppNavigator() {
             }}
           />
           <Stack.Screen name="NewPatient" component={NewPatientScreen} />
+          
+          {/* ✅ NEW: Patient Action Selection Screen - Add between NewPatient and Assessments */}
+          <Stack.Screen 
+            name="PatientActionSelection" 
+            component={PatientActionSelectionScreen}
+            options={{ 
+              title: 'Choose Action',
+              headerBackTitleVisible: false
+            }}
+          />
+          
           <Stack.Screen name="PatientQRCode" component={PatientQRCodeScreen} />
           <Stack.Screen name="ScanQRCode" component={ScanQRCodeScreen} />
           <Stack.Screen name="Assessments" component={AssessmentsScreen} />

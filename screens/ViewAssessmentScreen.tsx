@@ -1,4 +1,4 @@
-// screens/ViewAssessmentScreen.tsx - Enhanced with office and clinician tracking
+// screens/ViewAssessmentScreen.tsx - UPDATED to show "Needs" data from Fillings assessments
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/hooks';
@@ -58,10 +58,10 @@ const ViewAssessmentScreen = ({ route }: any) => {
         });
       });
       
-      console.log(`✅ Loaded ${officesMap.size} offices for assessment view`);
+      console.log('Loaded ' + officesMap.size + ' offices for assessment view');
       return officesMap;
     } catch (error) {
-      console.error('❌ Error loading offices:', error);
+      console.error('Error loading offices:', error);
       return new Map();
     }
   };
@@ -90,7 +90,7 @@ const ViewAssessmentScreen = ({ route }: any) => {
   useEffect(() => {
     const loadAssessments = async () => {
       try {
-        console.log('🔍 Loading assessments for patient:', patientId);
+        console.log('Loading assessments for patient:', patientId);
 
         // Load offices first
         const officesMap = await loadOffices();
@@ -212,9 +212,9 @@ const ViewAssessmentScreen = ({ route }: any) => {
         });
 
         setGroupedAssessments(grouped);
-        console.log('✅ Assessments loaded and grouped by date');
+        console.log('Assessments loaded and grouped by date');
       } catch (err) {
-        console.error('❌ Failed to load assessments:', err);
+        console.error('Failed to load assessments:', err);
       } finally {
         setLoading(false);
       }
@@ -236,6 +236,43 @@ const ViewAssessmentScreen = ({ route }: any) => {
     const parsedData = parseAssessmentData(assessment.data, assessment.type.toLowerCase());
     const isExpanded = expandedAssessment === assessment.id;
 
+    // Extract "Needs" data for Fillings assessments
+    let needsData = null;
+    if (assessment.type === 'Fillings') {
+      try {
+        const assessmentJson = JSON.parse(assessment.data);
+        if (assessmentJson.teethWithIssues) {
+          const needs = {
+            needsFillings: [] as string[],
+            needsCrowns: [] as string[],
+            needsNewRootCanals: [] as string[],
+          };
+          
+          Object.entries(assessmentJson.teethWithIssues).forEach(([toothId, toothData]: [string, any]) => {
+            if (toothData.neededFillings) {
+              needs.needsFillings.push(
+                'Tooth ' + toothId + ': ' + toothData.neededFillings.type + ' filling on ' + toothData.neededFillings.surfaces.join('') + ' surfaces'
+              );
+            }
+            if (toothData.neededCrown) {
+              needs.needsCrowns.push(
+                'Tooth ' + toothId + ': ' + toothData.neededCrown.material + ' crown'
+              );
+            }
+            if (toothData.needsNewRootCanal) {
+              needs.needsNewRootCanals.push('Tooth ' + toothId);
+            }
+          });
+          
+          if (needs.needsFillings.length > 0 || needs.needsCrowns.length > 0 || needs.needsNewRootCanals.length > 0) {
+            needsData = needs;
+          }
+        }
+      } catch (e) {
+        console.log('Could not parse needs data from assessment');
+      }
+    }
+
     return (
       <TouchableOpacity 
         key={assessment.id}
@@ -247,6 +284,11 @@ const ViewAssessmentScreen = ({ route }: any) => {
           <View style={styles.cardHeaderLeft}>
             <Text style={styles.assessmentTitle}>{assessment.emoji} {assessment.type} Assessment</Text>
             <Text style={styles.summaryText}>{parsedData.summary}</Text>
+            {needsData && (
+              <View style={styles.needsBadge}>
+                <Text style={styles.needsBadgeText}>⚠️ Treatment Needs</Text>
+              </View>
+            )}
             <Text style={styles.assessmentTime}>
               {assessment.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
@@ -264,7 +306,40 @@ const ViewAssessmentScreen = ({ route }: any) => {
               ))}
             </View>
 
-            {/* ✅ NEW: Show office and clinician info */}
+            {needsData && (
+              <View style={styles.needsSection}>
+                <View style={styles.divider} />
+                <Text style={styles.needsSectionTitle}>🔔 Treatment Needs:</Text>
+                
+                {needsData.needsFillings.length > 0 && (
+                  <View style={styles.needsCategory}>
+                    <Text style={styles.needsCategoryTitle}>Needs Fillings:</Text>
+                    {needsData.needsFillings.map((need, idx) => (
+                      <Text key={idx} style={styles.needsText}>• {need}</Text>
+                    ))}
+                  </View>
+                )}
+                
+                {needsData.needsCrowns.length > 0 && (
+                  <View style={styles.needsCategory}>
+                    <Text style={styles.needsCategoryTitle}>Needs Crowns:</Text>
+                    {needsData.needsCrowns.map((need, idx) => (
+                      <Text key={idx} style={styles.needsText}>• {need}</Text>
+                    ))}
+                  </View>
+                )}
+                
+                {needsData.needsNewRootCanals.length > 0 && (
+                  <View style={styles.needsCategory}>
+                    <Text style={styles.needsCategoryTitle}>Needs Root Canals:</Text>
+                    {needsData.needsNewRootCanals.map((need, idx) => (
+                      <Text key={idx} style={styles.needsText}>• {need}</Text>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
             <View style={styles.assessmentFooter}>
               <Text style={styles.assessmentClinician}>
                 👤 {assessment.clinicianEmail || 'Unknown'}
@@ -413,6 +488,19 @@ const styles = StyleSheet.create({
     color: '#007bff',
     fontWeight: '500',
   },
+  needsBadge: {
+    backgroundColor: '#ff9800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginVertical: 6,
+  },
+  needsBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
   expandIcon: {
     fontSize: 16,
     color: '#999',
@@ -444,6 +532,36 @@ const styles = StyleSheet.create({
     color: '#495057',
     lineHeight: 20,
     marginBottom: 4,
+  },
+  needsSection: {
+    marginTop: 12,
+    backgroundColor: '#fff3e0',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff9800',
+  },
+  needsSectionTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#e65100',
+    marginBottom: 12,
+  },
+  needsCategory: {
+    marginBottom: 8,
+  },
+  needsCategoryTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#f57c00',
+    marginBottom: 4,
+  },
+  needsText: {
+    fontSize: 12,
+    color: '#5d4037',
+    lineHeight: 18,
+    marginBottom: 2,
+    marginLeft: 8,
   },
   assessmentFooter: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-// screens/PatientDetailScreen.tsx - UPDATED with office and clinician tracking
+// screens/PatientDetailScreen.tsx - UPDATED to show "Needs" data from Fillings assessments
 import React, { useState } from 'react';
 import {
   View,
@@ -74,7 +74,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
   const handleDeleteTreatment = (treatment: Treatment) => {
     Alert.alert(
       'Delete Treatment',
-      `Are you sure you want to delete this ${treatment.type} treatment?\n\nThis will permanently remove it from both the cloud and local databases.\n\nThis action cannot be undone.`,
+      'Are you sure you want to delete this ' + treatment.type + ' treatment?\n\nThis will permanently remove it from both the cloud and local databases.\n\nThis action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -83,7 +83,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
           onPress: async () => {
             setDeletingId(treatment.id);
             try {
-              console.log(`🗑️ Deleting treatment: ${treatment.id}`);
+              console.log('Deleting treatment: ' + treatment.id);
               const result = await dataDeletionService.deleteTreatment(treatment.id);
 
               if (result.isLocked) {
@@ -101,7 +101,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                 
                 Alert.alert(
                   'Success',
-                  `Treatment deleted successfully from ${deletedFrom.join(' and ')} database${deletedFrom.length > 1 ? 's' : ''}.`
+                  'Treatment deleted successfully from ' + deletedFrom.join(' and ') + ' database' + (deletedFrom.length > 1 ? 's' : '') + '.'
                 );
               } else {
                 Alert.alert(
@@ -130,7 +130,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
   const handleDeleteAssessment = (assessment: Assessment) => {
     Alert.alert(
       'Delete Assessment',
-      `Are you sure you want to delete this ${assessment.assessmentType} assessment?\n\nThis will permanently remove it from both the cloud and local databases.\n\nThis action cannot be undone.`,
+      'Are you sure you want to delete this ' + assessment.assessmentType + ' assessment?\n\nThis will permanently remove it from both the cloud and local databases.\n\nThis action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -139,7 +139,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
           onPress: async () => {
             setDeletingId(assessment.id);
             try {
-              console.log(`🗑️ Deleting assessment: ${assessment.id}`);
+              console.log('Deleting assessment: ' + assessment.id);
               const result = await dataDeletionService.deleteAssessment(
                 assessment.id,
                 assessment.assessmentType as any
@@ -160,7 +160,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                 
                 Alert.alert(
                   'Success',
-                  `Assessment deleted successfully from ${deletedFrom.join(' and ')} database${deletedFrom.length > 1 ? 's' : ''}.`
+                  'Assessment deleted successfully from ' + deletedFrom.join(' and ') + ' database' + (deletedFrom.length > 1 ? 's' : '') + '.'
                 );
               } else {
                 Alert.alert(
@@ -207,7 +207,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
             <SmartImage
               localUri={patient.photoUri}
               cloudUri={patient.photoCloudUri}
-              placeholderInitials={`${patient.firstName.charAt(0)}${patient.lastName.charAt(0)}`}
+              placeholderInitials={patient.firstName.charAt(0) + patient.lastName.charAt(0)}
               style={styles.patientPhoto}
             />
           ) : (
@@ -228,7 +228,6 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
             <Text style={styles.patientDetails}>
               📍 {patient.location}
             </Text>
-            {/* ✅ NEW: Show office info */}
             <Text style={styles.patientOffice}>
               🏥 {patient.officeName || 'Unknown Office'}
             </Text>
@@ -287,6 +286,46 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                     assessment.assessmentType
                   );
 
+                  // ✅ NEW: Extract "Needs" data for Fillings assessments
+                  let needsData = null;
+                  if (assessment.assessmentType.toLowerCase() === 'fillings') {
+                    try {
+                      const assessmentJson = typeof assessment.data === 'string' 
+                        ? JSON.parse(assessment.data) 
+                        : assessment.data;
+                      
+                      if (assessmentJson.teethWithIssues) {
+                        const needs = {
+                          needsFillings: [] as string[],
+                          needsCrowns: [] as string[],
+                          needsNewRootCanals: [] as string[],
+                        };
+                        
+                        Object.entries(assessmentJson.teethWithIssues).forEach(([toothId, toothData]: [string, any]) => {
+                          if (toothData.neededFillings) {
+                            needs.needsFillings.push(
+                              'Tooth ' + toothId + ': ' + toothData.neededFillings.type + ' filling on ' + toothData.neededFillings.surfaces.join('') + ' surfaces'
+                            );
+                          }
+                          if (toothData.neededCrown) {
+                            needs.needsCrowns.push(
+                              'Tooth ' + toothId + ': ' + toothData.neededCrown.material + ' crown'
+                            );
+                          }
+                          if (toothData.needsNewRootCanal) {
+                            needs.needsNewRootCanals.push('Tooth ' + toothId);
+                          }
+                        });
+                        
+                        if (needs.needsFillings.length > 0 || needs.needsCrowns.length > 0 || needs.needsNewRootCanals.length > 0) {
+                          needsData = needs;
+                        }
+                      }
+                    } catch (e) {
+                      console.log('Could not parse needs data from assessment');
+                    }
+                  }
+
                   return (
                     <View key={assessment.id} style={styles.itemCard}>
                       <View style={styles.itemHeader}>
@@ -295,6 +334,12 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                             {assessment.assessmentType.charAt(0).toUpperCase() + 
                              assessment.assessmentType.slice(1)}
                           </Text>
+                          {/* ✅ NEW: Show badge if there are treatment needs */}
+                          {needsData && (
+                            <View style={styles.needsBadge}>
+                              <Text style={styles.needsBadgeText}>⚠️ Treatment Needs</Text>
+                            </View>
+                          )}
                           <Text style={styles.itemDate}>
                             {assessment.createdAt.toLocaleDateString()} at{' '}
                             {assessment.createdAt.toLocaleTimeString()}
@@ -331,7 +376,42 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                         )}
                       </View>
 
-                      {/* ✅ NEW: Show office and clinician */}
+                      {/* ✅ NEW: Show "Needs" section for Fillings assessments */}
+                      {needsData && (
+                        <View style={styles.needsSection}>
+                          <View style={styles.divider} />
+                          <Text style={styles.needsSectionTitle}>🔔 Treatment Needs:</Text>
+                          
+                          {needsData.needsFillings.length > 0 && (
+                            <View style={styles.needsCategory}>
+                              <Text style={styles.needsCategoryTitle}>Needs Fillings:</Text>
+                              {needsData.needsFillings.map((need, idx) => (
+                                <Text key={idx} style={styles.needsText}>• {need}</Text>
+                              ))}
+                            </View>
+                          )}
+                          
+                          {needsData.needsCrowns.length > 0 && (
+                            <View style={styles.needsCategory}>
+                              <Text style={styles.needsCategoryTitle}>Needs Crowns:</Text>
+                              {needsData.needsCrowns.map((need, idx) => (
+                                <Text key={idx} style={styles.needsText}>• {need}</Text>
+                              ))}
+                            </View>
+                          )}
+                          
+                          {needsData.needsNewRootCanals.length > 0 && (
+                            <View style={styles.needsCategory}>
+                              <Text style={styles.needsCategoryTitle}>Needs Root Canals:</Text>
+                              {needsData.needsNewRootCanals.map((need, idx) => (
+                                <Text key={idx} style={styles.needsText}>• {need}</Text>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      )}
+
+                      {/* Show office and clinician */}
                       <View style={styles.itemFooter}>
                         <Text style={styles.itemClinician}>
                           👤 {assessment.clinicianEmail}
@@ -433,7 +513,7 @@ const PatientDetailScreen = ({ route, navigation }: any) => {
                         </Text>
                       </View>
 
-                      {/* ✅ NEW: Show office and clinician */}
+                      {/* Show office and clinician */}
                       <View style={styles.itemFooter}>
                         <Text style={styles.itemClinician}>
                           👤 {treatment.clinicianName}
@@ -611,6 +691,20 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 4,
   },
+  // ✅ NEW: Badge for treatment needs
+  needsBadge: {
+    backgroundColor: '#ff9800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginVertical: 4,
+  },
+  needsBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#fff',
+  },
   itemDate: {
     fontSize: 12,
     color: '#666',
@@ -647,6 +741,42 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#495057',
     marginBottom: 4,
+  },
+  // ✅ NEW: Needs section styles
+  needsSection: {
+    marginTop: 12,
+    backgroundColor: '#fff3e0',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff9800',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#e9ecef',
+    marginBottom: 12,
+  },
+  needsSectionTitle: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#e65100',
+    marginBottom: 12,
+  },
+  needsCategory: {
+    marginBottom: 8,
+  },
+  needsCategoryTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#f57c00',
+    marginBottom: 4,
+  },
+  needsText: {
+    fontSize: 11,
+    color: '#5d4037',
+    lineHeight: 16,
+    marginBottom: 2,
+    marginLeft: 8,
   },
   treatmentBasics: {
     flexDirection: 'row',

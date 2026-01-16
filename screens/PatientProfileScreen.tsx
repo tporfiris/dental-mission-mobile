@@ -1,4 +1,4 @@
-// screens/PatientProfileScreen.tsx - UPDATED with office and clinician tracking
+// screens/PatientProfileScreen.tsx - UPDATED to show "Needs" data from Fillings assessments
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -477,7 +477,6 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
           {patient.age} years old • {patient.gender}
         </Text>
         <Text style={styles.patientLocation}>📍 {patient.location}</Text>
-        {/* ✅ NEW: Show patient's office */}
         {patientOfficeInfo.officeName && (
           <Text style={styles.patientOffice}>
             🏥 {patientOfficeInfo.officeName}
@@ -516,6 +515,43 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
                 const isExpanded = expandedAssessment === assessment.id;
                 const parsed = parseAssessmentData(assessment.data, assessment.type.toLowerCase());
                 
+                // ✅ NEW: Extract "Needs" data for Fillings assessments
+                let needsData = null;
+                if (assessment.type === 'Fillings') {
+                  try {
+                    const assessmentJson = JSON.parse(assessment.data);
+                    if (assessmentJson.teethWithIssues) {
+                      const needs = {
+                        needsFillings: [] as string[],
+                        needsCrowns: [] as string[],
+                        needsNewRootCanals: [] as string[],
+                      };
+                      
+                      Object.entries(assessmentJson.teethWithIssues).forEach(([toothId, toothData]: [string, any]) => {
+                        if (toothData.neededFillings) {
+                          needs.needsFillings.push(
+                            `Tooth ${toothId}: ${toothData.neededFillings.type} filling on ${toothData.neededFillings.surfaces.join('')} surfaces`
+                          );
+                        }
+                        if (toothData.neededCrown) {
+                          needs.needsCrowns.push(
+                            `Tooth ${toothId}: ${toothData.neededCrown.material} crown`
+                          );
+                        }
+                        if (toothData.needsNewRootCanal) {
+                          needs.needsNewRootCanals.push(`Tooth ${toothId}`);
+                        }
+                      });
+                      
+                      if (needs.needsFillings.length > 0 || needs.needsCrowns.length > 0 || needs.needsNewRootCanals.length > 0) {
+                        needsData = needs;
+                      }
+                    }
+                  } catch (e) {
+                    console.log('Could not parse needs data from assessment');
+                  }
+                }
+                
                 return (
                   <TouchableOpacity
                     key={assessment.id}
@@ -529,6 +565,12 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
                           {assessment.emoji} {assessment.type}
                         </Text>
                         <Text style={styles.assessmentSummary}>{parsed.summary}</Text>
+                        {/* ✅ NEW: Show badge if there are treatment needs */}
+                        {needsData && (
+                          <View style={styles.needsBadge}>
+                            <Text style={styles.needsBadgeText}>⚠️ Treatment Needs</Text>
+                          </View>
+                        )}
                         <Text style={styles.assessmentTime}>
                           {assessment.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </Text>
@@ -547,7 +589,42 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
                           </View>
                         )}
                         
-                        {/* ✅ NEW: Show office and clinician info */}
+                        {/* ✅ NEW: Show "Needs" section for Fillings assessments */}
+                        {needsData && (
+                          <View style={styles.needsSection}>
+                            <View style={styles.divider} />
+                            <Text style={styles.needsSectionTitle}>🔔 Treatment Needs:</Text>
+                            
+                            {needsData.needsFillings.length > 0 && (
+                              <View style={styles.needsCategory}>
+                                <Text style={styles.needsCategoryTitle}>Needs Fillings:</Text>
+                                {needsData.needsFillings.map((need, idx) => (
+                                  <Text key={idx} style={styles.needsText}>• {need}</Text>
+                                ))}
+                              </View>
+                            )}
+                            
+                            {needsData.needsCrowns.length > 0 && (
+                              <View style={styles.needsCategory}>
+                                <Text style={styles.needsCategoryTitle}>Needs Crowns:</Text>
+                                {needsData.needsCrowns.map((need, idx) => (
+                                  <Text key={idx} style={styles.needsText}>• {need}</Text>
+                                ))}
+                              </View>
+                            )}
+                            
+                            {needsData.needsNewRootCanals.length > 0 && (
+                              <View style={styles.needsCategory}>
+                                <Text style={styles.needsCategoryTitle}>Needs Root Canals:</Text>
+                                {needsData.needsNewRootCanals.map((need, idx) => (
+                                  <Text key={idx} style={styles.needsText}>• {need}</Text>
+                                ))}
+                              </View>
+                            )}
+                          </View>
+                        )}
+                        
+                        {/* Show office and clinician info */}
                         <View style={styles.assessmentFooter}>
                           <Text style={styles.assessmentClinician}>
                             👤 {assessment.clinicianEmail || 'Unknown'}
@@ -641,7 +718,6 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
                           </View>
                         )}
 
-                        {/* ✅ NEW: Show office info for treatment */}
                         <View style={styles.treatmentFooter}>
                           <Text style={styles.treatmentOffice}>
                             🏥 {treatment.officeName || 'Not synced'}
@@ -841,6 +917,20 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     fontWeight: '500',
   },
+  // ✅ NEW: Badge for treatment needs
+  needsBadge: {
+    backgroundColor: '#ff9800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginVertical: 4,
+  },
+  needsBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
   assessmentTime: {
     fontSize: 12,
     color: '#999',
@@ -863,6 +953,37 @@ const styles = StyleSheet.create({
     color: '#495057',
     lineHeight: 20,
     marginBottom: 4,
+  },
+  // ✅ NEW: Needs section styles
+  needsSection: {
+    marginTop: 12,
+    backgroundColor: '#fff3e0',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff9800',
+  },
+  needsSectionTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#e65100',
+    marginBottom: 12,
+  },
+  needsCategory: {
+    marginBottom: 8,
+  },
+  needsCategoryTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#f57c00',
+    marginBottom: 4,
+  },
+  needsText: {
+    fontSize: 12,
+    color: '#5d4037',
+    lineHeight: 18,
+    marginBottom: 2,
+    marginLeft: 8,
   },
   assessmentFooter: {
     flexDirection: 'row',
