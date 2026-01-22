@@ -4,7 +4,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 
 import LoginScreen from '../screens/LoginScreen';
-import RegisterScreen from '../screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
 import NewPatientScreen from '../screens/NewPatientScreen';
 import PatientQRCodeScreen from '../screens/PatientQRCodeScreen';
@@ -16,6 +15,7 @@ import FillingsAssessmentScreen from '../screens/FillingsAssessmentScreen';
 import ExtractionsAssessmentScreen from '../screens/ExtractionsAssessmentScreen';
 import DentureAssessmentScreen from '../screens/DentureAssessmentScreen';
 import ImplantAssessmentScreen from '../screens/ImplantAssessmentScreen';
+
 
 // ✅ NEW: Patient Action Selection Screen
 import PatientActionSelectionScreen from '../screens/PatientActionSelectionScreen';
@@ -36,7 +36,6 @@ import VoiceRecordingsScreen from '../screens/VoiceRecordingsScreen';
 import AdminDashboardScreen from '../screens/AdminDashboardScreen';
 import PatientListScreen from '../screens/PatientListScreen';
 import PatientDetailScreen from '../screens/PatientDetailScreen';
-import OfficeManagementScreen from '../screens/OfficeManagementScreen';
 
 // Patient Search Screens
 import PatientSearchScreen from '../screens/PatientSearchScreen';
@@ -48,6 +47,7 @@ import TreatmentPatientSearchScreen from '../screens/TreatmentPatientSearchScree
 
 // Hub Test Screen
 import HubTestScreen from '../screens/HubTestScreen';
+
 
 const Stack = createNativeStackNavigator();
 
@@ -128,16 +128,7 @@ export default function AppNavigator() {
               headerBackTitleVisible: false
             }}
           />
-          
-          {/* Office Management Screen (Admin Only) */}
-          <Stack.Screen 
-            name="OfficeManagement" 
-            component={OfficeManagementScreen}
-            options={{ 
-              title: 'Manage Offices',
-              headerBackTitleVisible: false
-            }}
-          />
+
           
           <Stack.Screen 
             name="PatientList" 
@@ -193,14 +184,8 @@ export default function AppNavigator() {
             component={LoginScreen}
             options={{ title: 'Login' }}
           />
-          <Stack.Screen 
-            name="Register" 
-            component={RegisterScreen}
-            options={{ 
-              title: 'Create Account',
-              headerBackTitleVisible: false
-            }}
-          />
+
+
         </>
       )}
     </Stack.Navigator>

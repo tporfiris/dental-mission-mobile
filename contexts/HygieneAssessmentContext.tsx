@@ -1,10 +1,10 @@
 // contexts/HygieneAssessmentContext.tsx
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useRef } from 'react';
 import { database } from '../db';
 import { Q } from '@nozbe/watermelondb';
 import HygieneAssessment from '../db/models/HygieneAssessment';
 
-// ✅ NEW: Helper to convert optimized format back to full format for UI
+// ✅ Helper to convert optimized format back to full format for UI
 export const expandOptimizedData = (optimizedData: any): any => {
   // If data is already in old format, return as-is
   if (optimizedData.probingDepths && typeof optimizedData.probingDepths === 'object' && !optimizedData.probingDepths.default) {
@@ -75,42 +75,75 @@ const TOOTH_IDS = [
   '41','42','43','44','45','46','47','48',
 ];
 
-// Keep the original type for backwards compatibility
-type HygieneState = 'normal' | 'light-plaque' | 'moderate-plaque' | 'heavy-plaque' | 'calculus';
-
-type HygieneStates = Record<string, HygieneState>;
-
-const defaultHygieneStates: HygieneStates = {};
-TOOTH_IDS.forEach(id => {
-  defaultHygieneStates[id] = 'normal';
-});
+// ✅ NEW: Draft state interface for in-progress assessments
+interface DraftState {
+  enhancedAssessment: any; // The entire enhancedState object
+}
 
 interface HygieneAssessmentContextType {
-  hygieneStates: HygieneStates;
-  setHygieneStates: (states: HygieneStates) => void;
   saveAssessment: (patientId: string, data: any) => Promise<void>;
   loadLatestAssessment: (patientId: string) => Promise<any>;
   loadAllAssessments: (patientId: string) => Promise<HygieneAssessment[]>;
-  resetToDefault: () => void;
+  // ✅ NEW: Draft state management
+  saveDraft: (patientId: string, enhancedAssessment: any) => void;
+  loadDraft: (patientId: string) => DraftState | null;
+  clearDraft: (patientId: string) => void;
+  hasDraft: (patientId: string) => boolean;
 }
 
 const HygieneAssessmentContext = createContext<HygieneAssessmentContextType>({
-  hygieneStates: defaultHygieneStates,
-  setHygieneStates: () => {},
   saveAssessment: async () => {},
   loadLatestAssessment: async () => null,
   loadAllAssessments: async () => [],
-  resetToDefault: () => {},
+  saveDraft: () => {},
+  loadDraft: () => null,
+  clearDraft: () => {},
+  hasDraft: () => false,
 });
 
 export const useHygieneAssessment = () => useContext(HygieneAssessmentContext);
 
 export const HygieneAssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [hygieneStates, setHygieneStates] = useState<HygieneStates>(defaultHygieneStates);
+  
+  // ✅ Store draft states per patient in memory (persists across navigation)
+  const draftStatesRef = useRef<Map<string, DraftState>>(new Map());
+
+  // ✅ Save draft state for a patient
+  const saveDraft = (patientId: string, enhancedAssessment: any) => {
+    const draft: DraftState = {
+      enhancedAssessment: JSON.parse(JSON.stringify(enhancedAssessment)), // Deep clone
+    };
+    draftStatesRef.current.set(patientId, draft);
+    console.log('💾 Saved hygiene draft for patient:', patientId);
+  };
+
+  // ✅ Load draft state for a patient
+  const loadDraft = (patientId: string): DraftState | null => {
+    const draft = draftStatesRef.current.get(patientId);
+    if (draft) {
+      console.log('📋 Loaded hygiene draft for patient:', patientId);
+      return draft;
+    }
+    console.log('📋 No hygiene draft found for patient:', patientId);
+    return null;
+  };
+
+  // ✅ Check if draft exists
+  const hasDraft = (patientId: string): boolean => {
+    return draftStatesRef.current.has(patientId);
+  };
+
+  // ✅ Clear draft state
+  const clearDraft = (patientId: string) => {
+    draftStatesRef.current.delete(patientId);
+    console.log('🗑️ Cleared hygiene draft for patient:', patientId);
+  };
 
   // ALWAYS create a new assessment - NEVER update existing ones
   const saveAssessment = async (patientId: string, data: any) => {
     try {
+      console.log('💾 Saving hygiene assessment with data:', data);
+      
       await database.write(async () => {
         await database.get<HygieneAssessment>('hygiene_assessments').create(assessment => {
           // WatermelonDB will auto-generate a unique ID
@@ -120,6 +153,10 @@ export const HygieneAssessmentProvider: React.FC<{ children: React.ReactNode }> 
           assessment.updatedAt = new Date();
         });
       });
+      
+      // ✅ Clear draft after successful save
+      clearDraft(patientId);
+      
       console.log('✅ New hygiene assessment created for patient:', patientId);
     } catch (error) {
       console.error('❌ Error saving hygiene assessment:', error);
@@ -142,7 +179,7 @@ export const HygieneAssessmentProvider: React.FC<{ children: React.ReactNode }> 
       if (assessments.length > 0) {
         const rawData = JSON.parse(assessments[0].data);
         
-        // ✅ NEW: Expand optimized data for UI
+        // Expand optimized data for UI
         const expandedData = expandOptimizedData(rawData);
         
         console.log('✅ Loaded and expanded hygiene assessment');
@@ -173,20 +210,16 @@ export const HygieneAssessmentProvider: React.FC<{ children: React.ReactNode }> 
     }
   };
 
-  // Reset state to default (useful when starting a new assessment)
-  const resetToDefault = () => {
-    setHygieneStates(defaultHygieneStates);
-  };
-
   return (
     <HygieneAssessmentContext.Provider 
       value={{ 
-        hygieneStates, 
-        setHygieneStates, 
         saveAssessment, 
         loadLatestAssessment, 
         loadAllAssessments,
-        resetToDefault 
+        saveDraft,
+        loadDraft,
+        clearDraft,
+        hasDraft,
       }}
     >
       {children}

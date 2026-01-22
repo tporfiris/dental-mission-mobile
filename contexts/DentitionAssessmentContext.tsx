@@ -1,5 +1,5 @@
 // contexts/DentitionAssessmentContext.tsx
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useRef } from 'react';
 import { database } from '../db';
 import { Q } from '@nozbe/watermelondb';
 import DentitionAssessment from '../db/models/DentitionAssessment';
@@ -11,7 +11,7 @@ const TOOTH_IDS = [
   '41','42','43','44','45','46','47','48',
 ];
 
-type ToothState = 'present' | 'crown-missing' | 'roots-only' | 'fully-missing';
+type ToothState = 'present' | 'has-fillings' | 'has-crowns' | 'existing-rc' | 'has-cavities' | 'broken-crack' | 'crown-missing' | 'roots-only' | 'fully-missing';
 
 type ToothStates = Record<string, ToothState>;
 
@@ -20,32 +20,77 @@ TOOTH_IDS.forEach(id => {
   defaultToothStates[id] = 'present';
 });
 
-interface DentitionAssessmentContextType {
+// ✅ Draft state interface for in-progress assessments
+interface DraftState {
   toothStates: ToothStates;
-  setToothStates: (states: ToothStates) => void;
+  primaryTeeth: string[]; // Use array instead of Set for easier serialization
+}
+
+interface DentitionAssessmentContextType {
   saveAssessment: (patientId: string, data: any) => Promise<void>;
   loadLatestAssessment: (patientId: string) => Promise<any>;
   loadAllAssessments: (patientId: string) => Promise<DentitionAssessment[]>;
-  resetToothStates: () => void;
+  // ✅ Draft state management
+  saveDraft: (patientId: string, toothStates: ToothStates, primaryTeeth: string[]) => void;
+  loadDraft: (patientId: string) => DraftState | null;
+  clearDraft: (patientId: string) => void;
+  hasDraft: (patientId: string) => boolean;
 }
 
 const DentitionAssessmentContext = createContext<DentitionAssessmentContextType>({
-  toothStates: defaultToothStates,
-  setToothStates: () => {},
   saveAssessment: async () => {},
   loadLatestAssessment: async () => null,
   loadAllAssessments: async () => [],
-  resetToothStates: () => {},
+  saveDraft: () => {},
+  loadDraft: () => null,
+  clearDraft: () => {},
+  hasDraft: () => false,
 });
 
 export const useDentitionAssessment = () => useContext(DentitionAssessmentContext);
 
 export const DentitionAssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [toothStates, setToothStates] = useState<ToothStates>(defaultToothStates);
+  
+  // ✅ Store draft states per patient in memory (persists across navigation)
+  const draftStatesRef = useRef<Map<string, DraftState>>(new Map());
+
+  // ✅ Save draft state for a patient
+  const saveDraft = (patientId: string, toothStates: ToothStates, primaryTeeth: string[]) => {
+    const draft: DraftState = {
+      toothStates: { ...toothStates }, // Clone to avoid mutation
+      primaryTeeth: [...primaryTeeth], // Clone array
+    };
+    draftStatesRef.current.set(patientId, draft);
+    console.log('💾 Saved draft for patient:', patientId, 'Primary teeth:', primaryTeeth);
+  };
+
+  // ✅ Load draft state for a patient
+  const loadDraft = (patientId: string): DraftState | null => {
+    const draft = draftStatesRef.current.get(patientId);
+    if (draft) {
+      console.log('📋 Loaded draft for patient:', patientId, 'Primary teeth:', draft.primaryTeeth);
+      return draft;
+    }
+    console.log('📋 No draft found for patient:', patientId);
+    return null;
+  };
+
+  // ✅ Check if draft exists
+  const hasDraft = (patientId: string): boolean => {
+    return draftStatesRef.current.has(patientId);
+  };
+
+  // ✅ Clear draft state
+  const clearDraft = (patientId: string) => {
+    draftStatesRef.current.delete(patientId);
+    console.log('🗑️ Cleared draft for patient:', patientId);
+  };
 
   // ALWAYS create a new assessment record (never update existing ones)
   const saveAssessment = async (patientId: string, data: any) => {
     try {
+      console.log('💾 Saving assessment with data:', data);
+      
       await database.write(async () => {
         await database.get<DentitionAssessment>('dentition_assessments').create(assessment => {
           // WatermelonDB auto-generates a unique ID
@@ -55,6 +100,10 @@ export const DentitionAssessmentProvider: React.FC<{ children: React.ReactNode }
           assessment.updatedAt = new Date();
         });
       });
+      
+      // ✅ Clear draft after successful save
+      clearDraft(patientId);
+      
       console.log('✅ New dentition assessment created for patient:', patientId);
     } catch (error) {
       console.error('❌ Error saving dentition assessment:', error);
@@ -75,7 +124,9 @@ export const DentitionAssessmentProvider: React.FC<{ children: React.ReactNode }
         .fetch();
 
       if (assessments.length > 0) {
-        return JSON.parse(assessments[0].data);
+        const parsed = JSON.parse(assessments[0].data);
+        console.log('📋 Loaded latest assessment:', parsed);
+        return parsed;
       }
       return null;
     } catch (error) {
@@ -102,20 +153,16 @@ export const DentitionAssessmentProvider: React.FC<{ children: React.ReactNode }
     }
   };
 
-  // Reset tooth states to default (useful when starting a new assessment)
-  const resetToothStates = () => {
-    setToothStates(defaultToothStates);
-  };
-
   return (
     <DentitionAssessmentContext.Provider 
       value={{ 
-        toothStates, 
-        setToothStates, 
         saveAssessment, 
         loadLatestAssessment, 
         loadAllAssessments,
-        resetToothStates 
+        saveDraft,
+        loadDraft,
+        clearDraft,
+        hasDraft,
       }}
     >
       {children}

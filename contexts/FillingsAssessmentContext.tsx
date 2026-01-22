@@ -1,5 +1,5 @@
-// contexts/FillingsAssessmentContext.tsx - UPDATED to handle neededFillings
-import React, { createContext, useContext, useState } from 'react';
+// contexts/FillingsAssessmentContext.tsx
+import React, { createContext, useContext, useRef, useState } from 'react';
 import { database } from '../db';
 import { Q } from '@nozbe/watermelondb';
 import FillingsAssessment from '../db/models/FillingsAssessment';
@@ -26,6 +26,11 @@ TOOTH_IDS.forEach(id => {
   defaultRestorationStates[id] = { surfaces: [], tentative: false };
 });
 
+// ✅ Draft state interface for in-progress assessments
+interface DraftState {
+  enhancedState: any; // The full enhanced assessment state
+}
+
 interface FillingsAssessmentContextType {
   restorationStates: RestorationStates;
   setRestorationStates: (states: RestorationStates) => void;
@@ -33,6 +38,11 @@ interface FillingsAssessmentContextType {
   loadLatestAssessment: (patientId: string) => Promise<any>;
   loadAllAssessments: (patientId: string) => Promise<FillingsAssessment[]>;
   resetAssessment: () => void;
+  // ✅ NEW: Draft state management
+  saveDraft: (patientId: string, enhancedState: any) => void;
+  loadDraft: (patientId: string) => DraftState | null;
+  clearDraft: (patientId: string) => void;
+  hasDraft: (patientId: string) => boolean;
 }
 
 const FillingsAssessmentContext = createContext<FillingsAssessmentContextType>({
@@ -42,6 +52,10 @@ const FillingsAssessmentContext = createContext<FillingsAssessmentContextType>({
   loadLatestAssessment: async () => null,
   loadAllAssessments: async () => [],
   resetAssessment: () => {},
+  saveDraft: () => {},
+  loadDraft: () => null,
+  clearDraft: () => {},
+  hasDraft: () => false,
 });
 
 export const useFillingsAssessment = () => useContext(FillingsAssessmentContext);
@@ -49,9 +63,45 @@ export const useFillingsAssessment = () => useContext(FillingsAssessmentContext)
 export const FillingsAssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [restorationStates, setRestorationStates] = useState<RestorationStates>(defaultRestorationStates);
 
+  // ✅ Store draft states per patient in memory (persists across navigation)
+  const draftStatesRef = useRef<Map<string, DraftState>>(new Map());
+
+  // ✅ Save draft state for a patient
+  const saveDraft = (patientId: string, enhancedState: any) => {
+    const draft: DraftState = {
+      enhancedState: JSON.parse(JSON.stringify(enhancedState)), // Deep clone to avoid mutation
+    };
+    draftStatesRef.current.set(patientId, draft);
+    console.log('💾 Saved fillings draft for patient:', patientId);
+  };
+
+  // ✅ Load draft state for a patient
+  const loadDraft = (patientId: string): DraftState | null => {
+    const draft = draftStatesRef.current.get(patientId);
+    if (draft) {
+      console.log('📋 Loaded fillings draft for patient:', patientId);
+      return draft;
+    }
+    console.log('📋 No fillings draft found for patient:', patientId);
+    return null;
+  };
+
+  // ✅ Check if draft exists
+  const hasDraft = (patientId: string): boolean => {
+    return draftStatesRef.current.has(patientId);
+  };
+
+  // ✅ Clear draft state
+  const clearDraft = (patientId: string) => {
+    draftStatesRef.current.delete(patientId);
+    console.log('🗑️ Cleared fillings draft for patient:', patientId);
+  };
+
   // ALWAYS create a new assessment record
   const saveAssessment = async (patientId: string, data: any) => {
     try {
+      console.log('💾 Saving fillings assessment with data:', data);
+      
       await database.write(async () => {
         await database.get<FillingsAssessment>('fillings_assessments').create(assessment => {
           assessment.patientId = patientId;
@@ -60,8 +110,11 @@ export const FillingsAssessmentProvider: React.FC<{ children: React.ReactNode }>
           assessment.updatedAt = new Date();
         });
       });
+      
+      // ✅ Clear draft after successful save
+      clearDraft(patientId);
+      
       console.log('✅ New fillings assessment created for patient:', patientId);
-      console.log('📦 Saved data:', JSON.stringify(data, null, 2));
     } catch (error) {
       console.error('❌ Error saving fillings assessment:', error);
       throw error;
@@ -82,8 +135,9 @@ export const FillingsAssessmentProvider: React.FC<{ children: React.ReactNode }>
 
       if (assessments.length > 0) {
         const savedData = JSON.parse(assessments[0].data);
+        console.log('📋 Loaded latest fillings assessment:', savedData);
         
-        // ✅ UPDATED: Check if this is optimized format with teethWithIssues
+        // ✅ Check if this is optimized format with teethWithIssues
         if (savedData.teethWithIssues) {
           console.log('📖 Loading optimized assessment format');
           
@@ -96,15 +150,15 @@ export const FillingsAssessmentProvider: React.FC<{ children: React.ReactNode }>
               hasFillings: false,
               fillingType: null,
               fillingSurfaces: [],
-              needsFillings: false,              // ✅ Needed fillings
-              neededFillingType: null,           // ✅ Needed fillings
-              neededFillingSurfaces: [],         // ✅ Needed fillings
+              needsFillings: false,
+              neededFillingType: null,
+              neededFillingSurfaces: [],
               hasCrowns: false,
               crownMaterial: null,
-              needsCrown: false,                 // ✅ NEW: Needed crown
-              neededCrownMaterial: null,         // ✅ NEW: Needed crown
+              needsCrown: false,
+              neededCrownMaterial: null,
               hasExistingRootCanal: false,
-              needsNewRootCanal: false,          // ✅ NEW: Needs new root canal
+              needsNewRootCanal: false,
               hasCavities: false,
               cavitySurfaces: [],
               isBroken: false,
@@ -115,68 +169,56 @@ export const FillingsAssessmentProvider: React.FC<{ children: React.ReactNode }>
             };
           });
           
-          // ✅ UPDATED: Populate teeth that have issues (including neededFillings, neededCrowns, needsNewRootCanal)
+          // Populate teeth that have issues
           Object.entries(savedData.teethWithIssues).forEach(([toothId, toothData]: [string, any]) => {
             const tooth = fullTeethStates[toothId];
             
-            // Existing Fillings
             if (toothData.fillings) {
               tooth.hasFillings = true;
               tooth.fillingType = toothData.fillings.type;
               tooth.fillingSurfaces = toothData.fillings.surfaces || [];
             }
             
-            // ✅ Needed Fillings
             if (toothData.neededFillings) {
               tooth.needsFillings = true;
               tooth.neededFillingType = toothData.neededFillings.type;
               tooth.neededFillingSurfaces = toothData.neededFillings.surfaces || [];
             }
             
-            // Existing Crowns
             if (toothData.crown) {
               tooth.hasCrowns = true;
               tooth.crownMaterial = toothData.crown.material;
             }
             
-            // ✅ NEW: Needed Crowns
             if (toothData.neededCrown) {
               tooth.needsCrown = true;
               tooth.neededCrownMaterial = toothData.neededCrown.material;
             }
             
-            // Existing Root Canal
             if (toothData.rootCanal?.existing) {
               tooth.hasExistingRootCanal = true;
             }
             
-            // ✅ NEW: Needs New Root Canal
             if (toothData.needsNewRootCanal) {
               tooth.needsNewRootCanal = true;
             }
             
-            // Cavities
             if (toothData.cavities) {
               tooth.hasCavities = true;
               tooth.cavitySurfaces = toothData.cavities.surfaces || [];
             }
             
-            // Broken/Cracked
             if (toothData.broken) {
               tooth.isBroken = true;
               tooth.brokenSurfaces = toothData.broken.surfaces || [];
             }
             
-            // Root Canal Needed
             if (toothData.rootCanalNeeded) {
               tooth.needsRootCanal = true;
               tooth.pulpDiagnosis = toothData.rootCanalNeeded.pulpDiagnosis;
               tooth.apicalDiagnosis = toothData.rootCanalNeeded.apicalDiagnosis;
             }
           });
-          
-          console.log('✅ Loaded teeth states:', Object.keys(fullTeethStates).length, 'teeth');
-          console.log('📊 Sample tooth data:', fullTeethStates['11']);
           
           return {
             teethStates: fullTeethStates,
@@ -185,7 +227,7 @@ export const FillingsAssessmentProvider: React.FC<{ children: React.ReactNode }>
           };
         }
         
-        // ✅ OLD FORMAT: Return as-is for backward compatibility
+        // OLD FORMAT: Return as-is for backward compatibility
         console.log('📖 Loading legacy assessment format');
         return savedData;
       }
@@ -228,7 +270,11 @@ export const FillingsAssessmentProvider: React.FC<{ children: React.ReactNode }>
         saveAssessment,
         loadLatestAssessment,
         loadAllAssessments,
-        resetAssessment
+        resetAssessment,
+        saveDraft,
+        loadDraft,
+        clearDraft,
+        hasDraft,
       }}
     >
       {children}

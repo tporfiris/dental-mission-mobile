@@ -1,4 +1,4 @@
-// screens/AdminDashboardScreen.tsx - COMPLETE with Excel export + Office/Clinician Statistics
+// screens/AdminDashboardScreen.tsx - SIMPLIFIED for code-only system
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -17,10 +17,6 @@ import { db } from '../firebaseConfig';
 import { 
   collection, 
   getDocs, 
-  query, 
-  where, 
-  orderBy, 
-  Timestamp 
 } from 'firebase/firestore';
 import * as FileSystem from 'expo-file-system';
 import * as XLSX from 'xlsx';
@@ -36,8 +32,6 @@ interface Patient {
   gender: string;
   location: string;
   createdAt: Date;
-  officeId?: string;
-  officeName?: string;
   registeredBy?: string;
 }
 
@@ -54,8 +48,6 @@ interface Treatment {
   clinicianName: string;
   completedAt: Date;
   syncedAt?: Date;
-  officeId?: string;
-  officeName?: string;
   performedBy?: string;
 }
 
@@ -67,22 +59,13 @@ interface Assessment {
   clinicianEmail: string;
   createdAt: Date;
   syncedAt?: Date;
-  officeId?: string;
-  officeName?: string;
   clinicianId?: string;
-}
-
-interface Office {
-  id: string;
-  name: string;
-  location: string;
 }
 
 interface DashboardFilters {
   dateRange: 'day' | 'week' | 'month' | 'all';
   location: string;
   currency: 'USD' | 'CAD';
-  selectedOffice: string;
 }
 
 const AdminDashboardScreen = ({ navigation }: any) => {
@@ -91,12 +74,10 @@ const AdminDashboardScreen = ({ navigation }: any) => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [treatments, setTreatments] = useState<Treatment[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
-  const [offices, setOffices] = useState<Office[]>([]);
   const [filters, setFilters] = useState<DashboardFilters>({
     dateRange: 'week',
     location: 'all',
     currency: 'USD',
-    selectedOffice: 'all'
   });
 
   // Get unique locations from patients
@@ -123,29 +104,10 @@ const AdminDashboardScreen = ({ navigation }: any) => {
     try {
       console.log('📊 Loading dashboard data from Firestore...');
 
-      // Load offices first
-      const officesSnapshot = await getDocs(collection(db, 'offices'));
-      const officesData: Office[] = [];
-      const officesMap = new Map<string, Office>();
-      
-      officesSnapshot.forEach((doc) => {
-        const office = {
-          id: doc.id,
-          name: doc.data().name,
-          location: doc.data().location
-        };
-        officesData.push(office);
-        officesMap.set(doc.id, office);
-      });
-
-      setOffices(officesData);
-
       // Load patients
       const patientsSnapshot = await getDocs(collection(db, 'patients'));
       const patientsData = patientsSnapshot.docs.map(doc => {
         const data = doc.data();
-        const officeId = data.officeId || 'unknown';
-        const office = officesMap.get(officeId);
         
         return {
           id: doc.id,
@@ -155,8 +117,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           gender: data.gender || 'Unknown',
           location: data.location || 'Unknown',
           createdAt: safeToDate(data.createdAt || data.syncedAt),
-          officeId: officeId,
-          officeName: office?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown'),
           registeredBy: data.registeredBy || 'Unknown'
         };
       });
@@ -165,8 +125,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       const treatmentsSnapshot = await getDocs(collection(db, 'treatments'));
       const treatmentsData = treatmentsSnapshot.docs.map(doc => {
         const data = doc.data();
-        const officeId = data.officeId || 'unknown';
-        const office = officesMap.get(officeId);
         
         return {
           id: doc.id,
@@ -181,8 +139,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           clinicianName: data.clinicianName || 'Unknown',
           completedAt: safeToDate(data.completedAt || data.createdAt || data.syncedAt),
           syncedAt: safeToDate(data.syncedAt),
-          officeId: officeId,
-          officeName: office?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown'),
           performedBy: data.performedBy || 'Unknown'
         };
       });
@@ -191,8 +147,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       const assessmentsSnapshot = await getDocs(collection(db, 'assessments'));
       const assessmentsData = assessmentsSnapshot.docs.map(doc => {
         const data = doc.data();
-        const officeId = data.officeId || 'unknown';
-        const office = officesMap.get(officeId);
         
         return {
           id: doc.id,
@@ -202,8 +156,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           clinicianEmail: data.clinicianEmail || data.clinicianId || 'Unknown',
           createdAt: safeToDate(data.createdAt || data.syncedAt),
           syncedAt: safeToDate(data.syncedAt),
-          officeId: officeId,
-          officeName: office?.name || (officeId === 'legacy' ? 'Legacy' : 'Unknown'),
           clinicianId: data.clinicianId || 'Unknown'
         };
       });
@@ -216,20 +168,14 @@ const AdminDashboardScreen = ({ navigation }: any) => {
         patients: patientsData.length,
         treatments: treatmentsData.length,
         assessments: assessmentsData.length,
-        offices: officesData.length
       });
 
     } catch (error) {
       console.error('❌ Error loading dashboard data:', error);
       
-      if (error instanceof Error) {
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
-      }
-      
       Alert.alert(
         'Error Loading Data', 
-        `Failed to load dashboard data: ${error instanceof Error ? error.message : 'Unknown error'}. Please check your internet connection and try again.`,
+        `Failed to load dashboard data. Please check your internet connection and try again.`,
         [
           { text: 'Retry', onPress: () => loadDashboardData() },
           { text: 'OK' }
@@ -284,13 +230,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       filteredAssessments = filteredAssessments.filter(a => patientIds.has(a.patientId));
     }
 
-    // Filter by office
-    if (filters.selectedOffice !== 'all') {
-      filteredPatients = filteredPatients.filter(p => p.officeId === filters.selectedOffice);
-      filteredTreatments = filteredTreatments.filter(t => t.officeId === filters.selectedOffice);
-      filteredAssessments = filteredAssessments.filter(a => a.officeId === filters.selectedOffice);
-    }
-
     return { 
       patients: filteredPatients, 
       treatments: filteredTreatments, 
@@ -298,7 +237,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
     };
   }, [patients, treatments, assessments, filters]);
 
-  // Calculate KPIs with office and clinician breakdowns
+  // Calculate KPIs with clinician breakdowns
   const kpis = useMemo(() => {
     const currencyMultiplier = filters.currency === 'CAD' ? 1.35 : 1;
     
@@ -317,58 +256,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       acc[p.location] = (acc[p.location] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-
-    // Office breakdown
-    const officeBreakdown: Record<string, {
-      patients: number;
-      treatments: number;
-      assessments: number;
-      value: number;
-      officeName: string;
-    }> = {};
-
-    filteredData.patients.forEach(p => {
-      const officeId = p.officeId || 'unknown';
-      if (!officeBreakdown[officeId]) {
-        officeBreakdown[officeId] = {
-          patients: 0,
-          treatments: 0,
-          assessments: 0,
-          value: 0,
-          officeName: p.officeName || 'Unknown'
-        };
-      }
-      officeBreakdown[officeId].patients++;
-    });
-
-    filteredData.treatments.forEach(t => {
-      const officeId = t.officeId || 'unknown';
-      if (!officeBreakdown[officeId]) {
-        officeBreakdown[officeId] = {
-          patients: 0,
-          treatments: 0,
-          assessments: 0,
-          value: 0,
-          officeName: t.officeName || 'Unknown'
-        };
-      }
-      officeBreakdown[officeId].treatments++;
-      officeBreakdown[officeId].value += (t.value * t.units * currencyMultiplier);
-    });
-
-    filteredData.assessments.forEach(a => {
-      const officeId = a.officeId || 'unknown';
-      if (!officeBreakdown[officeId]) {
-        officeBreakdown[officeId] = {
-          patients: 0,
-          treatments: 0,
-          assessments: 0,
-          value: 0,
-          officeName: a.officeName || 'Unknown'
-        };
-      }
-      officeBreakdown[officeId].assessments++;
-    });
 
     // Clinician breakdown
     const clinicianBreakdown: Record<string, {
@@ -413,255 +300,146 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       totalValue: Math.round(totalValue),
       procedureBreakdown,
       locationBreakdown,
-      officeBreakdown,
       clinicianBreakdown,
       avgValuePerPatient: totalPatients > 0 ? Math.round(totalValue / totalPatients) : 0
     };
   }, [filteredData, filters.currency]);
 
-  // Comprehensive Excel Export (KEEPING ORIGINAL FUNCTIONALITY)
+  // Excel Export
   const exportToExcel = async () => {
     try {
-      console.log('📊 Starting comprehensive mission data Excel export...');
+      console.log('📊 Starting Excel export...');
 
       const workbook = XLSX.utils.book_new();
       const currencySymbol = filters.currency;
       const currencyMultiplier = filters.currency === 'CAD' ? 1.35 : 1;
 
-      // SHEET 1: Mission Overview & Executive Summary
+      // SHEET 1: Mission Overview
       const overviewData = [
-        ['DENTAL MISSION COMPREHENSIVE REPORT'],
+        ['DENTAL MISSION REPORT'],
         ['Generated on:', new Date().toLocaleString()],
         ['Report Period:', filters.dateRange === 'day' ? 'Last 24 Hours' :
                          filters.dateRange === 'week' ? 'Last 7 Days' :
                          filters.dateRange === 'month' ? 'Last 30 Days' : 'All Time'],
         ['Location Filter:', filters.location === 'all' ? 'All Locations' : filters.location],
-        ['Office Filter:', filters.selectedOffice === 'all' ? 'All Offices' : offices.find(o => o.id === filters.selectedOffice)?.name || 'Unknown'],
         ['Currency:', currencySymbol],
         [''],
-        ['EXECUTIVE SUMMARY'],
-        ['Total Patients Served', kpis.totalPatients],
-        ['Total Procedures Performed', kpis.totalProcedures],
-        ['Total Treatment Value', `${currencySymbol} ${kpis.totalValue.toLocaleString()}`],
-        ['Average Value Per Patient', `${currencySymbol} ${kpis.avgValuePerPatient.toLocaleString()}`],
-        ['Average Procedures Per Patient', kpis.totalPatients > 0 ? (kpis.totalProcedures / kpis.totalPatients).toFixed(2) : '0'],
-        ['Number of Locations', Object.keys(kpis.locationBreakdown).length],
-        ['Number of Offices', Object.keys(kpis.officeBreakdown).length],
-        ['Number of Clinicians', new Set([...filteredData.treatments.map(t => t.clinicianName), ...filteredData.assessments.map(a => a.clinicianEmail)]).size],
+        ['SUMMARY'],
+        ['Total Patients', kpis.totalPatients],
+        ['Total Procedures', kpis.totalProcedures],
+        ['Total Value', `${currencySymbol} ${kpis.totalValue.toLocaleString()}`],
+        ['Avg Value/Patient', `${currencySymbol} ${kpis.avgValuePerPatient.toLocaleString()}`],
         [''],
         ['PROCEDURE BREAKDOWN'],
-        ['Procedure Type', 'Count', 'Percentage'],
+        ['Type', 'Count', 'Percentage'],
         ...Object.entries(kpis.procedureBreakdown).map(([type, count]) => [
           type.charAt(0).toUpperCase() + type.slice(1),
           count,
           `${((count / kpis.totalProcedures) * 100).toFixed(1)}%`
         ]),
-        [''],
-        ['OFFICE BREAKDOWN'],
-        ['Office', 'Patients', 'Treatments', 'Assessments', 'Total Value'],
-        ...Object.entries(kpis.officeBreakdown).map(([officeId, stats]) => [
-          stats.officeName,
-          stats.patients,
-          stats.treatments,
-          stats.assessments,
-          `${currencySymbol} ${Math.round(stats.value).toLocaleString()}`
-        ]),
       ];
 
       const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData);
-      overviewSheet['!cols'] = [
-        { wch: 30 },
-        { wch: 20 },
-        { wch: 15 },
-        { wch: 20 }
-      ];
-      XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Mission Overview');
+      XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Overview');
 
-      // SHEET 2: All Patients Directory (with office info)
+      // SHEET 2: Patients
       const patientRows = filteredData.patients
         .sort((a, b) => a.lastName.localeCompare(b.lastName))
         .map(p => {
           const patientTreatments = filteredData.treatments.filter(t => t.patientId === p.id);
-          const patientAssessments = filteredData.assessments.filter(a => a.patientId === p.id);
           const patientValue = patientTreatments.reduce((sum, t) => 
             sum + (t.value * t.units * currencyMultiplier), 0
           );
           
           return {
-            'Patient ID': p.id,
-            'Last Name': p.lastName,
-            'First Name': p.firstName,
-            'Full Name': `${p.firstName} ${p.lastName}`,
+            'ID': p.id,
+            'Name': `${p.firstName} ${p.lastName}`,
             'Age': p.age,
             'Gender': p.gender,
             'Location': p.location,
-            'Office': p.officeName || 'Unknown',
-            'Registration Date': p.createdAt.toLocaleDateString(),
-            'Registration Time': p.createdAt.toLocaleTimeString(),
-            'Day of Week': p.createdAt.toLocaleDateString('en-US', { weekday: 'long' }),
-            'Total Assessments': patientAssessments.length,
-            'Total Treatments': patientTreatments.length,
-            'Total Value': `${currencySymbol} ${Math.round(patientValue).toLocaleString()}`,
-            'Assessment Types': [...new Set(patientAssessments.map(a => a.assessmentType))].join(', '),
-            'Treatment Types': [...new Set(patientTreatments.map(t => t.type))].join(', ')
+            'Date': p.createdAt.toLocaleDateString(),
+            'Treatments': patientTreatments.length,
+            'Value': `${currencySymbol} ${Math.round(patientValue).toLocaleString()}`,
           };
         });
 
       if (patientRows.length > 0) {
         const patientSheet = XLSX.utils.json_to_sheet(patientRows);
-        patientSheet['!cols'] = Array(16).fill({ wch: 18 });
-        XLSX.utils.book_append_sheet(workbook, patientSheet, 'Patients Directory');
+        XLSX.utils.book_append_sheet(workbook, patientSheet, 'Patients');
       }
 
-      // SHEET 3: All Treatments Detailed (with office info)
+      // SHEET 3: Treatments
       const treatmentRows = filteredData.treatments
         .sort((a, b) => b.completedAt.getTime() - a.completedAt.getTime())
         .map(t => {
           const patient = filteredData.patients.find(p => p.id === t.patientId);
-          let billingCodes = [];
-          try {
-            billingCodes = JSON.parse(t.billingCodes);
-          } catch (e) {}
-
-          const treatmentDetails = parseTreatmentDetails(t);
-
+          
           return {
-            'Treatment ID': t.id,
-            'Patient ID': t.patientId,
-            'Patient Name': patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown',
-            'Patient Age': patient?.age || 'N/A',
-            'Patient Gender': patient?.gender || 'N/A',
-            'Patient Location': patient?.location || 'Unknown',
-            'Office': t.officeName || 'Unknown',
+            'ID': t.id,
+            'Patient': patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown',
             'Date': t.completedAt.toLocaleDateString(),
-            'Time': t.completedAt.toLocaleTimeString(),
-            'Day of Week': t.completedAt.toLocaleDateString('en-US', { weekday: 'long' }),
-            'Treatment Type': t.type.charAt(0).toUpperCase() + t.type.slice(1),
-            'Tooth Number': t.tooth,
+            'Type': t.type.charAt(0).toUpperCase() + t.type.slice(1),
+            'Tooth': t.tooth,
             'Surface': t.surface,
             'Units': t.units,
-            'Unit Value': `${currencySymbol} ${(t.value * currencyMultiplier).toFixed(2)}`,
-            'Total Value': `${currencySymbol} ${(t.value * t.units * currencyMultiplier).toFixed(2)}`,
+            'Value': `${currencySymbol} ${(t.value * t.units * currencyMultiplier).toFixed(2)}`,
             'Clinician': t.clinicianName,
-            'Treatment Details': treatmentDetails.join(' | '),
-            'Billing Codes': billingCodes.map((c: any) => 
-              typeof c === 'string' ? c : c.code || ''
-            ).join(', '),
-            'Billing Descriptions': billingCodes.map((c: any) => 
-              typeof c === 'object' ? c.description || '' : ''
-            ).join(' | ')
           };
         });
 
       if (treatmentRows.length > 0) {
         const treatmentSheet = XLSX.utils.json_to_sheet(treatmentRows);
-        treatmentSheet['!cols'] = Array(20).fill({ wch: 18 });
-        XLSX.utils.book_append_sheet(workbook, treatmentSheet, 'All Treatments');
+        XLSX.utils.book_append_sheet(workbook, treatmentSheet, 'Treatments');
       }
 
-      // SHEET 4: All Assessments (with office info)
-      const assessmentRows = filteredData.assessments
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-        .map(a => {
-          const patient = filteredData.patients.find(p => p.id === a.patientId);
-          const parsed = parseAssessmentData(a.data, a.assessmentType);
-          
-          return {
-            'Assessment ID': a.id,
-            'Patient ID': a.patientId,
-            'Patient Name': patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown',
-            'Patient Age': patient?.age || 'N/A',
-            'Patient Gender': patient?.gender || 'N/A',
-            'Patient Location': patient?.location || 'Unknown',
-            'Office': a.officeName || 'Unknown',
-            'Date': a.createdAt.toLocaleDateString(),
-            'Time': a.createdAt.toLocaleTimeString(),
-            'Day of Week': a.createdAt.toLocaleDateString('en-US', { weekday: 'long' }),
-            'Assessment Type': a.assessmentType.charAt(0).toUpperCase() + a.assessmentType.slice(1),
-            'Clinician': a.clinicianEmail,
-            'Summary': parsed.summary,
-            'Details': parsed.details.join(' | ')
-          };
-        });
+      // SHEET 4: Clinician Performance
+      const clinicianRows = Object.entries(kpis.clinicianBreakdown)
+        .sort((a, b) => b[1].value - a[1].value)
+        .map(([clinician, stats]) => ({
+          'Clinician': clinician,
+          'Patients': stats.patients.size,
+          'Treatments': stats.treatments,
+          'Assessments': stats.assessments,
+          'Total Value': `${currencySymbol} ${Math.round(stats.value).toLocaleString()}`,
+        }));
 
-      if (assessmentRows.length > 0) {
-        const assessmentSheet = XLSX.utils.json_to_sheet(assessmentRows);
-        assessmentSheet['!cols'] = Array(14).fill({ wch: 18 });
-        XLSX.utils.book_append_sheet(workbook, assessmentSheet, 'All Assessments');
+      if (clinicianRows.length > 0) {
+        const clinicianSheet = XLSX.utils.json_to_sheet(clinicianRows);
+        XLSX.utils.book_append_sheet(workbook, clinicianSheet, 'Clinicians');
       }
 
-      // REMAINING SHEETS (Financial by Location, Financial by Procedure, Clinician Performance, Daily Timeline, Demographics)
-      // ... [Keep all the remaining Excel export code from the original file] ...
-
-      // Write the workbook to binary
+      // Write and share
       const wbout = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-
-      // Create file path
-      const dateRangeStr = filters.dateRange === 'day' ? 'Daily' :
-                           filters.dateRange === 'week' ? 'Weekly' :
-                           filters.dateRange === 'month' ? 'Monthly' : 'Complete';
-      const locationStr = filters.location === 'all' ? 'AllLocations' : filters.location.replace(/\s+/g, '_');
-      const officeStr = filters.selectedOffice === 'all' ? 'AllOffices' : offices.find(o => o.id === filters.selectedOffice)?.name.replace(/\s+/g, '_') || 'Unknown';
-      const fileName = `Mission_Report_${dateRangeStr}_${locationStr}_${officeStr}_${Date.now()}.xlsx`;
+      
+      const fileName = `Mission_Report_${Date.now()}.xlsx`;
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      // Write file
       await FileSystem.writeAsStringAsync(fileUri, wbout, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      console.log('✅ Comprehensive mission Excel file created:', fileUri);
+      console.log('✅ Excel file created:', fileUri);
 
       // Share file
       try {
         const Sharing = require('expo-sharing');
         
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(fileUri, {
-            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            dialogTitle: `Dental Mission Report - ${dateRangeStr}`,
-            UTI: 'com.microsoft.excel.xlsx'
-          });
+          await Sharing.shareAsync(fileUri);
         } else {
-          Alert.alert(
-            'File Saved',
-            `Mission report has been saved to:\n\n${fileUri}\n\nYou can find it in your file manager.`,
-            [{ text: 'OK' }]
-          );
+          Alert.alert('File Saved', `Report saved to: ${fileUri}`);
         }
       } catch (sharingError) {
-        console.log('expo-sharing not available, using alternative method');
-        
         if (Platform.OS === 'ios') {
-          await Share.share({
-            url: fileUri,
-            title: `Dental Mission Report - ${dateRangeStr}`,
-          });
-        } else if (Platform.OS === 'android') {
-          try {
-            await Share.share({
-              message: `Dental mission report for ${dateRangeStr}. File saved to: ${fileUri}`,
-              title: `Dental Mission Report - ${dateRangeStr}`,
-            });
-            
-            Alert.alert(
-              'File Saved',
-              `Mission report has been saved to:\n\n${fileUri}`,
-              [{ text: 'OK' }]
-            );
-          } catch (shareError) {
-            Alert.alert(
-              'File Saved',
-              `Mission report has been saved to:\n\n${fileUri}`,
-              [{ text: 'OK' }]
-            );
-          }
+          await Share.share({ url: fileUri });
+        } else {
+          Alert.alert('File Saved', `Report saved to: ${fileUri}`);
         }
       }
 
     } catch (error) {
       console.error('❌ Excel export error:', error);
-      Alert.alert('Error', 'Failed to export mission data to Excel. Please try again.');
+      Alert.alert('Error', 'Failed to export data. Please try again.');
     }
   };
 
@@ -669,7 +447,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007bff" />
-        <Text style={styles.loadingText}>Loading dashboard data...</Text>
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
       </View>
     );
   }
@@ -684,14 +462,14 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>📊 Mission Dashboard</Text>
-        <Text style={styles.headerSubtitle}>Real-time analytics and insights</Text>
+        <Text style={styles.headerSubtitle}>Real-time analytics</Text>
       </View>
 
       {/* Filters */}
       <View style={styles.filtersCard}>
         <Text style={styles.filtersTitle}>Filters</Text>
         
-        {/* Time Period Filter */}
+        {/* Time Period */}
         <View style={styles.filterSection}>
           <Text style={styles.filterLabel}>📅 Time Period</Text>
           <View style={styles.buttonRow}>
@@ -720,52 +498,10 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           </View>
         </View>
 
-        {/* Office Filter */}
-        <View style={styles.filterSection}>
-          <Text style={styles.filterLabel}>🏥 Office</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={[
-                  styles.filterButton,
-                  styles.locationButton,
-                  filters.selectedOffice === 'all' && styles.filterButtonActive
-                ]}
-                onPress={() => setFilters(prev => ({ ...prev, selectedOffice: 'all' }))}
-              >
-                <Text style={[
-                  styles.filterButtonText,
-                  filters.selectedOffice === 'all' && styles.filterButtonTextActive
-                ]}>
-                  All Offices
-                </Text>
-              </TouchableOpacity>
-              {offices.map(office => (
-                <TouchableOpacity
-                  key={office.id}
-                  style={[
-                    styles.filterButton,
-                    styles.locationButton,
-                    filters.selectedOffice === office.id && styles.filterButtonActive
-                  ]}
-                  onPress={() => setFilters(prev => ({ ...prev, selectedOffice: office.id }))}
-                >
-                  <Text style={[
-                    styles.filterButtonText,
-                    filters.selectedOffice === office.id && styles.filterButtonTextActive
-                  ]}>
-                    {office.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-
-        {/* Location Filter */}
+        {/* Location */}
         <View style={styles.filterSection}>
           <Text style={styles.filterLabel}>📍 Location</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.buttonRow}>
               {locations.map(location => (
                 <TouchableOpacity
@@ -789,7 +525,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           </ScrollView>
         </View>
 
-        {/* Currency Filter */}
+        {/* Currency */}
         <View style={styles.filterSection}>
           <Text style={styles.filterLabel}>💰 Currency</Text>
           <View style={styles.buttonRow}>
@@ -801,7 +537,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
                 key={option.value}
                 style={[
                   styles.filterButton,
-                  styles.currencyButton,
                   filters.currency === option.value && styles.filterButtonActive
                 ]}
                 onPress={() => setFilters(prev => ({ ...prev, currency: option.value as any }))}
@@ -822,12 +557,12 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       <View style={styles.kpiGrid}>
         <View style={styles.kpiCard}>
           <Text style={styles.kpiValue}>{kpis.totalPatients.toLocaleString()}</Text>
-          <Text style={styles.kpiLabel}>👥 Total Patients</Text>
+          <Text style={styles.kpiLabel}>👥 Patients</Text>
         </View>
 
         <View style={styles.kpiCard}>
           <Text style={styles.kpiValue}>{kpis.totalProcedures.toLocaleString()}</Text>
-          <Text style={styles.kpiLabel}>🏥 Total Procedures</Text>
+          <Text style={styles.kpiLabel}>🏥 Procedures</Text>
         </View>
 
         <View style={styles.kpiCard}>
@@ -845,35 +580,11 @@ const AdminDashboardScreen = ({ navigation }: any) => {
         </View>
       </View>
 
-      {/* Office Performance */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>🏥 Office Performance</Text>
-        {Object.keys(kpis.officeBreakdown).length === 0 ? (
-          <Text style={styles.noDataText}>No office data found</Text>
-        ) : (
-          Object.entries(kpis.officeBreakdown)
-            .sort((a, b) => b[1].value - a[1].value)
-            .map(([officeId, stats]) => (
-              <View key={officeId} style={styles.officeRow}>
-                <View style={styles.officeInfo}>
-                  <Text style={styles.officeName}>{stats.officeName}</Text>
-                  <Text style={styles.officeStats}>
-                    {stats.patients} patients • {stats.treatments} treatments • {stats.assessments} assessments
-                  </Text>
-                </View>
-                <Text style={styles.officeValue}>
-                  {filters.currency} {Math.round(stats.value).toLocaleString()}
-                </Text>
-              </View>
-            ))
-        )}
-      </View>
-
       {/* Clinician Performance */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>👨‍⚕️ Clinician Performance</Text>
         {Object.keys(kpis.clinicianBreakdown).length === 0 ? (
-          <Text style={styles.noDataText}>No clinician data found</Text>
+          <Text style={styles.noDataText}>No data found</Text>
         ) : (
           Object.entries(kpis.clinicianBreakdown)
             .sort((a, b) => b[1].value - a[1].value)
@@ -882,7 +593,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
                 <View style={styles.clinicianInfo}>
                   <Text style={styles.clinicianName}>{clinician}</Text>
                   <Text style={styles.clinicianStats}>
-                    {stats.patients.size} patients • {stats.treatments} treatments • {stats.assessments} assessments
+                    {stats.patients.size} patients • {stats.treatments} treatments
                   </Text>
                 </View>
                 <Text style={styles.clinicianValue}>
@@ -897,7 +608,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🦷 Procedure Breakdown</Text>
         {Object.entries(kpis.procedureBreakdown).length === 0 ? (
-          <Text style={styles.noDataText}>No procedures found for selected filters</Text>
+          <Text style={styles.noDataText}>No procedures found</Text>
         ) : (
           Object.entries(kpis.procedureBreakdown).map(([procedure, count]) => {
             const percentage = ((count / kpis.totalProcedures) * 100).toFixed(1);
@@ -920,7 +631,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🌍 Location Performance</Text>
         {Object.entries(kpis.locationBreakdown).length === 0 ? (
-          <Text style={styles.noDataText}>No location data found</Text>
+          <Text style={styles.noDataText}>No location data</Text>
         ) : (
           Object.entries(kpis.locationBreakdown).map(([location, patientCount]) => {
             const locationTreatments = filteredData.treatments.filter(t => {
@@ -962,7 +673,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.exportButton} onPress={exportToExcel}>
-          <Text style={styles.exportButtonText}>📊 Export Complete Excel Report</Text>
+          <Text style={styles.exportButtonText}>📊 Export Excel Report</Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -976,29 +687,14 @@ const AdminDashboardScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
-      {/* Summary Stats */}
+      {/* Summary */}
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>📋 Summary Report</Text>
+        <Text style={styles.summaryTitle}>📋 Summary</Text>
         <Text style={styles.summaryText}>
-          In the selected time period, our dental mission has served{' '}
-          <Text style={styles.summaryHighlight}>{kpis.totalPatients} patients</Text> across{' '}
-          <Text style={styles.summaryHighlight}>{Object.keys(kpis.officeBreakdown).length} offices</Text>,
-          performing a total of{' '}
-          <Text style={styles.summaryHighlight}>{kpis.totalProcedures} procedures</Text>{' '}
-          with a combined value of{' '}
-          <Text style={styles.summaryHighlight}>
-            {filters.currency} {kpis.totalValue.toLocaleString()}
-          </Text>.
+          Served <Text style={styles.highlight}>{kpis.totalPatients} patients</Text> with{' '}
+          <Text style={styles.highlight}>{kpis.totalProcedures} procedures</Text>, total value{' '}
+          <Text style={styles.highlight}>{filters.currency} {kpis.totalValue.toLocaleString()}</Text>.
         </Text>
-        
-        {kpis.totalPatients > 0 && (
-          <Text style={styles.summaryText}>
-            This represents an average treatment value of{' '}
-            <Text style={styles.summaryHighlight}>
-              {filters.currency} {kpis.avgValuePerPatient}
-            </Text> per patient served.
-          </Text>
-        )}
       </View>
 
       {/* Footer */}
@@ -1007,14 +703,13 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           Last updated: {new Date().toLocaleString()}
         </Text>
         <Text style={styles.footerText}>
-          Data synced from {patients.length} total patients in database
+          {patients.length} total patients in database
         </Text>
       </View>
     </ScrollView>
   );
 };
 
-// [STYLES - Same as before, adding office/clinician styles]
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1024,11 +719,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
   },
   loadingText: {
     marginTop: 16,
-    fontSize: 16,
     color: '#666',
   },
   header: {
@@ -1041,7 +734,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
   },
   headerSubtitle: {
     fontSize: 16,
@@ -1061,7 +753,6 @@ const styles = StyleSheet.create({
   filtersTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 16,
   },
   filterSection: {
@@ -1070,15 +761,11 @@ const styles = StyleSheet.create({
   filterLabel: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#495057',
     marginBottom: 8,
   },
   buttonRow: {
     flexDirection: 'row',
     gap: 8,
-  },
-  horizontalScroll: {
-    flexGrow: 0,
   },
   filterButton: {
     backgroundColor: '#f8f9fa',
@@ -1087,8 +774,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
     minWidth: 60,
   },
   filterButtonActive: {
@@ -1105,10 +790,6 @@ const styles = StyleSheet.create({
   },
   locationButton: {
     minWidth: 80,
-  },
-  currencyButton: {
-    flex: 1,
-    maxWidth: 120,
   },
   kpiGrid: {
     flexDirection: 'row',
@@ -1131,7 +812,6 @@ const styles = StyleSheet.create({
   kpiValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
     marginBottom: 4,
   },
   kpiLabel: {
@@ -1153,7 +833,6 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 16,
   },
   noDataText: {
@@ -1163,36 +842,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     padding: 20,
   },
-  officeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f8f9fa',
-  },
-  officeInfo: {
-    flex: 1,
-  },
-  officeName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-  },
-  officeStats: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 2,
-  },
-  officeValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#28a745',
-  },
   clinicianRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f8f9fa',
@@ -1203,7 +855,6 @@ const styles = StyleSheet.create({
   clinicianName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
   },
   clinicianStats: {
     fontSize: 13,
@@ -1218,7 +869,6 @@ const styles = StyleSheet.create({
   procedureRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f8f9fa',
@@ -1229,7 +879,6 @@ const styles = StyleSheet.create({
   procedureName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#333',
   },
   procedureCount: {
     fontSize: 14,
@@ -1244,7 +893,6 @@ const styles = StyleSheet.create({
   locationRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f8f9fa',
@@ -1255,7 +903,6 @@ const styles = StyleSheet.create({
   locationName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#333',
   },
   locationStats: {
     fontSize: 14,
@@ -1268,7 +915,6 @@ const styles = StyleSheet.create({
     color: '#28a745',
   },
   actionButtons: {
-    flexDirection: 'column',
     margin: 16,
     gap: 12,
   },
@@ -1310,22 +956,18 @@ const styles = StyleSheet.create({
     margin: 16,
     padding: 16,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#b3d9ff',
   },
   summaryTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 12,
   },
   summaryText: {
     fontSize: 14,
     color: '#495057',
     lineHeight: 20,
-    marginBottom: 8,
   },
-  summaryHighlight: {
+  highlight: {
     fontWeight: '600',
     color: '#007bff',
   },
@@ -1336,7 +978,6 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 12,
     color: '#999',
-    textAlign: 'center',
     marginBottom: 4,
   },
 });

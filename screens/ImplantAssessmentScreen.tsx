@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useImplantAssessment } from '../contexts/ImplantAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
+import { useFocusEffect } from '@react-navigation/native';
 
 // Get screen dimensions for responsive scaling
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -28,33 +29,163 @@ const UPPER_LEFT = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const LOWER_RIGHT = ['41', '42', '43', '44', '45', '46', '47', '48'];
 const LOWER_LEFT = ['31', '32', '33', '34', '35', '36', '37', '38'];
 
+type ImplantMode = 'single' | 'bridge';
+type TimingMode = 'immediate' | 'delayed';
+
+interface ImplantAssessmentState {
+  implantMode: ImplantMode;
+  singleImplantTeeth: string[];
+  bridgeImplantTeeth: string[];
+  boneGraftingPlanned: boolean;
+  timingMode: TimingMode;
+  notes: string;
+}
+
+const defaultImplantState: ImplantAssessmentState = {
+  implantMode: 'single',
+  singleImplantTeeth: [],
+  bridgeImplantTeeth: [],
+  boneGraftingPlanned: false,
+  timingMode: 'immediate',
+  notes: '',
+};
+
 const ImplantAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   
   const { 
-    implantState,
-    updateImplantMode,
-    getSelectedTeeth,
-    toggleTooth,
-    updateBoneGrafting,
-    updateTimingMode,
-    clearCurrentSelection,
     saveAssessment,
     loadLatestAssessment,
+    saveDraft,
+    loadDraft,
+    clearDraft,
+    hasDraft,
   } = useImplantAssessment();
 
-  const { implantMode, boneGraftingPlanned, timingMode } = implantState;
-  const selectedTeeth = getSelectedTeeth();
+  // ✅ LOCAL STATE
+  const [implantState, setImplantState] = useState<ImplantAssessmentState>(defaultImplantState);
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  const previousPatientIdRef = useRef<string | null>(null);
+  const justSavedRef = useRef<boolean>(false);
 
+  // ✅ LOAD STATE when screen focuses
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadState = async () => {
+        try {
+          console.log('🔄 Loading implant state for patient:', patientId);
+          
+          // Check if patient changed
+          if (previousPatientIdRef.current && previousPatientIdRef.current !== patientId) {
+            console.log('🔄 Patient changed from', previousPatientIdRef.current, 'to', patientId);
+            justSavedRef.current = false;
+          }
+          previousPatientIdRef.current = patientId;
+          
+          // ✅ If we just saved, start fresh
+          if (justSavedRef.current) {
+            console.log('✨ Just saved - starting fresh');
+            setImplantState(defaultImplantState);
+            setIsLoaded(true);
+            justSavedRef.current = false;
+            return;
+          }
+          
+          // STEP 1: Check for draft first
+          const draft = loadDraft(patientId);
+          
+          if (draft) {
+            console.log('📋 Loading draft:', draft);
+            setImplantState(draft.implantState);
+            setIsLoaded(true);
+            return;
+          }
+          
+          // STEP 2: Start fresh
+          console.log('📋 No draft - starting fresh');
+          setImplantState(defaultImplantState);
+          setIsLoaded(true);
+        } catch (error) {
+          console.error('❌ Error loading state:', error);
+          setImplantState(defaultImplantState);
+          setIsLoaded(true);
+        }
+      };
+      
+      loadState();
+      
+      // Cleanup - save draft when leaving
+      return () => {
+        if (isLoaded && !justSavedRef.current) {
+          console.log('💾 Saving draft on blur');
+          saveDraft(patientId, implantState);
+        }
+      };
+    }, [patientId])
+  );
+
+  // ✅ AUTO-SAVE DRAFT when state changes (debounced)
   useEffect(() => {
-    const loadPrevious = async () => {
-      await loadLatestAssessment(patientId);
-    };
+    if (!isLoaded) return;
     
-    loadPrevious();
+    const timeoutId = setTimeout(() => {
+      console.log('💾 Auto-saving implant draft');
+      saveDraft(patientId, implantState);
+    }, 500);
     
-    return () => {};
-  }, [patientId]);
+    return () => clearTimeout(timeoutId);
+  }, [implantState, isLoaded, patientId]);
+
+  // Helper functions
+  const getSelectedTeeth = () => {
+    return implantState.implantMode === 'single' 
+      ? implantState.singleImplantTeeth 
+      : implantState.bridgeImplantTeeth;
+  };
+
+  const updateImplantMode = (mode: ImplantMode) => {
+    setImplantState(prev => ({ 
+      ...prev, 
+      implantMode: mode
+    }));
+  };
+
+  const toggleTooth = (toothId: string) => {
+    setImplantState(prev => {
+      if (prev.implantMode === 'single') {
+        const newSingleTeeth = prev.singleImplantTeeth.includes(toothId)
+          ? prev.singleImplantTeeth.filter(id => id !== toothId)
+          : [...prev.singleImplantTeeth, toothId];
+        
+        return { ...prev, singleImplantTeeth: newSingleTeeth };
+      } else {
+        const newBridgeTeeth = prev.bridgeImplantTeeth.includes(toothId)
+          ? prev.bridgeImplantTeeth.filter(id => id !== toothId)
+          : [...prev.bridgeImplantTeeth, toothId];
+        
+        return { ...prev, bridgeImplantTeeth: newBridgeTeeth };
+      }
+    });
+  };
+
+  const updateBoneGrafting = (planned: boolean) => {
+    setImplantState(prev => ({ ...prev, boneGraftingPlanned: planned }));
+  };
+
+  const updateTimingMode = (timing: TimingMode) => {
+    setImplantState(prev => ({ ...prev, timingMode: timing }));
+  };
+
+  const clearCurrentSelection = () => {
+    setImplantState(prev => {
+      if (prev.implantMode === 'single') {
+        return { ...prev, singleImplantTeeth: [] };
+      } else {
+        return { ...prev, bridgeImplantTeeth: [] };
+      }
+    });
+  };
 
   const toothOffsets: Record<string, { x: number; y: number }> = {
     '21': { x: 20, y: -120 }, '11': { x: -20, y: -120 },
@@ -77,6 +208,9 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
 
   const handleSaveAssessment = async () => {
     try {
+      console.log('💾 Saving implant assessment...');
+      console.log('Current state:', implantState);
+      
       if (implantState.singleImplantTeeth.length === 0 && implantState.bridgeImplantTeeth.length === 0) {
         Alert.alert(
           'No Teeth Selected',
@@ -86,7 +220,10 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
         return;
       }
 
-      await saveAssessment(patientId);
+      await saveAssessment(patientId, implantState);
+      
+      // ✅ Set flag so we start fresh on next visit
+      justSavedRef.current = true;
       
       Alert.alert(
         'Success',
@@ -108,7 +245,7 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const handleImplantModeChange = (mode: 'single' | 'bridge') => {
+  const handleImplantModeChange = (mode: ImplantMode) => {
     updateImplantMode(mode);
   };
 
@@ -124,9 +261,11 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
     };
   };
 
+  const selectedTeeth = getSelectedTeeth();
+
   const getToothStyle = (toothId: string) => {
     if (selectedTeeth.includes(toothId)) {
-      return implantMode === 'single' ? styles.toothSingleImplant : styles.toothBridge;
+      return implantState.implantMode === 'single' ? styles.toothSingleImplant : styles.toothBridge;
     }
     return styles.toothNormal;
   };
@@ -152,7 +291,7 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
         {selectedTeeth.includes(toothId) && (
           <View style={styles.implantFlag}>
             <Text style={styles.implantText}>
-              {implantMode === 'single' ? '🔩' : '🌉'}
+              {implantState.implantMode === 'single' ? '🔩' : '🌉'}
             </Text>
           </View>
         )}
@@ -195,13 +334,13 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
           <Pressable
             style={[
               styles.typeSelectorButton,
-              implantMode === 'single' && styles.typeSelectorButtonActive
+              implantState.implantMode === 'single' && styles.typeSelectorButtonActive
             ]}
             onPress={() => handleImplantModeChange('single')}
           >
             <Text style={[
               styles.typeSelectorText,
-              implantMode === 'single' && styles.typeSelectorTextActive
+              implantState.implantMode === 'single' && styles.typeSelectorTextActive
             ]}>
               Single Implant ({implantState.singleImplantTeeth.length})
             </Text>
@@ -209,13 +348,13 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
           <Pressable
             style={[
               styles.typeSelectorButton,
-              implantMode === 'bridge' && styles.typeSelectorButtonActive
+              implantState.implantMode === 'bridge' && styles.typeSelectorButtonActive
             ]}
             onPress={() => handleImplantModeChange('bridge')}
           >
             <Text style={[
               styles.typeSelectorText,
-              implantMode === 'bridge' && styles.typeSelectorTextActive
+              implantState.implantMode === 'bridge' && styles.typeSelectorTextActive
             ]}>
               Bridge ({implantState.bridgeImplantTeeth.length})
             </Text>
@@ -225,7 +364,7 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
 
       {/* Selection Summary */}
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Current Selection - {implantMode === 'single' ? 'Single Implants' : 'Implant Bridge'}</Text>
+        <Text style={styles.summaryTitle}>Current Selection - {implantState.implantMode === 'single' ? 'Single Implants' : 'Implant Bridge'}</Text>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Selected Teeth:</Text>
           <Text style={styles.summaryValue}>
@@ -239,7 +378,7 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
         
         {selectedTeeth.length > 0 && (
           <Pressable style={styles.clearButton} onPress={clearCurrentSelection}>
-            <Text style={styles.clearButtonText}>Clear {implantMode === 'single' ? 'Single' : 'Bridge'} Selection</Text>
+            <Text style={styles.clearButtonText}>Clear {implantState.implantMode === 'single' ? 'Single' : 'Bridge'} Selection</Text>
           </Pressable>
         )}
       </View>
@@ -247,7 +386,7 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
       {/* Visual Chart */}
       <View style={styles.chartCard}>
         <Text style={styles.cardTitle}>
-          Select Teeth for {implantMode === 'single' ? 'Single Implants' : 'Implant Bridge'}
+          Select Teeth for {implantState.implantMode === 'single' ? 'Single Implants' : 'Implant Bridge'}
         </Text>
         <View style={[styles.dentalChart, { width: CHART_WIDTH, height: CHART_HEIGHT }]}>
 
@@ -256,7 +395,7 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
             left: CHART_WIDTH / 2 - scaleWidth(50) 
           }]}>
             Tap teeth to{'\n'}select for{'\n'}
-            {implantMode === 'single' ? 'implants' : 'bridge'}
+            {implantState.implantMode === 'single' ? 'implants' : 'bridge'}
           </Text>
           
           {[...UPPER_RIGHT, ...UPPER_LEFT, ...LOWER_RIGHT, ...LOWER_LEFT].map(toothId => 
@@ -274,15 +413,15 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
           <Pressable
             style={[
               styles.optionToggle,
-              boneGraftingPlanned && styles.optionToggleActive
+              implantState.boneGraftingPlanned && styles.optionToggleActive
             ]}
-            onPress={() => updateBoneGrafting(!boneGraftingPlanned)}
+            onPress={() => updateBoneGrafting(!implantState.boneGraftingPlanned)}
           >
             <Text style={[
               styles.optionToggleText,
-              boneGraftingPlanned && styles.optionToggleTextActive
+              implantState.boneGraftingPlanned && styles.optionToggleTextActive
             ]}>
-              {boneGraftingPlanned ? 'Yes' : 'No'}
+              {implantState.boneGraftingPlanned ? 'Yes' : 'No'}
             </Text>
           </Pressable>
         </View>
@@ -293,13 +432,13 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
             <Pressable
               style={[
                 styles.timingSelectorButton,
-                timingMode === 'immediate' && styles.timingSelectorButtonActive
+                implantState.timingMode === 'immediate' && styles.timingSelectorButtonActive
               ]}
               onPress={() => updateTimingMode('immediate')}
             >
               <Text style={[
                 styles.timingSelectorText,
-                timingMode === 'immediate' && styles.timingSelectorTextActive
+                implantState.timingMode === 'immediate' && styles.timingSelectorTextActive
               ]}>
                 Immediate
               </Text>
@@ -307,13 +446,13 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
             <Pressable
               style={[
                 styles.timingSelectorButton,
-                timingMode === 'delayed' && styles.timingSelectorButtonActive
+                implantState.timingMode === 'delayed' && styles.timingSelectorButtonActive
               ]}
               onPress={() => updateTimingMode('delayed')}
             >
               <Text style={[
                 styles.timingSelectorText,
-                timingMode === 'delayed' && styles.timingSelectorTextActive
+                implantState.timingMode === 'delayed' && styles.timingSelectorTextActive
               ]}>
                 Delayed
               </Text>
@@ -355,14 +494,9 @@ const ImplantAssessmentScreen = ({ route, navigation }: any) => {
                 text: 'Clear All', 
                 style: 'destructive',
                 onPress: () => {
-                  implantState.singleImplantTeeth = [];
-                  implantState.bridgeImplantTeeth = [];
-                  updateBoneGrafting(false);
-                  updateTimingMode('delayed');
+                  setImplantState(defaultImplantState);
+                  clearDraft(patientId);
                   Alert.alert('Cleared', 'All implant assessment data has been cleared.');
-                  const currentMode = implantMode;
-                  updateImplantMode(currentMode === 'single' ? 'bridge' : 'single');
-                  updateImplantMode(currentMode);
                 }
               }
             ]
@@ -533,22 +667,6 @@ const styles = StyleSheet.create({
   dentalChart: {
     position: 'relative',
     alignSelf: 'center',
-  },
-  upperArchLabel: {
-    fontSize: scaleFontSize(16),
-    fontWeight: '600',
-    color: '#333',
-    textAlign: 'center',
-    position: 'absolute',
-    width: scaleWidth(60),
-  },
-  lowerArchLabel: {
-    fontSize: scaleFontSize(16),
-    fontWeight: '600',
-    color: '#333',
-    textAlign: 'center',
-    position: 'absolute',
-    width: scaleWidth(60),
   },
   centerInstructions: {
     fontSize: scaleFontSize(11),

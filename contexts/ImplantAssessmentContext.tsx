@@ -1,5 +1,5 @@
 // contexts/ImplantAssessmentContext.tsx
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useRef } from 'react';
 import { database } from '../db';
 import { Q } from '@nozbe/watermelondb';
 import ImplantAssessment from '../db/models/ImplantAssessment';
@@ -9,7 +9,6 @@ type TimingMode = 'immediate' | 'delayed';
 
 interface ImplantAssessmentState {
   implantMode: ImplantMode;
-  // Separate selections for each mode
   singleImplantTeeth: string[];
   bridgeImplantTeeth: string[];
   boneGraftingPlanned: boolean;
@@ -26,119 +25,96 @@ const defaultImplantState: ImplantAssessmentState = {
   notes: '',
 };
 
-interface ImplantAssessmentContextType {
+// ✅ Draft state interface
+interface DraftState {
   implantState: ImplantAssessmentState;
-  setImplantState: (state: ImplantAssessmentState) => void;
-  updateImplantMode: (mode: ImplantMode) => void;
-  getSelectedTeeth: () => string[];
-  toggleTooth: (toothId: string) => void;
-  updateBoneGrafting: (planned: boolean) => void;
-  updateTimingMode: (timing: TimingMode) => void;
-  updateNotes: (notes: string) => void;
-  clearCurrentSelection: () => void;
-  saveAssessment: (patientId: string) => Promise<void>;
-  loadLatestAssessment: (patientId: string) => Promise<void>;
+}
+
+interface ImplantAssessmentContextType {
+  saveAssessment: (patientId: string, data: ImplantAssessmentState) => Promise<void>;
+  loadLatestAssessment: (patientId: string) => Promise<ImplantAssessmentState | null>;
   loadAllAssessments: (patientId: string) => Promise<ImplantAssessment[]>;
-  resetState: () => void;
+  // ✅ Draft state management
+  saveDraft: (patientId: string, implantState: ImplantAssessmentState) => void;
+  loadDraft: (patientId: string) => DraftState | null;
+  clearDraft: (patientId: string) => void;
+  hasDraft: (patientId: string) => boolean;
 }
 
 const ImplantAssessmentContext = createContext<ImplantAssessmentContextType>({
-  implantState: defaultImplantState,
-  setImplantState: () => {},
-  updateImplantMode: () => {},
-  getSelectedTeeth: () => [],
-  toggleTooth: () => {},
-  updateBoneGrafting: () => {},
-  updateTimingMode: () => {},
-  updateNotes: () => {},
-  clearCurrentSelection: () => {},
   saveAssessment: async () => {},
-  loadLatestAssessment: async () => {},
+  loadLatestAssessment: async () => null,
   loadAllAssessments: async () => [],
-  resetState: () => {},
+  saveDraft: () => {},
+  loadDraft: () => null,
+  clearDraft: () => {},
+  hasDraft: () => false,
 });
 
 export const useImplantAssessment = () => useContext(ImplantAssessmentContext);
 
 export const ImplantAssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [implantState, setImplantState] = useState<ImplantAssessmentState>(defaultImplantState);
+  
+  // ✅ Store draft states per patient in memory
+  const draftStatesRef = useRef<Map<string, DraftState>>(new Map());
 
-  const updateImplantMode = (mode: ImplantMode) => {
-    setImplantState(prev => ({ 
-      ...prev, 
-      implantMode: mode
-      // Don't clear selections - keep them separate
-    }));
+  // ✅ Save draft state
+  const saveDraft = (patientId: string, implantState: ImplantAssessmentState) => {
+    const draft: DraftState = {
+      implantState: { ...implantState }, // Clone to avoid mutation
+    };
+    draftStatesRef.current.set(patientId, draft);
+    console.log('💾 Saved implant draft for patient:', patientId);
   };
 
-  const getSelectedTeeth = () => {
-    return implantState.implantMode === 'single' 
-      ? implantState.singleImplantTeeth 
-      : implantState.bridgeImplantTeeth;
+  // ✅ Load draft state
+  const loadDraft = (patientId: string): DraftState | null => {
+    const draft = draftStatesRef.current.get(patientId);
+    if (draft) {
+      console.log('📋 Loaded implant draft for patient:', patientId);
+      return draft;
+    }
+    console.log('📋 No implant draft found for patient:', patientId);
+    return null;
   };
 
-  const toggleTooth = (toothId: string) => {
-    setImplantState(prev => {
-      if (prev.implantMode === 'single') {
-        const newSingleTeeth = prev.singleImplantTeeth.includes(toothId)
-          ? prev.singleImplantTeeth.filter(id => id !== toothId)
-          : [...prev.singleImplantTeeth, toothId];
-        
-        return { ...prev, singleImplantTeeth: newSingleTeeth };
-      } else {
-        const newBridgeTeeth = prev.bridgeImplantTeeth.includes(toothId)
-          ? prev.bridgeImplantTeeth.filter(id => id !== toothId)
-          : [...prev.bridgeImplantTeeth, toothId];
-        
-        return { ...prev, bridgeImplantTeeth: newBridgeTeeth };
-      }
-    });
+  // ✅ Check if draft exists
+  const hasDraft = (patientId: string): boolean => {
+    return draftStatesRef.current.has(patientId);
   };
 
-  const updateBoneGrafting = (planned: boolean) => {
-    setImplantState(prev => ({ ...prev, boneGraftingPlanned: planned }));
+  // ✅ Clear draft state
+  const clearDraft = (patientId: string) => {
+    draftStatesRef.current.delete(patientId);
+    console.log('🗑️ Cleared implant draft for patient:', patientId);
   };
 
-  const updateTimingMode = (timing: TimingMode) => {
-    setImplantState(prev => ({ ...prev, timingMode: timing }));
-  };
-
-  const updateNotes = (notes: string) => {
-    setImplantState(prev => ({ ...prev, notes }));
-  };
-
-  const clearCurrentSelection = () => {
-    setImplantState(prev => {
-      if (prev.implantMode === 'single') {
-        return { ...prev, singleImplantTeeth: [] };
-      } else {
-        return { ...prev, bridgeImplantTeeth: [] };
-      }
-    });
-  };
-
-  // ✅ ALWAYS create a new assessment - never update existing ones
-  const saveAssessment = async (patientId: string) => {
+  // ✅ ALWAYS create a new assessment
+  const saveAssessment = async (patientId: string, data: ImplantAssessmentState) => {
     try {
+      console.log('💾 Saving implant assessment with data:', data);
+      
       await database.write(async () => {
         await database.get<ImplantAssessment>('implant_assessments').create(assessment => {
           assessment.patientId = patientId;
-          assessment.data = JSON.stringify(implantState);
+          assessment.data = JSON.stringify(data);
           assessment.createdAt = new Date();
           assessment.updatedAt = new Date();
         });
       });
       
+      // ✅ Clear draft after successful save
+      clearDraft(patientId);
+      
       console.log('✅ New implant assessment created for patient:', patientId);
-      console.log('📊 Assessment data:', implantState);
     } catch (error) {
       console.error('❌ Error saving implant assessment:', error);
       throw error;
     }
   };
 
-  // Load the most recent assessment (for pre-filling forms)
-  const loadLatestAssessment = async (patientId: string) => {
+  // Load the most recent assessment
+  const loadLatestAssessment = async (patientId: string): Promise<ImplantAssessmentState | null> => {
     try {
       const assessments = await database
         .get<ImplantAssessment>('implant_assessments')
@@ -150,18 +126,18 @@ export const ImplantAssessmentProvider: React.FC<{ children: React.ReactNode }> 
         .fetch();
 
       if (assessments.length > 0) {
-        const data = JSON.parse(assessments[0].data);
-        setImplantState(data);
-        console.log('✅ Loaded latest implant assessment for patient:', patientId);
-      } else {
-        console.log('ℹ️ No previous implant assessment found for patient:', patientId);
+        const parsed = JSON.parse(assessments[0].data);
+        console.log('📋 Loaded latest implant assessment:', parsed);
+        return parsed;
       }
+      return null;
     } catch (error) {
       console.error('❌ Error loading latest implant assessment:', error);
+      return null;
     }
   };
 
-  // Load ALL assessments for history/viewing
+  // Load ALL assessments
   const loadAllAssessments = async (patientId: string) => {
     try {
       const assessments = await database
@@ -172,7 +148,6 @@ export const ImplantAssessmentProvider: React.FC<{ children: React.ReactNode }> 
         )
         .fetch();
 
-      console.log(`✅ Loaded ${assessments.length} implant assessment(s) for patient:`, patientId);
       return assessments;
     } catch (error) {
       console.error('❌ Error loading all implant assessments:', error);
@@ -180,27 +155,15 @@ export const ImplantAssessmentProvider: React.FC<{ children: React.ReactNode }> 
     }
   };
 
-  // Reset state to default
-  const resetState = () => {
-    setImplantState(defaultImplantState);
-    console.log('🔄 Implant assessment state reset to default');
-  };
-
   return (
     <ImplantAssessmentContext.Provider value={{
-      implantState,
-      setImplantState,
-      updateImplantMode,
-      getSelectedTeeth,
-      toggleTooth,
-      updateBoneGrafting,
-      updateTimingMode,
-      updateNotes,
-      clearCurrentSelection,
       saveAssessment,
       loadLatestAssessment,
       loadAllAssessments,
-      resetState,
+      saveDraft,
+      loadDraft,
+      clearDraft,
+      hasDraft,
     }}>
       {children}
     </ImplantAssessmentContext.Provider>

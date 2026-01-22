@@ -4,7 +4,7 @@
 // 2. Added separate "Needs Fillings" section on Fillings tab
 // 3. Tracks both existing fillings and needed fillings separately
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useFillingsAssessment } from '../contexts/FillingsAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
+import { useFocusEffect } from '@react-navigation/native';
 
 // Get screen dimensions for responsive scaling
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -159,15 +160,24 @@ interface EnhancedFillingsAssessmentState {
   selectedTooth: string | null;
   modalVisible: boolean;
   activeTab: 'cavities' | 'fillings' | 'crowns' | 'existing_rc' | 'broken' | 'rootcanal';
-  primaryTeeth: Set<string>;
+  primaryTeeth: string[];
 }
 
 const ComprehensiveDentalAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   
-  // Get saveAssessment from context
-  const { restorationStates, setRestorationStates, saveAssessment, loadLatestAssessment } = useFillingsAssessment();
-  
+  const { 
+    restorationStates, 
+    setRestorationStates, 
+    saveAssessment, 
+    loadLatestAssessment,
+    saveDraft,      // ✅ NEW
+    loadDraft,      // ✅ NEW
+    clearDraft,     // ✅ NEW
+    hasDraft,       // ✅ NEW
+  } = useFillingsAssessment();
+
+
   // Initialize teeth states
   const initializeTeethStates = useCallback(() => {
     const initialStates: Record<string, ToothAssessment> = {};
@@ -184,55 +194,115 @@ const ComprehensiveDentalAssessmentScreen = ({ route, navigation }: any) => {
       selectedTooth: null,
       modalVisible: false,
       activeTab: 'cavities',
-      primaryTeeth: new Set()
+      primaryTeeth: []
     };
   }, [initializeTeethStates]);
 
-  // Initialize state from context or defaults
-  const [enhancedState, setEnhancedState] = useState<EnhancedFillingsAssessmentState>(() => {
-    // Try to get saved state from restorationStates context
-    if (restorationStates && typeof restorationStates === 'object' && 'enhancedAssessment' in restorationStates) {
-      return { ...getInitialState(), ...restorationStates.enhancedAssessment };
-    }
-    return getInitialState();
-  });
-  
-  // Backup state for cancel functionality
+  // ✅ LOCAL STATE
+  const [enhancedState, setEnhancedState] = useState<EnhancedFillingsAssessmentState>(getInitialState());
   const [toothBackup, setToothBackup] = useState<ToothAssessment | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  const previousPatientIdRef = useRef<string | null>(null);
+  const justSavedRef = useRef<boolean>(false); // ✅ Track if we just saved
+  
+  // ✅ LOAD STATE when screen focuses
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadState = async () => {
+        try {
+          console.log('🔄 Loading fillings state for patient:', patientId);
+          
+          // Check if patient changed
+          if (previousPatientIdRef.current && previousPatientIdRef.current !== patientId) {
+            console.log('🔄 Patient changed from', previousPatientIdRef.current, 'to', patientId);
+            justSavedRef.current = false; // Reset on patient change
+          }
+          previousPatientIdRef.current = patientId;
+          
+          // ✅ If we just saved, start fresh (don't load anything)
+          if (justSavedRef.current) {
+            console.log('✨ Just saved - starting fresh');
+            setEnhancedState(getInitialState());
+            setIsLoaded(true);
+            justSavedRef.current = false;
+            return;
+          }
+          
+          // STEP 1: Check for draft first
+          const draft = loadDraft(patientId);
+          
+          if (draft && draft.enhancedState) {
+            console.log('📋 Loading draft');
+            setEnhancedState(draft.enhancedState);
+            setIsLoaded(true);
+            return;
+          }
+          
+          // STEP 2: Start fresh (don't load saved assessments automatically)
+          console.log('📋 No draft - starting fresh');
+          setEnhancedState(getInitialState());
+          setIsLoaded(true);
+          
+        } catch (error) {
+          console.error('❌ Error loading fillings state:', error);
+          setEnhancedState(getInitialState());
+          setIsLoaded(true);
+        }
+      };
+      
+      loadState();
+      
+      // Cleanup function - save draft when leaving
+      return () => {
+        if (isLoaded && !justSavedRef.current) {
+          console.log('💾 Saving fillings draft on blur');
+          saveDraft(patientId, enhancedState);
+        }
+      };
+    }, [patientId])
+  );
 
-  // Load previous assessment on mount (optional - for pre-filling)
+  // ✅ AUTO-SAVE DRAFT when state changes (debounced)
   useEffect(() => {
-    const loadPrevious = async () => {
-      await loadLatestAssessment(patientId);
-    };
+    if (!isLoaded) return; // Don't save during initial load
     
-    loadPrevious();
-  }, [patientId]);
+    const timeoutId = setTimeout(() => {
+      console.log('💾 Auto-saving fillings draft');
+      saveDraft(patientId, enhancedState);
+    }, 500); // Debounce for 500ms
+    
+    return () => clearTimeout(timeoutId);
+  }, [enhancedState, isLoaded, patientId]);
 
   // Function to get the current display tooth ID (permanent or primary)
   const getCurrentToothId = useCallback((originalToothId: string): string => {
-    if (enhancedState.primaryTeeth.has(originalToothId) && PRIMARY_TOOTH_MAPPINGS[originalToothId]) {
+    if (enhancedState.primaryTeeth.includes(originalToothId) && PRIMARY_TOOTH_MAPPINGS[originalToothId]) {
       return PRIMARY_TOOTH_MAPPINGS[originalToothId];
     }
     return originalToothId;
   }, [enhancedState.primaryTeeth]);
 
-  // Function to toggle between permanent and primary tooth
+  
   const toggleToothType = useCallback((originalToothId: string) => {
     if (!canSwitchToPrimary(originalToothId)) return;
     
     console.log('🔄 Toggling tooth type for:', originalToothId);
     
     setEnhancedState(prev => {
-      const newPrimaryTeeth = new Set(prev.primaryTeeth);
-      if (newPrimaryTeeth.has(originalToothId)) {
-        newPrimaryTeeth.delete(originalToothId);
+      if (prev.primaryTeeth.includes(originalToothId)) {
         console.log('➡️ Switched to permanent:', originalToothId);
+        return { 
+          ...prev, 
+          primaryTeeth: prev.primaryTeeth.filter(id => id !== originalToothId) 
+        };
       } else {
-        newPrimaryTeeth.add(originalToothId);
-        console.log('➡️ Switched to primary:', originalToothId, '→', PRIMARY_TOOTH_MAPPINGS[originalToothId]);
+        console.log('➡️ Switched to primary:', originalToothId);
+        return { 
+          ...prev, 
+          primaryTeeth: [...prev.primaryTeeth, originalToothId] 
+        };
       }
-      return { ...prev, primaryTeeth: newPrimaryTeeth };
     });
   }, []);
 
@@ -389,8 +459,10 @@ const ComprehensiveDentalAssessmentScreen = ({ route, navigation }: any) => {
         estimatedSize: JSON.stringify(assessmentData).length + ' bytes'
       });
   
-      // Use the context's saveAssessment function
       await saveAssessment(patientId, assessmentData);
+      
+      // ✅ NEW: Set flag so we start fresh on next visit
+      justSavedRef.current = true;
       
       Alert.alert('Success', 'Fillings assessment saved!');
       navigation.goBack();
@@ -545,7 +617,7 @@ const ComprehensiveDentalAssessmentScreen = ({ route, navigation }: any) => {
     const statusText = getToothStatusIndicators(toothId);
     const currentToothId = getCurrentToothId(toothId);
     const canSwitch = canSwitchToPrimary(toothId);
-    const isCurrentlyPrimary = enhancedState.primaryTeeth.has(toothId);
+    const isCurrentlyPrimary = enhancedState.primaryTeeth.includes(toothId);
     
     return (
       <View key={toothId} style={{ position: 'absolute', left: position.left, top: position.top }}>
@@ -701,7 +773,7 @@ ${teeth.map(([toothId, tooth]) => {
 
       {/* Debug Info */}
       <Text style={styles.debugText}>
-        Primary teeth: {Array.from(enhancedState.primaryTeeth).join(', ') || 'None'}
+        Primary teeth: {enhancedState.primaryTeeth.join(', ') || 'None'}
       </Text>
 
       {/* Dental Chart Container */}
@@ -752,6 +824,7 @@ ${teeth.map(([toothId, tooth]) => {
                 style: 'destructive',
                 onPress: () => {
                   setEnhancedState(getInitialState());
+                  clearDraft(patientId); // ✅ NEW: Clear draft too
                   Alert.alert('Cleared', 'All assessment data has been cleared.');
                 }
               }
@@ -774,7 +847,7 @@ ${teeth.map(([toothId, tooth]) => {
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>
                 Tooth {enhancedState.selectedTooth && getCurrentToothId(enhancedState.selectedTooth)}
-                {enhancedState.selectedTooth && enhancedState.primaryTeeth.has(enhancedState.selectedTooth) && (
+                {enhancedState.selectedTooth && enhancedState.primaryTeeth.includes(enhancedState.selectedTooth) && (
                   <Text style={styles.toothTypeIndicator}> (Primary)</Text>
                 )}
               </Text>
@@ -785,7 +858,7 @@ ${teeth.map(([toothId, tooth]) => {
                   onPress={() => toggleToothType(enhancedState.selectedTooth!)}
                 >
                   <Text style={styles.switchButtonText}>
-                    Switch to {enhancedState.primaryTeeth.has(enhancedState.selectedTooth) ? 'Adult' : 'Primary'} Tooth
+                  Switch to {enhancedState.primaryTeeth.includes(enhancedState.selectedTooth) ? 'Adult' : 'Primary'} Tooth Tooth
                   </Text>
                 </Pressable>
               )}

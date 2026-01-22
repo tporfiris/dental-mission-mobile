@@ -1,120 +1,136 @@
-//DentureAssessmentContext.tsx
-
-import React, { createContext, useContext, useState } from 'react';
+// contexts/DentureAssessmentContext.tsx
+import React, { createContext, useContext, useRef } from 'react';
 import { database } from '../db';
 import { Q } from '@nozbe/watermelondb';
 import DentureAssessment from '../db/models/DentureAssessment';
 
-type AssessmentType = 'initial-visit' | 'post-extraction';
-
-type DentureType = 'none' | 'upper-full' | 'lower-full' | 'upper-lower-full' | 
-  'upper-partial' | 'lower-partial' | 'upper-lower-partial' | 
-  'upper-full-lower-partial' | 'upper-partial-lower-full';
+type DentureType = 
+  | 'none'
+  | 'upper-partial-acrylic'
+  | 'upper-partial-cast'
+  | 'lower-partial-acrylic'
+  | 'lower-partial-cast'
+  | 'upper-immediate-complete'
+  | 'upper-complete'
+  | 'lower-immediate-complete'
+  | 'lower-complete';
 
 interface DentureOptions {
-  immediate: boolean;
-  temporary: boolean;
-  conventional: boolean;
-  reline: boolean;
-  repair: boolean;
-  adjustment: boolean;
+  'upper-soft-reline': boolean;
+  'lower-soft-reline': boolean;
+  [key: string]: boolean;
 }
 
 interface DentureAssessmentState {
-  assessmentType: AssessmentType;
   selectedDentureType: DentureType;
   dentureOptions: DentureOptions;
   notes: string;
 }
 
-const defaultDentureOptions: DentureOptions = {
-  immediate: false,
-  temporary: false,
-  conventional: false,
-  reline: false,
-  repair: false,
-  adjustment: false,
-};
-
-const defaultDentureState: DentureAssessmentState = {
-  assessmentType: 'initial-visit',
+// ✅ Default state
+export const defaultDentureState: DentureAssessmentState = {
   selectedDentureType: 'none',
-  dentureOptions: defaultDentureOptions,
+  dentureOptions: {
+    'upper-soft-reline': false,
+    'lower-soft-reline': false,
+  },
   notes: '',
 };
 
+// ✅ Draft state interface
+interface DraftState {
+  selectedDentureType: DentureType;
+  dentureOptions: DentureOptions;
+  notes: string;
+}
+
 interface DentureAssessmentContextType {
-  dentureState: DentureAssessmentState;
-  setDentureState: (state: DentureAssessmentState) => void;
-  updateAssessmentType: (type: AssessmentType) => void;
-  updateDentureType: (type: DentureType) => void;
-  updateDentureOptions: (options: DentureOptions) => void;
-  updateNotes: (notes: string) => void;
-  saveAssessment: (patientId: string) => Promise<void>;
-  loadLatestAssessment: (patientId: string) => Promise<void>;
+  saveAssessment: (patientId: string, data: DentureAssessmentState) => Promise<void>;
+  loadLatestAssessment: (patientId: string) => Promise<DentureAssessmentState | null>;
   loadAllAssessments: (patientId: string) => Promise<DentureAssessment[]>;
-  resetAssessment: () => void;
+  // ✅ Draft state management
+  saveDraft: (patientId: string, state: DentureAssessmentState) => void;
+  loadDraft: (patientId: string) => DraftState | null;
+  clearDraft: (patientId: string) => void;
+  hasDraft: (patientId: string) => boolean;
 }
 
 const DentureAssessmentContext = createContext<DentureAssessmentContextType>({
-  dentureState: defaultDentureState,
-  setDentureState: () => {},
-  updateAssessmentType: () => {},
-  updateDentureType: () => {},
-  updateDentureOptions: () => {},
-  updateNotes: () => {},
   saveAssessment: async () => {},
-  loadLatestAssessment: async () => {},
+  loadLatestAssessment: async () => null,
   loadAllAssessments: async () => [],
-  resetAssessment: () => {},
+  saveDraft: () => {},
+  loadDraft: () => null,
+  clearDraft: () => {},
+  hasDraft: () => false,
 });
 
 export const useDentureAssessment = () => useContext(DentureAssessmentContext);
 
 export const DentureAssessmentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [dentureState, setDentureState] = useState<DentureAssessmentState>(defaultDentureState);
+  
+  // ✅ Store draft states per patient in memory (persists across navigation)
+  const draftStatesRef = useRef<Map<string, DraftState>>(new Map());
 
-  const updateAssessmentType = (type: AssessmentType) => {
-    setDentureState(prev => ({ ...prev, assessmentType: type }));
+  // ✅ Save draft state for a patient
+  const saveDraft = (patientId: string, state: DentureAssessmentState) => {
+    const draft: DraftState = {
+      selectedDentureType: state.selectedDentureType,
+      dentureOptions: { ...state.dentureOptions },
+      notes: state.notes,
+    };
+    draftStatesRef.current.set(patientId, draft);
+    console.log('💾 Saved denture draft for patient:', patientId);
   };
 
-  const updateDentureType = (type: DentureType) => {
-    setDentureState(prev => ({ ...prev, selectedDentureType: type }));
+  // ✅ Load draft state for a patient
+  const loadDraft = (patientId: string): DraftState | null => {
+    const draft = draftStatesRef.current.get(patientId);
+    if (draft) {
+      console.log('📋 Loaded denture draft for patient:', patientId);
+      return draft;
+    }
+    console.log('📋 No denture draft found for patient:', patientId);
+    return null;
   };
 
-  const updateDentureOptions = (options: DentureOptions) => {
-    setDentureState(prev => ({ ...prev, dentureOptions: options }));
+  // ✅ Check if draft exists
+  const hasDraft = (patientId: string): boolean => {
+    return draftStatesRef.current.has(patientId);
   };
 
-  const updateNotes = (notes: string) => {
-    setDentureState(prev => ({ ...prev, notes }));
+  // ✅ Clear draft state
+  const clearDraft = (patientId: string) => {
+    draftStatesRef.current.delete(patientId);
+    console.log('🗑️ Cleared denture draft for patient:', patientId);
   };
 
   // ✅ ALWAYS create a new assessment - never update existing ones
-  const saveAssessment = async (patientId: string) => {
+  const saveAssessment = async (patientId: string, data: DentureAssessmentState) => {
     try {
+      console.log('💾 Saving denture assessment with data:', data);
+      
       await database.write(async () => {
         await database.get<DentureAssessment>('denture_assessments').create(assessment => {
-          // WatermelonDB auto-generates unique ID
           assessment.patientId = patientId;
-          assessment.data = JSON.stringify(dentureState);
+          assessment.data = JSON.stringify(data);
           assessment.createdAt = new Date();
           assessment.updatedAt = new Date();
         });
       });
       
-      console.log('✅ New denture assessment created for patient:', patientId);
+      // ✅ Clear draft after successful save
+      clearDraft(patientId);
       
-      // Reset state after successful save
-      resetAssessment();
+      console.log('✅ New denture assessment created for patient:', patientId);
     } catch (error) {
       console.error('❌ Error saving denture assessment:', error);
       throw error;
     }
   };
 
-  // Load the most recent assessment (for reference or pre-filling if needed)
-  const loadLatestAssessment = async (patientId: string) => {
+  // Load the most recent assessment
+  const loadLatestAssessment = async (patientId: string): Promise<DentureAssessmentState | null> => {
     try {
       const assessments = await database
         .get<DentureAssessment>('denture_assessments')
@@ -126,14 +142,14 @@ export const DentureAssessmentProvider: React.FC<{ children: React.ReactNode }> 
         .fetch();
 
       if (assessments.length > 0) {
-        const loadedState = JSON.parse(assessments[0].data);
-        setDentureState(loadedState);
-        console.log('✅ Latest denture assessment loaded');
-      } else {
-        console.log('ℹ️ No previous denture assessments found');
+        const parsed = JSON.parse(assessments[0].data);
+        console.log('📋 Loaded latest denture assessment:', parsed);
+        return parsed;
       }
+      return null;
     } catch (error) {
-      console.error('❌ Error loading latest assessment:', error);
+      console.error('❌ Error loading latest denture assessment:', error);
+      return null;
     }
   };
 
@@ -151,28 +167,20 @@ export const DentureAssessmentProvider: React.FC<{ children: React.ReactNode }> 
       console.log(`✅ Loaded ${assessments.length} denture assessments`);
       return assessments;
     } catch (error) {
-      console.error('❌ Error loading all assessments:', error);
+      console.error('❌ Error loading all denture assessments:', error);
       return [];
     }
   };
 
-  // Reset to default state
-  const resetAssessment = () => {
-    setDentureState(defaultDentureState);
-  };
-
   return (
     <DentureAssessmentContext.Provider value={{ 
-      dentureState, 
-      setDentureState,
-      updateAssessmentType,
-      updateDentureType,
-      updateDentureOptions,
-      updateNotes,
       saveAssessment,
       loadLatestAssessment,
       loadAllAssessments,
-      resetAssessment,
+      saveDraft,
+      loadDraft,
+      clearDraft,
+      hasDraft,
     }}>
       {children}
     </DentureAssessmentContext.Provider>

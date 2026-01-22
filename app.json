@@ -2,7 +2,7 @@
   "expo": {
     "name": "dental-mission-mobile",
     "slug": "dental-mission-mobile",
-    "version": "1.0.3",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -17,7 +17,8 @@
       "bundleIdentifier": "com.tporfiris.dentalmissionmobile",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to take patient photos.",
-        "NSMicrophoneUsageDescription": "This app uses the microphone to record audio notes."
+        "NSMicrophoneUsageDescription": "This app uses the microphone to record audio notes.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -41,7 +42,53 @@
           "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone for audio recordings."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static",
+            "extraPods": [
+              {
+                "name": "simdjson",
+                "path": "../node_modules/@nozbe/simdjson"
+              },
+              {
+                "name": "FirebaseAuth",
+                "modular_headers": true
+              },
+              {
+                "name": "FirebaseCore",
+                "modular_headers": true
+              },
+              {
+                "name": "FirebaseCoreInternal",
+                "modular_headers": true
+              },
+              {
+                "name": "FirebaseAppCheckInterop",
+                "modular_headers": true
+              },
+              {
+                "name": "FirebaseAuthInterop",
+                "modular_headers": true
+              },
+              {
+                "name": "FirebaseCoreExtension",
+                "modular_headers": true
+              },
+              {
+                "name": "GoogleUtilities",
+                "modular_headers": true
+              },
+              {
+                "name": "RecaptchaInterop",
+                "modular_headers": true
+              }
+            ]
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

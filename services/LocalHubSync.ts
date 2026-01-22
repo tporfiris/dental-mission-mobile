@@ -1,6 +1,5 @@
 // services/LocalHubSync.ts
-// COMPLETE CORRECTED VERSION - Replace your entire file with this
-
+// LOCAL HUB SYNC SERVICE - Syncs with mission hub laptop over local WiFi
 import { database } from '../db';
 import Patient from '../db/models/Patient';
 import Treatment from '../db/models/Treatment';
@@ -44,33 +43,47 @@ class LocalHubSyncService {
     },
   };
 
-  // Possible IPs for different hotspot configurations
+  // Possible hub IPs to try (router gateway + common laptop IPs)
   private possibleHubIPs = [
-    '192.168.2.1',   // MacBook hotspot default
-    '10.0.0.194',  // REPLACE THIS with your MacBook's actual IP!
-    '192.168.1.1',   // Common router IP
-    '192.168.43.1',  // Android hotspot
-    '172.20.10.1',   // iOS hotspot
+    '192.168.0.102',
+    '192.168.0.1',     // TP-Link router gateway
+    '192.168.0.100',   // Common laptop static IP
+    '192.168.0.101',   // Alternative laptop IP
+    '192.168.0.102',   // Alternative laptop IP
+    '192.168.1.1',     // Alternative router setup
+    '192.168.1.100',   // Alternative network
+    '192.168.2.1',     // MacBook hotspot (if not using router)
+    '172.20.10.1',     // iOS hotspot (if not using router)
   ];
 
-  // Set hub IP manually (for testing)
+  // ==========================================
+  // PUBLIC API
+  // ==========================================
+
+  /**
+   * Set hub IP manually (useful for troubleshooting)
+   */
   public setHubIP(ip: string) {
-    console.log(`🔧 Setting hub IP to: ${ip}`);
+    console.log(`🔧 Manually setting hub IP to: ${ip}`);
     this.hubIP = ip;
     this.currentStatus.hubIP = ip;
     this.checkConnection();
   }
 
-  // Auto-discover hub device on network
+  /**
+   * Auto-discover hub on network
+   * Returns hub IP if found, null otherwise
+   */
   public async discoverHub(): Promise<string | null> {
-    console.log('🔍 Searching for hub device on network...');
+    console.log('🔍 Searching for hub on local network...');
+    console.log(`   Trying ${this.possibleHubIPs.length} possible IPs...`);
     
     for (const ip of this.possibleHubIPs) {
       try {
         console.log(`   Checking ${ip}...`);
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 sec timeout
         
         const response = await fetch(`http://${ip}:3000/ping`, {
           method: 'GET',
@@ -82,7 +95,7 @@ class LocalHubSyncService {
 
         if (response.ok) {
           const data = await response.json();
-          console.log(`✅ Hub found at ${ip}!`, data);
+          console.log(`✅ Hub discovered at ${ip}!`, data);
           this.hubIP = ip;
           this.currentStatus.hubIP = ip;
           this.currentStatus.isConnected = true;
@@ -91,19 +104,85 @@ class LocalHubSyncService {
           return ip;
         }
       } catch (error) {
-        console.log(`   ❌ No hub at ${ip}`);
+        // Silently continue to next IP
         continue;
       }
     }
 
-    console.log('❌ Hub not found on any known IP address');
+    console.log('❌ Hub not found on network');
+    console.log('💡 Troubleshooting tips:');
+    console.log('   1. Is hub server running? (node hub-server.js)');
+    console.log('   2. Are you on the same WiFi network?');
+    console.log('   3. Check laptop IP and add to possibleHubIPs');
+    
     this.currentStatus.isConnected = false;
-    this.currentStatus.syncError = 'Hub not found on network';
+    this.currentStatus.syncError = 'Hub not found';
     this.notifyListeners();
     return null;
   }
 
-  // Check if hub is reachable
+  /**
+   * Start automatic syncing every X seconds
+   */
+  public startPeriodicSync(intervalSeconds: number = 180) {
+    this.stopPeriodicSync();
+    
+    console.log(`🕐 Starting periodic hub sync (every ${intervalSeconds} seconds)`);
+    
+    // Sync immediately
+    this.syncWithHub();
+    
+    // Then sync periodically
+    this.syncInterval = setInterval(() => {
+      console.log('⏰ Periodic hub sync triggered');
+      this.syncWithHub();
+    }, intervalSeconds * 1000);
+  }
+
+  /**
+   * Stop automatic syncing
+   */
+  public stopPeriodicSync() {
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+      console.log('⏹️  Stopped periodic hub sync');
+    }
+  }
+
+  /**
+   * Manually trigger sync now
+   */
+  public async forceSync(): Promise<void> {
+    await this.syncWithHub();
+  }
+
+  /**
+   * Get current sync status
+   */
+  public getStatus(): LocalHubSyncStatus {
+    return { ...this.currentStatus };
+  }
+
+  /**
+   * Subscribe to status updates
+   */
+  public subscribe(listener: (status: LocalHubSyncStatus) => void): () => void {
+    this.listeners.push(listener);
+    listener(this.currentStatus); // Immediate callback
+    
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== listener);
+    };
+  }
+
+  // ==========================================
+  // PRIVATE METHODS
+  // ==========================================
+
+  /**
+   * Check if hub is reachable
+   */
   private async checkConnection(): Promise<boolean> {
     if (!this.hubIP) {
       return false;
@@ -139,32 +218,10 @@ class LocalHubSyncService {
     }
   }
 
-  // Start periodic sync
-  public startPeriodicSync(intervalSeconds: number = 180) {
-    this.stopPeriodicSync();
-    
-    console.log(`🕐 Starting periodic sync (every ${intervalSeconds} seconds)`);
-    
-    // Sync immediately
-    this.syncWithHub();
-    
-    // Then sync periodically
-    this.syncInterval = setInterval(() => {
-      this.syncWithHub();
-    }, intervalSeconds * 1000);
-  }
-
-  // Stop periodic sync
-  public stopPeriodicSync() {
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-      console.log('⏹️  Stopped periodic sync');
-    }
-  }
-
-  // Main sync function
-  public async syncWithHub(): Promise<void> {
+  /**
+   * Main sync function - bidirectional sync with hub
+   */
+  private async syncWithHub(): Promise<void> {
     if (this.syncInProgress) {
       console.log('🔄 Sync already in progress, skipping...');
       return;
@@ -183,7 +240,7 @@ class LocalHubSyncService {
     this.notifyListeners();
 
     try {
-      console.log('🚀 Starting sync with hub...');
+      console.log('🚀 Starting bidirectional sync with hub...');
 
       // Step 1: Push local changes to hub
       await this.pushChangesToHub();
@@ -192,10 +249,10 @@ class LocalHubSyncService {
       await this.pullChangesFromHub();
 
       this.currentStatus.lastSyncTime = new Date();
-      console.log('✅ Sync completed successfully');
+      console.log('✅ Hub sync completed successfully');
 
     } catch (error) {
-      console.error('❌ Sync failed:', error);
+      console.error('❌ Hub sync failed:', error);
       this.currentStatus.syncError = error instanceof Error ? error.message : 'Sync failed';
       this.currentStatus.isConnected = false;
     } finally {
@@ -205,12 +262,14 @@ class LocalHubSyncService {
     }
   }
 
-  // Push local changes to hub
+  /**
+   * Push local changes to hub
+   */
   private async pushChangesToHub() {
     try {
-      console.log('📤 Collecting local data to push...');
+      console.log('📤 Collecting local data to push to hub...');
       
-      // Collect all local data from WatermelonDB
+      // Collect all local data
       const [
         patients,
         treatments,
@@ -231,7 +290,7 @@ class LocalHubSyncService {
         database.get<ImplantAssessment>('implant_assessments').query().fetch(),
       ]);
 
-      // Consolidate all assessments with type field
+      // Consolidate assessments with type markers
       const allAssessments = [
         ...dentitionAssessments.map(a => ({ 
           id: a.id,
@@ -239,7 +298,8 @@ class LocalHubSyncService {
           data: a.data,
           createdAt: a.createdAt ? a.createdAt.getTime() : Date.now(),
           updatedAt: a.updatedAt ? a.updatedAt.getTime() : Date.now(),
-          assessmentType: 'dentition' 
+          assessmentType: 'dentition',
+          _lastModified: Date.now()
         })),
         ...hygieneAssessments.map(a => ({ 
           id: a.id,
@@ -247,7 +307,8 @@ class LocalHubSyncService {
           data: a.data,
           createdAt: a.createdAt ? a.createdAt.getTime() : Date.now(),
           updatedAt: a.updatedAt ? a.updatedAt.getTime() : Date.now(),
-          assessmentType: 'hygiene' 
+          assessmentType: 'hygiene',
+          _lastModified: Date.now()
         })),
         ...extractionsAssessments.map(a => ({ 
           id: a.id,
@@ -255,7 +316,8 @@ class LocalHubSyncService {
           data: a.data,
           createdAt: a.createdAt ? a.createdAt.getTime() : Date.now(),
           updatedAt: a.updatedAt ? a.updatedAt.getTime() : Date.now(),
-          assessmentType: 'extractions' 
+          assessmentType: 'extractions',
+          _lastModified: Date.now()
         })),
         ...fillingsAssessments.map(a => ({ 
           id: a.id,
@@ -263,7 +325,8 @@ class LocalHubSyncService {
           data: a.data,
           createdAt: a.createdAt ? a.createdAt.getTime() : Date.now(),
           updatedAt: a.updatedAt ? a.updatedAt.getTime() : Date.now(),
-          assessmentType: 'fillings' 
+          assessmentType: 'fillings',
+          _lastModified: Date.now()
         })),
         ...dentureAssessments.map(a => ({ 
           id: a.id,
@@ -271,7 +334,8 @@ class LocalHubSyncService {
           data: a.data,
           createdAt: a.createdAt ? a.createdAt.getTime() : Date.now(),
           updatedAt: a.updatedAt ? a.updatedAt.getTime() : Date.now(),
-          assessmentType: 'denture' 
+          assessmentType: 'denture',
+          _lastModified: Date.now()
         })),
         ...implantAssessments.map(a => ({ 
           id: a.id,
@@ -279,7 +343,8 @@ class LocalHubSyncService {
           data: a.data,
           createdAt: a.createdAt ? a.createdAt.getTime() : Date.now(),
           updatedAt: a.updatedAt ? a.updatedAt.getTime() : Date.now(),
-          assessmentType: 'implant' 
+          assessmentType: 'implant',
+          _lastModified: Date.now()
         })),
       ];
 
@@ -292,11 +357,13 @@ class LocalHubSyncService {
           gender: p.gender,
           location: p.location,
           photoUri: p.photoUri,
+          photoCloudUri: p.photoCloudUri || '',
+          _lastModified: Date.now()
         })),
         treatments: treatments.map(t => ({
           id: t.id,
           patientId: t.patientId,
-          visitId: t.visitId,
+          visitId: t.visitId || '',
           type: t.type,
           tooth: t.tooth,
           surface: t.surface,
@@ -306,6 +373,7 @@ class LocalHubSyncService {
           notes: t.notes,
           clinicianName: t.clinicianName,
           completedAt: t.completedAt ? t.completedAt.toISOString() : null,
+          _lastModified: Date.now()
         })),
         assessments: allAssessments,
       };
@@ -330,15 +398,17 @@ class LocalHubSyncService {
       console.log('✅ Push successful:', result.summary);
 
     } catch (error) {
-      console.error('❌ Push failed:', error);
+      console.error('❌ Push to hub failed:', error);
       throw error;
     }
   }
 
-  // Pull updates from hub
+  /**
+   * Pull updates from hub and merge into local DB
+   */
   private async pullChangesFromHub() {
     try {
-      console.log(`📥 Pulling from hub (lastPulledAt: ${this.lastPulledAt})`);
+      console.log(`📥 Pulling changes from hub (since: ${this.lastPulledAt})`);
 
       const response = await fetch(
         `http://${this.hubIP}:3000/sync/pull?lastPulledAt=${this.lastPulledAt}`,
@@ -360,7 +430,7 @@ class LocalHubSyncService {
         assessments: changes.assessments?.length || 0,
       });
 
-      // Filter out items we already have locally
+      // Filter out items we already have
       const newChanges = await this.filterNewChanges(changes);
       
       console.log(`📥 New items to merge:`, {
@@ -369,16 +439,19 @@ class LocalHubSyncService {
         assessments: newChanges.assessments?.length || 0,
       });
 
-      // Update local database with NEW changes from hub only
-      if (newChanges.patients?.length > 0 || newChanges.treatments?.length > 0 || newChanges.assessments?.length > 0) {
+      // Merge new changes into local database
+      if (newChanges.patients?.length > 0 || 
+          newChanges.treatments?.length > 0 || 
+          newChanges.assessments?.length > 0) {
         await this.mergeChangesIntoLocal(newChanges);
       } else {
         console.log('ℹ️ No new changes to merge');
       }
 
-      // Update lastPulledAt timestamp
+      // Update timestamp
       this.lastPulledAt = changes.timestamp || Date.now();
 
+      // Update stats
       this.currentStatus.itemsSynced = {
         patients: newChanges.patients?.length || 0,
         treatments: newChanges.treatments?.length || 0,
@@ -386,12 +459,14 @@ class LocalHubSyncService {
       };
 
     } catch (error) {
-      console.error('❌ Pull failed:', error);
+      console.error('❌ Pull from hub failed:', error);
       throw error;
     }
   }
 
-  // ✅ NEW FUNCTION: Filter out items we already have
+  /**
+   * Filter out items that already exist locally
+   */
   private async filterNewChanges(changes: any): Promise<any> {
     const newPatients = [];
     const newTreatments = [];
@@ -402,9 +477,9 @@ class LocalHubSyncService {
       for (const patient of changes.patients) {
         try {
           await database.get<Patient>('patients').find(patient.id);
-          // Patient exists, skip it
+          // Exists, skip
         } catch {
-          // Patient doesn't exist, add to list
+          // Doesn't exist, add
           newPatients.push(patient);
         }
       }
@@ -415,9 +490,9 @@ class LocalHubSyncService {
       for (const treatment of changes.treatments) {
         try {
           await database.get<Treatment>('treatments').find(treatment.id);
-          // Treatment exists, skip it
+          // Exists, skip
         } catch {
-          // Treatment doesn't exist, add to list
+          // Doesn't exist, add
           newTreatments.push(treatment);
         }
       }
@@ -429,9 +504,9 @@ class LocalHubSyncService {
         const tableName = `${assessment.assessmentType}_assessments`;
         try {
           await database.get(tableName).find(assessment.id);
-          // Assessment exists, skip it
+          // Exists, skip
         } catch {
-          // Assessment doesn't exist, add to list
+          // Doesn't exist, add
           newAssessments.push(assessment);
         }
       }
@@ -445,7 +520,9 @@ class LocalHubSyncService {
     };
   }
 
-  // Merge changes from hub into local WatermelonDB
+  /**
+   * Merge changes from hub into local WatermelonDB
+   */
   private async mergeChangesIntoLocal(changes: any) {
     try {
       await database.write(async () => {
@@ -454,7 +531,6 @@ class LocalHubSyncService {
           for (const patientData of changes.patients) {
             try {
               const existing = await database.get<Patient>('patients').find(patientData.id);
-              // Patient exists, update it
               await existing.update((patient) => {
                 patient.firstName = patientData.firstName;
                 patient.lastName = patientData.lastName;
@@ -462,9 +538,9 @@ class LocalHubSyncService {
                 patient.gender = patientData.gender;
                 patient.location = patientData.location;
                 patient.photoUri = patientData.photoUri || '';
+                patient.photoCloudUri = patientData.photoCloudUri || '';
               });
             } catch {
-              // Patient doesn't exist, create it
               await database.get<Patient>('patients').create((patient) => {
                 (patient as any)._raw.id = patientData.id;
                 patient.firstName = patientData.firstName;
@@ -473,8 +549,9 @@ class LocalHubSyncService {
                 patient.gender = patientData.gender;
                 patient.location = patientData.location;
                 patient.photoUri = patientData.photoUri || '';
+                patient.photoCloudUri = patientData.photoCloudUri || '';
               });
-              console.log(`   ➕ Added patient from hub: ${patientData.firstName} ${patientData.lastName}`);
+              console.log(`   ➕ Added patient: ${patientData.firstName} ${patientData.lastName}`);
             }
           }
         }
@@ -486,7 +563,7 @@ class LocalHubSyncService {
               const existing = await database.get<Treatment>('treatments').find(treatmentData.id);
               await existing.update((treatment) => {
                 treatment.patientId = treatmentData.patientId;
-                treatment.visitId = treatmentData.visitId;
+                treatment.visitId = treatmentData.visitId || '';
                 treatment.type = treatmentData.type;
                 treatment.tooth = treatmentData.tooth;
                 treatment.surface = treatmentData.surface;
@@ -503,7 +580,7 @@ class LocalHubSyncService {
               await database.get<Treatment>('treatments').create((treatment) => {
                 (treatment as any)._raw.id = treatmentData.id;
                 treatment.patientId = treatmentData.patientId;
-                treatment.visitId = treatmentData.visitId;
+                treatment.visitId = treatmentData.visitId || '';
                 treatment.type = treatmentData.type;
                 treatment.tooth = treatmentData.tooth;
                 treatment.surface = treatmentData.surface;
@@ -516,12 +593,12 @@ class LocalHubSyncService {
                   treatment.completedAt = new Date(treatmentData.completedAt);
                 }
               });
-              console.log(`   ➕ Added treatment from hub: ${treatmentData.type}`);
+              console.log(`   ➕ Added treatment: ${treatmentData.type}`);
             }
           }
         }
 
-        // Merge assessments (distribute to correct tables)
+        // Merge assessments
         if (changes.assessments && changes.assessments.length > 0) {
           for (const assessmentData of changes.assessments) {
             const tableName = `${assessmentData.assessmentType}_assessments`;
@@ -542,7 +619,7 @@ class LocalHubSyncService {
                 assessment.createdAt = new Date(assessmentData.createdAt);
                 assessment.updatedAt = new Date(assessmentData.updatedAt);
               });
-              console.log(`   ➕ Added assessment from hub: ${assessmentData.assessmentType}`);
+              console.log(`   ➕ Added ${assessmentData.assessmentType} assessment`);
             }
           }
         }
@@ -555,29 +632,11 @@ class LocalHubSyncService {
     }
   }
 
-  // Subscribe to status updates
-  public subscribe(listener: (status: LocalHubSyncStatus) => void): () => void {
-    this.listeners.push(listener);
-    listener(this.currentStatus);
-    
-    return () => {
-      this.listeners = this.listeners.filter(l => l !== listener);
-    };
-  }
-
-  // Notify listeners
+  /**
+   * Notify all listeners of status changes
+   */
   private notifyListeners() {
     this.listeners.forEach(listener => listener(this.currentStatus));
-  }
-
-  // Get current status
-  public getStatus(): LocalHubSyncStatus {
-    return { ...this.currentStatus };
-  }
-
-  // Force sync now
-  public async forceSync(): Promise<void> {
-    await this.syncWithHub();
   }
 }
 

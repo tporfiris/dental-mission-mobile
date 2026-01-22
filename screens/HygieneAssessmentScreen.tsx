@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useHygieneAssessment } from '../contexts/HygieneAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
+import { useFocusEffect } from '@react-navigation/native';
 
 // Get screen dimensions for responsive scaling
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -120,10 +121,11 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
   const { patientId } = route.params || { patientId: 'DEMO' };
   
   const { 
-    hygieneStates, 
-    setHygieneStates,
     saveAssessment,
     loadLatestAssessment,
+    saveDraft,
+    loadDraft,
+    clearDraft,
   } = useHygieneAssessment();
 
   const getInitialState = (): EnhancedHygieneState => {
@@ -151,29 +153,81 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
     };
   };
 
-  const [enhancedState, setEnhancedState] = useState<EnhancedHygieneState>(() => {
-    if (hygieneStates && typeof hygieneStates === 'object' && 'enhancedAssessment' in hygieneStates) {
-      return { ...getInitialState(), ...hygieneStates.enhancedAssessment };
-    }
-    return getInitialState();
-  });
+  // ✅ LOCAL STATE
+  const [enhancedState, setEnhancedState] = useState<EnhancedHygieneState>(getInitialState());
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  const previousPatientIdRef = useRef<string | null>(null);
+  const justSavedRef = useRef<boolean>(false); // ✅ Track if we just saved
 
-  useEffect(() => {
-    const loadPrevious = async () => {
-      await loadLatestAssessment(patientId);
-    };
-    
-    loadPrevious();
-    
-    return () => {};
-  }, [patientId]);
+  // ✅ LOAD STATE when screen focuses
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadState = async () => {
+        try {
+          console.log('🔄 Loading hygiene state for patient:', patientId);
+          
+          // Check if patient changed
+          if (previousPatientIdRef.current && previousPatientIdRef.current !== patientId) {
+            console.log('🔄 Patient changed from', previousPatientIdRef.current, 'to', patientId);
+            justSavedRef.current = false;
+          }
+          previousPatientIdRef.current = patientId;
+          
+          // ✅ If we just saved, start fresh (don't load anything)
+          if (justSavedRef.current) {
+            console.log('✨ Just saved - starting fresh');
+            setEnhancedState(getInitialState());
+            setIsLoaded(true);
+            justSavedRef.current = false;
+            return;
+          }
+          
+          // STEP 1: Check for draft first
+          const draft = loadDraft(patientId);
+          
+          if (draft && draft.enhancedAssessment) {
+            console.log('📋 Loading hygiene draft');
+            setEnhancedState(draft.enhancedAssessment);
+            setIsLoaded(true);
+            return;
+          }
+          
+          // STEP 2: Start fresh (don't load saved assessments automatically)
+          console.log('📋 No draft - starting fresh');
+          setEnhancedState(getInitialState());
+          
+          setIsLoaded(true);
+        } catch (error) {
+          console.error('❌ Error loading hygiene state:', error);
+          setEnhancedState(getInitialState());
+          setIsLoaded(true);
+        }
+      };
+      
+      loadState();
+      
+      // Cleanup function - save draft when leaving
+      return () => {
+        if (isLoaded && !justSavedRef.current) {
+          console.log('💾 Saving hygiene draft on blur');
+          saveDraft(patientId, enhancedState);
+        }
+      };
+    }, [patientId])
+  );
 
+  // ✅ SAVE DRAFT when state changes (debounced)
   useEffect(() => {
-    setHygieneStates({
-      ...hygieneStates,
-      enhancedAssessment: enhancedState
-    });
-  }, [enhancedState]);
+    if (!isLoaded) return;
+    
+    const timeoutId = setTimeout(() => {
+      console.log('💾 Auto-saving hygiene draft');
+      saveDraft(patientId, enhancedState);
+    }, 500);
+    
+    return () => clearTimeout(timeoutId);
+  }, [enhancedState, isLoaded, patientId]);
 
   const updateState = (updates: Partial<EnhancedHygieneState>) => {
     setEnhancedState(prev => ({ ...prev, ...updates }));
@@ -204,32 +258,18 @@ const HygieneAssessmentScreen = ({ route, navigation }: any) => {
       const optimizedData = optimizeHygieneData(enhancedState);
       
       console.log('💾 Saving optimized hygiene assessment:', optimizedData);
-      console.log('📊 Size reduction:', 
-        `${JSON.stringify(buildLegacyData(enhancedState)).length} bytes -> ${JSON.stringify(optimizedData).length} bytes`
-      );
       
       await saveAssessment(patientId, optimizedData);
+      
+      // ✅ Set flag so we start fresh on next visit
+      justSavedRef.current = true;
+      
       Alert.alert('Success', 'Hygiene assessment saved successfully!');
       navigation.goBack();
     } catch (error) {
       console.error('Error saving hygiene assessment:', error);
       Alert.alert('Error', 'Failed to save hygiene assessment. Please try again.');
     }
-  };
-  
-  const buildLegacyData = (state: EnhancedHygieneState) => {
-    return {
-      calculusLevel: state.calculusLevel,
-      calculusDistribution: state.calculusDistribution,
-      calculusQuadrants: state.calculusQuadrants,
-      plaqueLevel: state.plaqueLevel,
-      plaqueDistribution: state.plaqueDistribution,
-      plaqueQuadrants: state.plaqueQuadrants,
-      probingDepths: state.probingDepths,
-      bleedingOnProbing: state.bleedingOnProbing,
-      aapStage: state.aapStage,
-      aapGrade: state.aapGrade,
-    };
   };
   
   const optimizeHygieneData = (state: EnhancedHygieneState) => {
@@ -1026,6 +1066,7 @@ BLEEDING ON PROBING:
                 style: 'destructive',
                 onPress: () => {
                   setEnhancedState(getInitialState());
+                  clearDraft(patientId);
                   Alert.alert('Cleared', 'All assessment data has been cleared.');
                 }
               }

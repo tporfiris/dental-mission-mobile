@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import SyncStatusIndicator from '../components/SyncStatusIndicator';
 
+import { HubStatusIndicator } from '../components/HubStatusIndicator';
+
 const HomeScreen = () => {
   const { user, userProfile, role, logout } = useAuth();
   const navigation = useNavigation<any>();
@@ -15,6 +17,7 @@ const HomeScreen = () => {
         return (
           <>
             <Text style={styles.roleSection}>🦷 Clinician Tools</Text>
+            
             <Button title="Add New Patient" onPress={() => navigation.navigate('NewPatient')} />
             <View style={styles.spacer} />
             <Button 
@@ -84,12 +87,6 @@ const HomeScreen = () => {
               color="#007bff"
             />
             <View style={styles.spacer} />
-            <Button 
-              title="🏥 Manage Offices" 
-              onPress={() => navigation.navigate('OfficeManagement')}
-              color="#6c757d"
-            />
-            <View style={styles.spacer} />
           </>
         );
       default:
@@ -130,11 +127,16 @@ const HomeScreen = () => {
 
       {/* Sync Status Indicator - Compact version for home screen */}
       <SyncStatusIndicator showDetails={false} />
+      <HubStatusIndicator />  {/* ADD THIS LINE */}
 
       {renderRoleSection()}
 
       <View style={styles.spacer} />
       <Button title="Logout" onPress={logout} />
+      <View style={styles.spacer} />
+      <View style={styles.spacer} />
+      <View style={styles.spacer} />
+      
     </View>
   );
 };

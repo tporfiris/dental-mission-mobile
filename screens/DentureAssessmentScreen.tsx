@@ -1,6 +1,5 @@
-// DentureAssessmentScreen.tsx
-
-import React, { useState } from 'react';
+// screens/DentureAssessmentScreen.tsx
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,8 +10,9 @@ import {
   Modal,
   Dimensions,
 } from 'react-native';
-import { useDentureAssessment } from '../contexts/DentureAssessmentContext';
+import { useDentureAssessment, defaultDentureState } from '../contexts/DentureAssessmentContext';
 import VoiceRecorder from '../components/VoiceRecorder';
+import { useFocusEffect } from '@react-navigation/native';
 
 // Get screen dimensions for responsive scaling
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -35,7 +35,7 @@ const DENTURE_TYPES = [
 ] as const;
 type DentureType = typeof DENTURE_TYPES[number];
 
-const DENTURE_LABELS = {
+const DENTURE_LABELS: Record<string, string> = {
   'none': 'No Denture Needed',
   'upper-partial-acrylic': 'Upper Partial Acrylic Denture',
   'upper-partial-cast': 'Upper Partial Cast Denture',
@@ -45,7 +45,7 @@ const DENTURE_LABELS = {
   'lower-complete': 'Lower Complete Denture',
 };
 
-const RELINE_OPTIONS = {
+const RELINE_OPTIONS: Record<string, string> = {
   'upper-soft-reline': 'Upper Soft Reline',
   'lower-soft-reline': 'Lower Soft Reline',
 };
@@ -142,14 +142,110 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
   const [showGate, setShowGate] = useState(true);
   
   const { 
-    dentureState, 
-    updateDentureType, 
-    updateDentureOptions, 
-    updateNotes,
     saveAssessment,
+    loadLatestAssessment,
+    saveDraft,
+    loadDraft,
+    clearDraft,
+    hasDraft,
   } = useDentureAssessment();
 
-  const { selectedDentureType, dentureOptions, notes } = dentureState;
+  // ✅ LOCAL STATE - manages all assessment data
+  const [selectedDentureType, setSelectedDentureType] = useState<DentureType>('none');
+  const [dentureOptions, setDentureOptions] = useState({
+    'upper-soft-reline': false,
+    'lower-soft-reline': false,
+  });
+  const [notes, setNotes] = useState('');
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  const previousPatientIdRef = useRef<string | null>(null);
+  const justSavedRef = useRef<boolean>(false); // ✅ Track if we just saved
+
+  // ✅ LOAD STATE when screen focuses
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadState = async () => {
+        try {
+          console.log('🔄 Loading denture state for patient:', patientId);
+          
+          // Check if patient changed
+          if (previousPatientIdRef.current && previousPatientIdRef.current !== patientId) {
+            console.log('🔄 Patient changed from', previousPatientIdRef.current, 'to', patientId);
+            justSavedRef.current = false; // Reset on patient change
+          }
+          previousPatientIdRef.current = patientId;
+          
+          // ✅ If we just saved, start fresh (don't load anything)
+          if (justSavedRef.current) {
+            console.log('✨ Just saved - starting fresh');
+            setSelectedDentureType(defaultDentureState.selectedDentureType);
+            setDentureOptions(defaultDentureState.dentureOptions);
+            setNotes(defaultDentureState.notes);
+            setIsLoaded(true);
+            justSavedRef.current = false; // Reset flag
+            return;
+          }
+          
+          // STEP 1: Check for draft first
+          const draft = loadDraft(patientId);
+          
+          if (draft) {
+            console.log('📋 Loading denture draft:', draft);
+            setSelectedDentureType(draft.selectedDentureType);
+            setDentureOptions(draft.dentureOptions);
+            setNotes(draft.notes);
+            setIsLoaded(true);
+            return;
+          }
+          
+          // STEP 2: Start fresh (don't load saved assessments automatically)
+          console.log('📋 No draft - starting fresh');
+          setSelectedDentureType(defaultDentureState.selectedDentureType);
+          setDentureOptions(defaultDentureState.dentureOptions);
+          setNotes(defaultDentureState.notes);
+          
+          setIsLoaded(true);
+        } catch (error) {
+          console.error('❌ Error loading denture state:', error);
+          setSelectedDentureType(defaultDentureState.selectedDentureType);
+          setDentureOptions(defaultDentureState.dentureOptions);
+          setNotes(defaultDentureState.notes);
+          setIsLoaded(true);
+        }
+      };
+      
+      loadState();
+      
+      // Cleanup function - save draft when leaving
+      return () => {
+        if (isLoaded && !justSavedRef.current) {
+          console.log('💾 Saving denture draft on blur');
+          saveDraft(patientId, {
+            selectedDentureType,
+            dentureOptions,
+            notes,
+          });
+        }
+      };
+    }, [patientId])
+  );
+
+  // ✅ SAVE DRAFT when state changes (debounced)
+  useEffect(() => {
+    if (!isLoaded) return; // Don't save during initial load
+    
+    const timeoutId = setTimeout(() => {
+      console.log('💾 Auto-saving denture draft');
+      saveDraft(patientId, {
+        selectedDentureType,
+        dentureOptions,
+        notes,
+      });
+    }, 500); // Debounce for 500ms
+    
+    return () => clearTimeout(timeoutId);
+  }, [selectedDentureType, dentureOptions, notes, isLoaded, patientId]);
 
   const handleGateConfirm = () => {
     setShowGate(false);
@@ -163,7 +259,21 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
 
   const handleSaveAssessment = async () => {
     try {
-      await saveAssessment(patientId);
+      console.log('💾 Saving denture assessment...');
+      
+      const assessmentData = {
+        selectedDentureType,
+        dentureOptions,
+        notes,
+      };
+      
+      console.log('💾 Final denture assessment data:', assessmentData);
+      
+      await saveAssessment(patientId, assessmentData);
+      
+      // ✅ Set flag so we start fresh on next visit
+      justSavedRef.current = true;
+      
       Alert.alert('Success', 'Denture assessment saved!');
       navigation.goBack();
     } catch (error) {
@@ -173,11 +283,31 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
   };
 
   const toggleRelineOption = (option: string) => {
-    const updatedOptions = {
-      ...dentureOptions,
-      [option]: !dentureOptions[option]
-    };
-    updateDentureOptions(updatedOptions);
+    setDentureOptions(prev => ({
+      ...prev,
+      [option]: !prev[option]
+    }));
+  };
+
+  const handleClearAll = () => {
+    Alert.alert(
+      'Clear All Data',
+      'Are you sure you want to clear all denture assessment data? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Clear All', 
+          style: 'destructive',
+          onPress: () => {
+            setSelectedDentureType(defaultDentureState.selectedDentureType);
+            setDentureOptions(defaultDentureState.dentureOptions);
+            setNotes(defaultDentureState.notes);
+            clearDraft(patientId);
+            Alert.alert('Cleared', 'All denture assessment data has been cleared.');
+          }
+        }
+      ]
+    );
   };
 
   if (showGate) {
@@ -227,7 +357,7 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
                 selectedDentureType === type && styles.dentureOptionSelected,
                 type === 'none' && styles.dentureOptionNone
               ]}
-              onPress={() => updateDentureType(type)}
+              onPress={() => setSelectedDentureType(type)}
             >
               <Text style={[
                 styles.dentureOptionText,
@@ -272,31 +402,7 @@ const DentureAssessmentScreen = ({ route, navigation }: any) => {
       </Pressable>
 
       {/* Clear All Button */}
-      <Pressable 
-        style={styles.clearAllButton} 
-        onPress={() => {
-          Alert.alert(
-            'Clear All Data',
-            'Are you sure you want to clear all denture assessment data? This cannot be undone.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { 
-                text: 'Clear All', 
-                style: 'destructive',
-                onPress: () => {
-                  updateDentureType('none');
-                  updateDentureOptions({
-                    'upper-soft-reline': false,
-                    'lower-soft-reline': false,
-                  });
-                  updateNotes('');
-                  Alert.alert('Cleared', 'All denture assessment data has been cleared.');
-                }
-              }
-            ]
-          );
-        }}
-      >
+      <Pressable style={styles.clearAllButton} onPress={handleClearAll}>
         <Text style={styles.clearAllButtonText}>Clear All</Text>
       </Pressable>
     </ScrollView>
