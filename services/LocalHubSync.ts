@@ -45,9 +45,9 @@ class LocalHubSyncService {
 
   // Possible hub IPs to try (router gateway + common laptop IPs)
   private possibleHubIPs = [
-    '192.168.0.102',
+    '192.168.0.100',
+    '10.0.0.231',  // Common laptop static IP
     '192.168.0.1',     // TP-Link router gateway
-    '192.168.0.100',   // Common laptop static IP
     '192.168.0.101',   // Alternative laptop IP
     '192.168.0.102',   // Alternative laptop IP
     '192.168.1.1',     // Alternative router setup

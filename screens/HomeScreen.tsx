@@ -1,11 +1,11 @@
-// screens/HomeScreen.tsx - UPDATED with office tracking
+// screens/HomeScreen.tsx - UPDATED with Manual Sync Button
 import React from 'react';
 import { View, Text, StyleSheet, Button } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import SyncStatusIndicator from '../components/SyncStatusIndicator';
-
 import { HubStatusIndicator } from '../components/HubStatusIndicator';
+import { ManualSyncButton } from '../components/ManualSyncButton'; // ✅ ADD THIS
 
 const HomeScreen = () => {
   const { user, userProfile, role, logout } = useAuth();
@@ -96,7 +96,7 @@ const HomeScreen = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome to the Dental Mission App</Text>
+      <View style={styles.spacer} />
       
       {/* User Info Section */}
       <View style={styles.userInfoCard}>
@@ -125,14 +125,19 @@ const HomeScreen = () => {
         )}
       </View>
 
-      {/* Sync Status Indicator - Compact version for home screen */}
+      {/* Sync Status Indicators */}
       <SyncStatusIndicator showDetails={false} />
-      <HubStatusIndicator />  {/* ADD THIS LINE */}
+      <HubStatusIndicator />
+      
+      {/* ✅ NEW: Manual Sync Button (for testing and convenience)
+      <ManualSyncButton style={{ marginVertical: 10 }} /> */}
 
       {renderRoleSection()}
 
       <View style={styles.spacer} />
       <Button title="Logout" onPress={logout} />
+      <View style={styles.spacer} />
+      <View style={styles.spacer} />
       <View style={styles.spacer} />
       <View style={styles.spacer} />
       <View style={styles.spacer} />

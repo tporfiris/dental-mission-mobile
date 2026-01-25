@@ -156,6 +156,7 @@ export default function LoginScreen() {
         <View style={styles.form}>
           <Text style={styles.formTitle}>🔐 Admin Login</Text>
           <Text style={styles.formSubtitle}>Requires internet connection</Text>
+          <Text style={styles.formSubtitle}>IMPORTANT: if you would like to sync the patient data with the cloud database to view the data on the admin dashboard, once reconnected to wifi, login to your clinician account and wait a few minutes to allow the data to sync to the cloud. Then login as an admin user.</Text>
 
           <Text style={styles.label}>Email</Text>
           <TextInput
