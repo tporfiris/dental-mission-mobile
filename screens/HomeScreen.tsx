@@ -38,12 +38,7 @@ const HomeScreen = () => {
               color="#6f42c1"
             />
             <View style={styles.spacer} />
-            <Text style={styles.roleSection}>🧪 Testing</Text>
-            <Button 
-              title="🧪 Hub Sync Test" 
-              onPress={() => navigation.navigate('HubTest')}
-              color="#6f42c1"
-            />
+
             <View style={styles.spacer} />
           </>
         );
@@ -125,9 +120,9 @@ const HomeScreen = () => {
         )}
       </View>
 
-      {/* Sync Status Indicators */}
+      {/* Sync Status Indicators
       <SyncStatusIndicator showDetails={false} />
-      <HubStatusIndicator />
+      <HubStatusIndicator /> */}
       
       {/* ✅ NEW: Manual Sync Button (for testing and convenience)
       <ManualSyncButton style={{ marginVertical: 10 }} /> */}

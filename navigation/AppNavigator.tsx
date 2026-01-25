@@ -48,6 +48,8 @@ import TreatmentPatientSearchScreen from '../screens/TreatmentPatientSearchScree
 // Hub Test Screen
 import HubTestScreen from '../screens/HubTestScreen';
 
+// facial recognition
+import FacialRecognitionSearchScreen from '../screens/FacialRecognitionSearchScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -147,6 +149,14 @@ export default function AppNavigator() {
             }}
           />
           <Stack.Screen name="NewPatient" component={NewPatientScreen} />
+          <Stack.Screen 
+            name="FacialRecognitionSearch" 
+            component={FacialRecognitionSearchScreen}
+            options={{ 
+              title: '👤 Face Recognition Search',
+              headerBackTitleVisible: false
+            }}
+          />
           
           {/* ✅ NEW: Patient Action Selection Screen - Add between NewPatient and Assessments */}
           <Stack.Screen 

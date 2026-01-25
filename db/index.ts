@@ -1,6 +1,7 @@
 import { Database } from '@nozbe/watermelondb';
 import SQLiteAdapter from '@nozbe/watermelondb/adapters/sqlite';
 import { schema } from './schema';
+import migrations from './migrations';
 import Patient from './models/Patient';
 import Visit from './models/Visit';
 import Treatment from './models/Treatment';
@@ -13,8 +14,10 @@ import FillingsAssessment from './models/FillingsAssessment';
 import ImplantAssessment from './models/ImplantAssessment';
 import DentureAssessment from './models/DentureAssessment';
 
+
 const adapter = new SQLiteAdapter({
   schema,
+  migrations,
 });
 
 export const database = new Database({

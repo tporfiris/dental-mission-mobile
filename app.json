@@ -16,9 +16,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.tporfiris.dentalmissionmobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera to take patient photos.",
+        "NSCameraUsageDescription": "This app uses the camera to take patient photos and identify patients via facial recognition.",
         "NSMicrophoneUsageDescription": "This app uses the microphone to record audio notes.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library."
       }
     },
     "android": {
@@ -29,7 +30,9 @@
       "edgeToEdgeEnabled": true,
       "package": "com.tporfiris.dentalmissionmobile",
       "permissions": [
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
       ]
     },
     "web": {

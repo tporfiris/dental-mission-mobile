@@ -6,7 +6,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 7, // Increment version for schema changes
+  version: 8, // Increment version for schema changes
   tables: [
     tableSchema({
       name: 'patients',
@@ -18,6 +18,7 @@ export const schema = appSchema({
         { name: 'location', type: 'string' },
         { name: 'photo_uri', type: 'string' },
         { name: 'photo_cloud_uri', type: 'string' },
+        { name: 'face_embedding', type: 'string' },
       ],
     }),
     tableSchema({
