@@ -18,7 +18,7 @@ export const schema = appSchema({
         { name: 'location', type: 'string' },
         { name: 'photo_uri', type: 'string' },
         { name: 'photo_cloud_uri', type: 'string' },
-        { name: 'face_embedding', type: 'string' },
+        { name: 'face_embedding', type: 'string' }, 
       ],
     }),
     tableSchema({

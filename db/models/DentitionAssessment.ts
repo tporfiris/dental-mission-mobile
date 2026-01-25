@@ -6,6 +6,7 @@ export default class DentitionAssessment extends Model {
 
   @field('patient_id') patientId!: string; // <-- ✅ ADD THIS LINE
   @field('data') data!: string; // JSON string of tooth states
+  @field('clinician_name') clinicianName?: string;
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
   

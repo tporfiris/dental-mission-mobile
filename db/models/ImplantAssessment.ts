@@ -8,6 +8,7 @@ export default class ImplantAssessment extends Model {
   @field('data') data!: string;
   @date('created_at') createdAt!: Date;
   @date('updated_at') updatedAt!: Date;
+  @field('clinician_name') clinicianName?: string;
   
   @relation('patients', 'patient_id') patient!: any;
 }

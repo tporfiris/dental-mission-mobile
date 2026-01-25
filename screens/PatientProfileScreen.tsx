@@ -625,14 +625,14 @@ const PatientProfileScreen = ({ route, navigation }: any) => {
                         )}
                         
                         {/* Show office and clinician info */}
-                        <View style={styles.assessmentFooter}>
+                        {/* <View style={styles.assessmentFooter}>
                           <Text style={styles.assessmentClinician}>
                             👤 {assessment.clinicianEmail || 'Unknown'}
                           </Text>
                           <Text style={styles.assessmentOffice}>
                             🏥 {assessment.officeName || 'Not synced'}
                           </Text>
-                        </View>
+                        </View> */}
                       </>
                     )}
                   </TouchableOpacity>
